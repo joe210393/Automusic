@@ -833,13 +833,54 @@
         await Tone.start();
         const now = Tone.now() + 0.5; // 稍微延遲避免爆音
 
-        // 簡化：一個 PolySynth 撐起所有旋律與和聲，鼓 / bass 先不分音色
-        const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+        // 分軌樂器：旋律主奏、bass / 和聲墊底、鼓用鼓的音色（不能當音高彈！）
+        const melodySynth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'triangle' },
+          envelope: { attack: 0.01, decay: 0.15, sustain: 0.5, release: 0.4 },
+        }).toDestination();
+        melodySynth.volume.value = 0;
+
+        const bassSynth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'sine' },
+          envelope: { attack: 0.02, decay: 0.2, sustain: 0.6, release: 0.3 },
+        }).toDestination();
+        bassSynth.volume.value = -8;
+
+        const harmonySynth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'sine' },
+          envelope: { attack: 0.05, decay: 0.3, sustain: 0.4, release: 0.6 },
+        }).toDestination();
+        harmonySynth.volume.value = -14;
+
+        const kickSynth = new Tone.MembraneSynth().toDestination();
+        kickSynth.volume.value = -4;
+        const snareSynth = new Tone.NoiseSynth({
+          noise: { type: 'white' },
+          envelope: { attack: 0.001, decay: 0.15, sustain: 0 },
+        }).toDestination();
+        snareSynth.volume.value = -12;
+        const hihatSynth = new Tone.NoiseSynth({
+          noise: { type: 'white' },
+          envelope: { attack: 0.001, decay: 0.04, sustain: 0 },
+        }).toDestination();
+        hihatSynth.volume.value = -26;
 
         midi.tracks.forEach((track) => {
+          const ch = track.channel;
           track.notes.forEach((note) => {
-            const time = now + note.time;
-            synth.triggerAttackRelease(note.name, note.duration, time, note.velocity);
+            const t = now + note.time;
+            if (ch === 9) {
+              // 鼓軌：依 GM 音符對應鼓件
+              if (note.midi === 36) kickSynth.triggerAttackRelease('C2', 0.1, t, note.velocity);
+              else if (note.midi === 38) snareSynth.triggerAttackRelease(0.15, t, note.velocity);
+              else hihatSynth.triggerAttackRelease(0.04, t, note.velocity);
+            } else if (ch === 1) {
+              bassSynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
+            } else if (ch === 2) {
+              harmonySynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
+            } else {
+              melodySynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
+            }
           });
         });
 

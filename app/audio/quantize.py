@@ -18,14 +18,15 @@ def quantize_notes(notes: list, bpm: float, grid: str = "1/8") -> list:
     # 計算格點間隔（秒）
     beats_per_second = bpm / 60.0
     
+    # 4/4 拍：四分音符 = 1 拍、八分音符 = 0.5 拍、十六分音符 = 0.25 拍
     if grid == "1/4":
-        grid_interval = 1.0 / 4.0 / beats_per_second
+        grid_interval = 1.0 / beats_per_second
     elif grid == "1/8":
-        grid_interval = 1.0 / 8.0 / beats_per_second
+        grid_interval = 0.5 / beats_per_second
     elif grid == "1/16":
-        grid_interval = 1.0 / 16.0 / beats_per_second
+        grid_interval = 0.25 / beats_per_second
     else:
-        grid_interval = 1.0 / 8.0 / beats_per_second  # 預設 1/8
+        grid_interval = 0.5 / beats_per_second  # 預設 1/8
     
     quantized_notes = []
     

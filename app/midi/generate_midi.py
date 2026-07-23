@@ -3,6 +3,7 @@ MIDI 生成 - 將音符、和弦、Pattern 組合成完整的 MIDI 檔案
 """
 
 import math
+import random
 import mido
 from mido import MidiFile, MidiTrack, Message, MetaMessage
 import os
@@ -15,6 +16,7 @@ def generate_full_midi(
     key: str,
     lyrics: dict = None,
     chord_overrides: Optional[List[str]] = None,
+    seed: Optional[int] = None,
 ) -> str:
     """
     生成完整的 MIDI 檔案
@@ -30,7 +32,20 @@ def generate_full_midi(
     """
     from app.audio.quantize import quantize_notes
     from app.arrange.chords import infer_chords
-    from app.arrange.patterns import get_drum_pattern, get_bass_pattern, get_harmony_pattern
+    from app.arrange.patterns import (
+        get_drum_pattern,
+        get_bass_pattern,
+        get_harmony_pattern,
+        NUM_DRUM_VARIATIONS,
+        NUM_BASS_VARIATIONS,
+        NUM_HARMONY_VARIATIONS,
+    )
+
+    # 每次編曲隨機挑伴奏變化型（可用 seed 重現），讓輸出不會每次都一樣
+    rng = random.Random(seed)
+    drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
+    bass_var = rng.randrange(NUM_BASS_VARIATIONS)
+    harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
     
     # 量化音符
     quantized_notes = quantize_notes(notes, bpm, grid="1/8")
@@ -81,12 +96,11 @@ def generate_full_midi(
         end_ticks = int(note["end"] * mid.ticks_per_beat * bpm / 60)
         duration_ticks = end_ticks - start_ticks
         
-        # Note on（學生旋律放在背景：降低 velocity）
+        # Note on（旋律是主角，維持原始力度）
         delta_time = start_ticks - melody_current_time
         if delta_time < 0:
             delta_time = 0
-        base_vel = note.get("velocity", 90)
-        melody_vel = max(30, int(base_vel * 0.6))  # 降低一點，讓和弦較突出
+        melody_vel = max(70, min(110, note.get("velocity", 90)))
         melody_track.append(
             Message(
                 'note_on',
@@ -180,7 +194,7 @@ def generate_full_midi(
         bar_start_ticks = int(bar_start_time * mid.ticks_per_beat * bpm / 60)
         
         # 鼓組 Pattern
-        drum_events = get_drum_pattern(bar_duration, beats_per_bar=4)
+        drum_events = get_drum_pattern(bar_duration, beats_per_bar=4, variation=drum_var)
         for event in drum_events:
             event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
             delta_time = max(0, event_time_ticks - drums_current_time)
@@ -190,7 +204,7 @@ def generate_full_midi(
             drums_current_time = event_time_ticks + duration_ticks
         
         # Bass Pattern
-        bass_events = get_bass_pattern(chord_degree, key, bar_duration, beats_per_bar=4)
+        bass_events = get_bass_pattern(chord_degree, key, bar_duration, beats_per_bar=4, variation=bass_var)
         for event in bass_events:
             event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
             delta_time = max(0, event_time_ticks - bass_current_time)
@@ -200,7 +214,7 @@ def generate_full_midi(
             bass_current_time = event_time_ticks + duration_ticks
         
         # Harmony Pattern
-        harmony_events = get_harmony_pattern(chord_degree, key, bar_duration)
+        harmony_events = get_harmony_pattern(chord_degree, key, bar_duration, variation=harmony_var)
         for event in harmony_events:
             event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
             delta_time = max(0, event_time_ticks - harmony_current_time)

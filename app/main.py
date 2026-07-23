@@ -70,6 +70,7 @@ class RenderRequest(BaseModel):
     key: str
     lyrics: LyricsResponse
     chord_overrides: Optional[List[str]] = None
+    seed: Optional[int] = None  # 指定 seed 可重現同一套伴奏；不給則每次隨機變化
 
 
 class AIComposeRequest(BaseModel):
@@ -319,6 +320,7 @@ async def render_music(request: RenderRequest):
         key=request.key,
         lyrics=request.lyrics.dict(),
         chord_overrides=request.chord_overrides,
+        seed=request.seed,
     )
     
     if not os.path.exists(midi_path):

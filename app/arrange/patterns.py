@@ -1,149 +1,165 @@
 """
 編曲 Pattern 定義 - Pop/Education 風格
+
+每種樂器提供多個變化型（variation），由 generate_midi 隨機挑選，
+讓每次編曲聽起來不一樣。
 """
 
-# Pop/Education 風格的 Pattern 定義
-POP_PATTERN = {
-    "drums": {
-        "kick": [1, 3],      # 第 1, 3 拍
-        "snare": [2, 4],     # 第 2, 4 拍
-        "hihat": "8th"       # 8 分音符
-    },
-    "bass": {
-        "root_on": [1, 3],   # 第 1, 3 拍彈根音
-        "fifth_on": [2, 4],  # 第 2, 4 拍可選五度
-        "pattern": "simple"  # 簡單模式
-    },
-    "harmony": {
-        "type": "whole",     # 整拍和弦（先做整拍，分解和弦可後續擴展）
-        "on_beat": 1         # 每小節第 1 拍
-    }
-}
+# 鼓的 GM 音符
+KICK = 36
+SNARE = 38
+HIHAT_CLOSED = 42
+
+NUM_DRUM_VARIATIONS = 3
+NUM_BASS_VARIATIONS = 3
+NUM_HARMONY_VARIATIONS = 3
 
 
-def get_drum_pattern(bar_duration: float, beats_per_bar: int = 4) -> list:
+def get_drum_pattern(bar_duration: float, beats_per_bar: int = 4, variation: int = 0) -> list:
     """
     生成鼓組 Pattern（MIDI 事件）
-    
-    Args:
-        bar_duration: 小節時長（秒）
-        beats_per_bar: 每小節拍數（預設 4）
-    
-    Returns:
-        鼓組事件列表 [{"time": float, "note": int, "velocity": int, "duration": float}]
+
+    variation:
+        0: 標準流行（kick 1,3 / snare 2,4 / hihat 8 分）
+        1: 輕快（kick 1, 3.5 切分 / snare 2,4 / hihat 8 分）
+        2: 簡約（kick 1,3 / snare 2,4，只有 4 分 hihat，適合慢歌）
     """
-    beat_duration = bar_duration / beats_per_bar
+    beat = bar_duration / beats_per_bar
     events = []
-    
-    # Kick (MIDI note 36, C2)
-    for beat in POP_PATTERN["drums"]["kick"]:
-        time = (beat - 1) * beat_duration
+
+    def hit(time_beats: float, note: int, velocity: int, duration: float = 0.08):
         events.append({
-            "time": time,
-            "note": 36,
-            "velocity": 100,
-            "duration": 0.1
+            "time": time_beats * beat,
+            "note": note,
+            "velocity": velocity,
+            "duration": duration,
         })
-    
-    # Snare (MIDI note 38, D2)
-    for beat in POP_PATTERN["drums"]["snare"]:
-        time = (beat - 1) * beat_duration
-        events.append({
-            "time": time,
-            "note": 38,
-            "velocity": 90,
-            "duration": 0.1
-        })
-    
-    # Hi-hat (MIDI note 42, F#2) - 8 分音符
-    if POP_PATTERN["drums"]["hihat"] == "8th":
-        num_hihats = beats_per_bar * 2
-        for i in range(num_hihats):
-            time = i * (beat_duration / 2)
-            events.append({
-                "time": time,
-                "note": 42,
-                "velocity": 70,
-                "duration": 0.05
-            })
-    
+
+    variation = variation % NUM_DRUM_VARIATIONS
+
+    if variation == 0:
+        kick_beats = [0, 2]
+        hihat_step = 0.5
+    elif variation == 1:
+        kick_beats = [0, 2.5]
+        hihat_step = 0.5
+    else:
+        kick_beats = [0, 2]
+        hihat_step = 1.0
+
+    for b in kick_beats:
+        hit(b, KICK, 96)
+    for b in [1, 3]:
+        hit(b, SNARE, 84)
+
+    t = 0.0
+    while t < beats_per_bar - 1e-6:
+        # hihat 放輕，只當節奏背景
+        hit(t, HIHAT_CLOSED, 45, duration=0.04)
+        t += hihat_step
+
     return events
 
 
-def get_bass_pattern(chord_degree: str, key: str, bar_duration: float, beats_per_bar: int = 4) -> list:
+def get_bass_pattern(
+    chord_degree: str,
+    key: str,
+    bar_duration: float,
+    beats_per_bar: int = 4,
+    variation: int = 0,
+) -> list:
     """
     生成 Bass Pattern
-    
-    Args:
-        chord_degree: 和弦級數（如 "I", "V"）
-        key: 調性
-        bar_duration: 小節時長（秒）
-        beats_per_bar: 每小節拍數
-    
-    Returns:
-        Bass 事件列表
+
+    variation:
+        0: 根音 1,3 拍 + 五度 2,4 拍（標準）
+        1: 根音長音（1 拍起彈滿半小節 ×2）
+        2: 根音-根音-五度-八度（流行行進感）
     """
     from app.arrange.chords import get_chord_notes
-    
-    beat_duration = bar_duration / beats_per_bar
-    events = []
-    
-    # 取得和弦的根音和五度
+
+    beat = bar_duration / beats_per_bar
     chord_notes = get_chord_notes(key, chord_degree)
-    root_note = chord_notes[0] - 24  # 降低兩個八度到 Bass 範圍
-    fifth_note = chord_notes[1] - 24 if len(chord_notes) > 1 else root_note + 7
-    
-    # 第 1, 3 拍彈根音
-    for beat in POP_PATTERN["bass"]["root_on"]:
-        time = (beat - 1) * beat_duration
+    root = chord_notes[0] - 24   # 降兩個八度到 Bass 音域
+    fifth = root + 7
+    octave = root + 12
+
+    variation = variation % NUM_BASS_VARIATIONS
+    events = []
+
+    def play(time_beats: float, note: int, dur_beats: float, velocity: int = 78):
         events.append({
-            "time": time,
-            "note": root_note,
-            "velocity": 90,
-            "duration": beat_duration * 0.8
+            "time": time_beats * beat,
+            "note": note,
+            "velocity": velocity,
+            "duration": dur_beats * beat * 0.9,
         })
-    
-    # 第 2, 4 拍可選五度
-    if POP_PATTERN["bass"]["fifth_on"]:
-        for beat in POP_PATTERN["bass"]["fifth_on"]:
-            time = (beat - 1) * beat_duration
-            events.append({
-                "time": time,
-                "note": fifth_note,
-                "velocity": 85,
-                "duration": beat_duration * 0.8
-            })
-    
+
+    if variation == 0:
+        play(0, root, 1)
+        play(1, fifth, 1, velocity=70)
+        play(2, root, 1)
+        play(3, fifth, 1, velocity=70)
+    elif variation == 1:
+        play(0, root, 2)
+        play(2, root, 2)
+    else:
+        play(0, root, 1)
+        play(1, root, 1, velocity=72)
+        play(2, fifth, 1, velocity=72)
+        play(3, octave, 1, velocity=74)
+
     return events
 
 
-def get_harmony_pattern(chord_degree: str, key: str, bar_duration: float) -> list:
+def get_harmony_pattern(
+    chord_degree: str,
+    key: str,
+    bar_duration: float,
+    variation: int = 0,
+) -> list:
     """
-    生成和聲 Pattern（整拍和弦）
-    
-    Args:
-        chord_degree: 和弦級數
-        key: 調性
-        bar_duration: 小節時長（秒）
-    
-    Returns:
-        和聲事件列表
+    生成和聲 Pattern。和弦降一個八度（48-60 附近），避開旋律音域（60-84）。
+
+    variation:
+        0: 每小節一次長和弦（柔和鋪底）
+        1: 分解和弦（8 分音符上行-下行）
+        2: 半小節刷兩次和弦
     """
     from app.arrange.chords import get_chord_notes
-    
+
+    chord_notes = [n - 12 for n in get_chord_notes(key, chord_degree)]
+    beat = bar_duration / 4.0
+
+    variation = variation % NUM_HARMONY_VARIATIONS
     events = []
-    
-    # 取得和弦的三個音
-    chord_notes = get_chord_notes(key, chord_degree)
-    
-    # 整拍和弦：每小節第 1 拍同時彈三個音
-    if POP_PATTERN["harmony"]["type"] == "whole":
+
+    if variation == 0:
         for note in chord_notes:
             events.append({
                 "time": 0.0,
                 "note": note,
-                "velocity": 80,
-                "duration": bar_duration * 0.9
+                "velocity": 55,
+                "duration": bar_duration * 0.95,
             })
-    
+    elif variation == 1:
+        # 分解和弦：根-三-五-三 循環，8 分音符
+        seq = [chord_notes[0], chord_notes[1], chord_notes[2], chord_notes[1]] * 2
+        for i, note in enumerate(seq):
+            events.append({
+                "time": i * beat * 0.5,
+                "note": note,
+                "velocity": 58,
+                "duration": beat * 0.45,
+            })
+    else:
+        for start_beat in (0, 2):
+            for note in chord_notes:
+                events.append({
+                    "time": start_beat * beat,
+                    "note": note,
+                    "velocity": 55,
+                    "duration": beat * 1.8,
+                })
+
     return events
