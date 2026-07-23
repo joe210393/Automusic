@@ -71,6 +71,7 @@ class AIComposeRequest(BaseModel):
 
 class AIComposeResponse(BaseModel):
     chords: List[str]
+    source: str = "lm_studio"  # lm_studio（本地 AI）或 rules（規則式備援）
 
 
 class MelodyRequest(BaseModel):
@@ -320,11 +321,27 @@ async def render_music(request: RenderRequest):
     )
 
 
+def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -> List[str]:
+    """規則式和弦推薦（LM Studio 連不上時的備援，也可獨立使用）。"""
+    from app.arrange.chords import infer_chords
+
+    notes_list = [{"start": n.start, "end": n.end, "midi": n.midi, "velocity": n.velocity} for n in notes]
+    inferred = infer_chords(notes_list, key, bpm, time_signature=(4, 4))
+    chords = [c["chord"] for c in inferred]
+    if not chords:
+        chords = ["I", "V", "vi", "IV"]
+    while len(chords) < num_bars:
+        chords.extend(chords)
+    chords = chords[:num_bars]
+    chords[-1] = "I"  # 結尾回主和弦
+    return chords
+
+
 @app.post("/ai-compose", response_model=AIComposeResponse)
 async def ai_compose(request: AIComposeRequest):
     """
     使用本地 LM Studio（例如 Gemma 3 12B）根據學生旋律建議和弦進行。
-    不呼叫任何雲端付費 API。
+    若 LM Studio 連不上（例如部署在雲端時），自動改用規則式推薦，不會失敗。
     """
     if not request.notes:
         raise HTTPException(status_code=400, detail="notes 不可為空")
@@ -368,56 +385,52 @@ async def ai_compose(request: AIComposeRequest):
                 "temperature": 0.5,
                 "max_tokens": 256,
             },
-            timeout=30,
+            timeout=(4, 30),  # 連線 4 秒逾時：連不上就快速改用規則式備援
         )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"無法連線到 LM Studio: {e}")
+        if resp.status_code != 200:
+            raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
 
-    if resp.status_code != 200:
-        raise HTTPException(status_code=500, detail=f"LM Studio 回傳錯誤：{resp.text}")
-
-    data = resp.json()
-    try:
+        data = resp.json()
         content = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError) as e:
-        raise HTTPException(status_code=500, detail=f"LM Studio 回傳格式錯誤：{e}")
 
-    # 嘗試從 content 中擷取 JSON
-    json_str = content.strip()
-    # 去掉可能的 code fence
-    if json_str.startswith("```"):
-        json_str = json_str.strip("`")
-        # 移除可能的語言標籤
-        json_str = "\n".join(line for line in json_str.splitlines() if not line.strip().startswith("json"))
+        # 嘗試從 content 中擷取 JSON
+        json_str = content.strip()
+        # 去掉可能的 code fence
+        if json_str.startswith("```"):
+            json_str = json_str.strip("`")
+            # 移除可能的語言標籤
+            json_str = "\n".join(line for line in json_str.splitlines() if not line.strip().startswith("json"))
 
-    try:
-        parsed = json.loads(json_str)
-    except Exception:
-        # 嘗試從文字中抓第一個 {...}
-        start = json_str.find("{")
-        end = json_str.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            snippet = json_str[start : end + 1]
-            parsed = json.loads(snippet)
-        else:
-            raise HTTPException(status_code=500, detail=f"無法解析 LM Studio 回傳的 JSON：{json_str}")
+        try:
+            parsed = json.loads(json_str)
+        except Exception:
+            # 嘗試從文字中抓第一個 {...}
+            start = json_str.find("{")
+            end = json_str.rfind("}")
+            if start != -1 and end != -1 and end > start:
+                parsed = json.loads(json_str[start : end + 1])
+            else:
+                raise RuntimeError("無法解析 LM Studio 回傳的 JSON")
 
-    chords = parsed.get("chords")
-    if not isinstance(chords, list) or not chords:
-        raise HTTPException(status_code=500, detail="LM Studio 回傳的 chords 無效")
+        chords = parsed.get("chords")
+        if not isinstance(chords, list) or not chords:
+            raise RuntimeError("LM Studio 回傳的 chords 無效")
 
-    # 清洗和弦，只保留允許的級數
-    allowed = {"I", "IV", "V", "vi", "ii", "iii"}
-    cleaned = [c for c in chords if isinstance(c, str) and c in allowed]
-    if not cleaned:
-        # 退而求其次，用預設 I-V-vi-IV
-        cleaned = ["I", "V", "vi", "IV"]
+        # 清洗和弦，只保留允許的級數
+        allowed = {"I", "IV", "V", "vi", "ii", "iii"}
+        cleaned = [c for c in chords if isinstance(c, str) and c in allowed]
+        if not cleaned:
+            raise RuntimeError("LM Studio 沒有回傳有效的和弦級數")
 
-    # 修剪 / 補足到指定小節數
-    if len(cleaned) < request.num_bars:
-        # 重複填滿
+        # 修剪 / 補足到指定小節數
         while len(cleaned) < request.num_bars:
             cleaned.extend(cleaned)
-    cleaned = cleaned[: request.num_bars]
+        cleaned = cleaned[: request.num_bars]
 
-    return AIComposeResponse(chords=cleaned)
+        return AIComposeResponse(chords=cleaned, source="lm_studio")
+
+    except Exception as e:
+        # LM Studio 連不上或回傳異常：改用規則式推薦（雲端部署時的正常路徑）
+        print(f"[ai-compose] LM Studio 不可用，改用規則式推薦：{e}")
+        fallback = _rule_based_chords(request.notes, request.key, request.bpm, request.num_bars)
+        return AIComposeResponse(chords=fallback, source="rules")

@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>手機錄音上傳</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>" />
   <style>
     body {
       font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
@@ -187,7 +188,10 @@
         }, 100);
       } catch (err) {
         console.error(err);
-        setStatus('無法使用麥克風：' + err.message + '\n請確認瀏覽器已允許麥克風權限。');
+        let msg = '無法使用麥克風：' + err.message;
+        if (err.name === 'NotFoundError') msg = '找不到麥克風裝置。';
+        else if (err.name === 'NotAllowedError') msg = '麥克風權限被拒絕，請在瀏覽器設定中允許。';
+        setStatus(msg + '\n請確認已允許麥克風權限後重試。');
       }
     }
 

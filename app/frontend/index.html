@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <title>Music MVP Demo</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎵</text></svg>" />
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -377,7 +378,13 @@
         setStatus(recordingStatus, '錄音中… 請演奏單音旋律。');
       } catch (err) {
         console.error(err);
-        setStatus(recordingStatus, '無法取得麥克風權限，請確認瀏覽器設定。');
+        let msg = '無法取得麥克風權限，請確認瀏覽器設定。';
+        if (err.name === 'NotFoundError') {
+          msg = '找不到麥克風裝置。這台裝置可能沒有麥克風，可以改用手機開啟錄音頁，或用「輸入音階生成旋律」。';
+        } else if (err.name === 'NotAllowedError') {
+          msg = '麥克風權限被拒絕，請在瀏覽器網址列旁的設定允許麥克風。';
+        }
+        setStatus(recordingStatus, msg);
       }
     }
 
@@ -549,9 +556,12 @@
           return;
         }
 
+        const sourceLabel = data.source === 'rules'
+          ? '（本地 AI 未連線，使用規則式推薦）'
+          : '（本地 AI）';
         setStatus(
           aiChordsInfo,
-          'AI 建議和弦：' + lastAIChords.join(' | ')
+          '建議和弦：' + lastAIChords.join(' | ') + ' ' + sourceLabel
         );
         aiChordsBtn.disabled = false;
         renderBtn.disabled = false;
