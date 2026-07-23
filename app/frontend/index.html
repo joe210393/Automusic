@@ -133,6 +133,34 @@
       <audio id="previewAudio" controls style="display:none;"></audio>
     </div>
 
+    <!-- 手機錄音同步區塊 -->
+    <div class="card">
+      <div class="section-title">1a. 或：同步手機錄音</div>
+      <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
+        用手機開啟雲端錄音頁（<code id="mobileUrlHint">…/web/record.html</code>）錄音上傳後，按下方「同步」抓回本機。
+      </p>
+      <div class="row">
+        <div style="flex:1;min-width:220px;">
+          <label for="remoteUrlInput">雲端網址</label>
+          <input id="remoteUrlInput" type="text" value="https://automusic.zeabur.app"
+                 style="padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div style="margin-top:16px;">
+          <button id="syncBtn" class="secondary">🔄 同步手機錄音</button>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <div style="flex:1;min-width:220px;">
+          <label for="recordingSelect">已下載的錄音</label>
+          <select id="recordingSelect" style="width:100%;"></select>
+        </div>
+        <div style="margin-top:16px;">
+          <button id="loadRecordingBtn" class="secondary" disabled>📥 載入此錄音</button>
+        </div>
+      </div>
+      <div id="syncStatus" class="status"></div>
+    </div>
+
     <!-- 音階生成旋律區塊（不需要錄音） -->
     <div class="card">
       <div class="section-title">1b. 或：輸入音階，直接生成旋律（免錄音）</div>
@@ -241,6 +269,7 @@
     let mediaStream = null;
     let scriptNode = null;
     let recordingBuffers = [];
+    let recordSampleRate = 44100;
     let recordingStartTime = null;
     let recordingTimerInterval = null;
     let recordedBlob = null;
@@ -327,6 +356,7 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        recordSampleRate = audioContext.sampleRate; // 用實際取樣率，避免音高偏移
         mediaStream = audioContext.createMediaStreamSource(stream);
         scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
 
@@ -369,9 +399,8 @@
 
         stopTimer();
 
-        // 產生 WAV Blob
-        const sampleRate = 44100; // 多數瀏覽器會是 44100 或 48000
-        const wavBlob = encodeWAV(recordingBuffers, sampleRate);
+        // 產生 WAV Blob（使用錄音時的實際取樣率）
+        const wavBlob = encodeWAV(recordingBuffers, recordSampleRate);
         recordedBlob = wavBlob;
 
         const url = URL.createObjectURL(wavBlob);
@@ -536,6 +565,93 @@
     aiChordsBtn.addEventListener('click', () => {
       callAICompose();
     });
+
+    // --- 手機錄音同步 ---
+    const remoteUrlInput = document.getElementById('remoteUrlInput');
+    const syncBtn = document.getElementById('syncBtn');
+    const recordingSelect = document.getElementById('recordingSelect');
+    const loadRecordingBtn = document.getElementById('loadRecordingBtn');
+    const syncStatus = document.getElementById('syncStatus');
+    const mobileUrlHint = document.getElementById('mobileUrlHint');
+
+    function updateMobileUrlHint() {
+      const base = remoteUrlInput.value.trim().replace(/\/+$/, '');
+      mobileUrlHint.textContent = base + '/web/record.html';
+    }
+    remoteUrlInput.addEventListener('input', updateMobileUrlHint);
+    updateMobileUrlHint();
+
+    async function refreshRecordingList() {
+      try {
+        const res = await fetch('/recordings');
+        if (!res.ok) return;
+        const list = await res.json();
+        recordingSelect.innerHTML = '';
+        for (const item of list) {
+          const opt = document.createElement('option');
+          opt.value = item.filename;
+          opt.textContent = `${item.filename}（${(item.size / 1024).toFixed(0)} KB，${item.created}）`;
+          recordingSelect.appendChild(opt);
+        }
+        loadRecordingBtn.disabled = list.length === 0;
+      } catch (err) {
+        console.error(err);
+      }
+    }
+
+    syncBtn.addEventListener('click', async () => {
+      const remoteUrl = remoteUrlInput.value.trim();
+      if (!remoteUrl) {
+        setStatus(syncStatus, '請輸入雲端網址。');
+        return;
+      }
+      syncBtn.disabled = true;
+      setStatus(syncStatus, '同步中…');
+      try {
+        const res = await fetch('/sync-recordings', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ remote_url: remoteUrl }),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        setStatus(
+          syncStatus,
+          `同步完成：新增 ${data.downloaded.length} 個，已存在 ${data.skipped} 個（雲端共 ${data.total_remote} 個）。`
+        );
+        await refreshRecordingList();
+      } catch (err) {
+        console.error(err);
+        setStatus(syncStatus, '同步失敗：' + err.message);
+      } finally {
+        syncBtn.disabled = false;
+      }
+    });
+
+    loadRecordingBtn.addEventListener('click', async () => {
+      const filename = recordingSelect.value;
+      if (!filename) return;
+      setStatus(syncStatus, '載入錄音中…');
+      try {
+        const res = await fetch('/recordings/' + encodeURIComponent(filename));
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+
+        // 當成剛錄好的音檔，接上原本的分析／編曲流程
+        recordedBlob = blob;
+        previewAudio.src = URL.createObjectURL(blob);
+        previewAudio.style.display = 'block';
+        recordTimer.textContent = '已載入手機錄音：' + filename;
+        analyzeBtn.disabled = false;
+        setStatus(syncStatus, `已載入 ${filename}，請按上方「分析旋律 ＋ 建伴奏」。`);
+      } catch (err) {
+        console.error(err);
+        setStatus(syncStatus, '載入失敗：' + err.message);
+      }
+    });
+
+    // 頁面載入時先列出本地已有的錄音
+    refreshRecordingList();
 
     // --- 音階生成旋律（地端演算法，不需錄音） ---
     const rootSelect = document.getElementById('rootSelect');

@@ -33,3 +33,6 @@ wheels/
 # 本地測試產物
 analysis.json
 render_body.json
+
+# 手機錄音檔
+recordings/

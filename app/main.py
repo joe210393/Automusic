@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
 from pathlib import Path
+from datetime import datetime
 import os
+import re
 import tempfile
 import json
 import requests
@@ -19,6 +21,13 @@ if frontend_dir.exists():
 # LM Studio（本地）設定：可用環境變數覆寫
 LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://192.168.1.199:1234/v1/chat/completions")
 LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
+
+# 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
+RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", str(Path(__file__).parent.parent / "recordings")))
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
+# 錄音檔名只允許安全字元，避免路徑穿越
+SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
 
 
 # Request/Response models
@@ -81,7 +90,114 @@ class MelodyResponse(BaseModel):
 
 @app.get("/")
 async def root():
+    # 直接導向前台，手機/電腦打開網址就能用
+    return RedirectResponse(url="/web/")
+
+
+@app.get("/api")
+async def api_info():
     return {"message": "Music Education MVP API", "version": "1.0.0"}
+
+
+# ---------- 手機錄音：上傳 / 列表 / 下載 / 同步 ----------
+
+class RecordingInfo(BaseModel):
+    filename: str
+    size: int
+    created: str
+
+
+class SyncRequest(BaseModel):
+    remote_url: str  # 例如 https://automusic.zeabur.app
+
+
+@app.post("/recordings/upload")
+async def upload_recording(file: UploadFile = File(...)):
+    """手機錄音上傳：儲存 WAV 到 recordings 目錄，回傳檔名。"""
+    if not file.filename.lower().endswith(".wav"):
+        raise HTTPException(status_code=400, detail="只支援 WAV 格式")
+
+    content = await file.read()
+    if len(content) < 1000:
+        raise HTTPException(status_code=400, detail="錄音檔太小，可能是空的")
+    if len(content) > 50 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="錄音檔太大（上限 50MB）")
+
+    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    name = datetime.now().strftime("recording-%Y%m%d-%H%M%S") + ".wav"
+    # 避免同秒重複覆蓋
+    path = RECORDINGS_DIR / name
+    counter = 1
+    while path.exists():
+        path = RECORDINGS_DIR / (name[:-4] + f"-{counter}.wav")
+        counter += 1
+
+    path.write_bytes(content)
+    return {"filename": path.name, "size": len(content)}
+
+
+@app.get("/recordings", response_model=List[RecordingInfo])
+async def list_recordings():
+    """列出所有已上傳的錄音（新的在前）。"""
+    items = []
+    for p in RECORDINGS_DIR.glob("*.wav"):
+        stat = p.stat()
+        items.append(
+            RecordingInfo(
+                filename=p.name,
+                size=stat.st_size,
+                created=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            )
+        )
+    items.sort(key=lambda x: x.created, reverse=True)
+    return items
+
+
+@app.get("/recordings/{filename}")
+async def download_recording(filename: str):
+    """下載單一錄音檔。"""
+    if not SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="檔名不合法")
+    path = RECORDINGS_DIR / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="找不到錄音檔")
+    return FileResponse(path, media_type="audio/wav", filename=filename)
+
+
+@app.post("/sync-recordings")
+async def sync_recordings(request: SyncRequest):
+    """
+    在本地電腦執行：從雲端（例如 Zeabur）把手機上傳的錄音抓回本地 recordings 目錄。
+    只下載本地還沒有的檔案。
+    """
+    base = request.remote_url.rstrip("/")
+    try:
+        resp = requests.get(f"{base}/recordings", timeout=15)
+        resp.raise_for_status()
+        remote_list = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"無法連線到雲端：{e}")
+
+    RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    downloaded = []
+    skipped = 0
+    for item in remote_list:
+        fname = item.get("filename", "")
+        if not SAFE_FILENAME_RE.match(fname):
+            continue
+        local_path = RECORDINGS_DIR / fname
+        if local_path.exists():
+            skipped += 1
+            continue
+        try:
+            r = requests.get(f"{base}/recordings/{fname}", timeout=60)
+            r.raise_for_status()
+            local_path.write_bytes(r.content)
+            downloaded.append(fname)
+        except Exception:
+            continue
+
+    return {"downloaded": downloaded, "skipped": skipped, "total_remote": len(remote_list)}
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)

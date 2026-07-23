@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <title>手機錄音上傳</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <style>
+    body {
+      font-family: system-ui, -apple-system, "PingFang TC", sans-serif;
+      margin: 0;
+      padding: 20px;
+      background: #f7fafc;
+      color: #222;
+      display: flex;
+      justify-content: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 480px;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 12px 0 4px;
+      text-align: center;
+    }
+    .hint {
+      font-size: 13px;
+      color: #6b7280;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .record-btn {
+      display: block;
+      width: 160px;
+      height: 160px;
+      margin: 24px auto;
+      border-radius: 50%;
+      border: none;
+      font-size: 20px;
+      font-weight: 600;
+      color: white;
+      background: #ef4444;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.35);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .record-btn.recording {
+      background: #991b1b;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+      100% { transform: scale(1); }
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      margin: 16px 0;
+    }
+    .actions button {
+      border-radius: 999px;
+      border: none;
+      padding: 14px 24px;
+      font-size: 16px;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    #uploadBtn { background: #2563eb; color: white; }
+    #discardBtn { background: #e5e7eb; color: #111827; }
+    .status {
+      text-align: center;
+      font-size: 15px;
+      color: #374151;
+      min-height: 24px;
+      margin-top: 12px;
+      white-space: pre-line;
+    }
+    audio { width: 100%; margin-top: 12px; }
+    .done {
+      text-align: center;
+      font-size: 40px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎤 錄音上傳</h1>
+    <p class="hint">錄一段單音旋律（建議 5–15 秒），上傳後回到電腦按「同步手機錄音」就能編曲。</p>
+
+    <button id="recordBtn" class="record-btn">開始錄音</button>
+    <div id="timer" class="status"></div>
+
+    <audio id="preview" controls style="display:none;"></audio>
+
+    <div class="actions" id="actionRow" style="display:none;">
+      <button id="uploadBtn">⬆️ 上傳這段錄音</button>
+      <button id="discardBtn">重錄</button>
+    </div>
+
+    <div id="doneMark" class="done" style="display:none;">✅</div>
+    <div id="status" class="status"></div>
+  </div>
+
+  <script>
+    const recordBtn = document.getElementById('recordBtn');
+    const timerEl = document.getElementById('timer');
+    const preview = document.getElementById('preview');
+    const actionRow = document.getElementById('actionRow');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const discardBtn = document.getElementById('discardBtn');
+    const statusEl = document.getElementById('status');
+    const doneMark = document.getElementById('doneMark');
+
+    let audioContext = null;
+    let sourceNode = null;
+    let scriptNode = null;
+    let mediaStreamRef = null;
+    let buffers = [];
+    let actualSampleRate = 44100;
+    let recordedBlob = null;
+    let timerInterval = null;
+    let startTime = null;
+
+    function setStatus(text) { statusEl.textContent = text || ''; }
+
+    function encodeWAV(buffers, sampleRate) {
+      const length = buffers.reduce((sum, b) => sum + b.length, 0);
+      const pcm = new Float32Array(length);
+      let offset = 0;
+      for (const b of buffers) { pcm.set(b, offset); offset += b.length; }
+
+      const buffer = new ArrayBuffer(44 + pcm.length * 2);
+      const view = new DataView(buffer);
+      const writeStr = (pos, s) => { for (let i = 0; i < s.length; i++) view.setUint8(pos + i, s.charCodeAt(i)); };
+
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + pcm.length * 2, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);       // PCM
+      view.setUint16(22, 1, true);       // mono
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, pcm.length * 2, true);
+
+      let p = 44;
+      for (let i = 0; i < pcm.length; i++, p += 2) {
+        const s = Math.max(-1, Math.min(1, pcm[i]));
+        view.setInt16(p, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      }
+      return new Blob([view], { type: 'audio/wav' });
+    }
+
+    async function startRecording() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef = stream;
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        actualSampleRate = audioContext.sampleRate; // 手機常是 48000，必須用實際值
+        sourceNode = audioContext.createMediaStreamSource(stream);
+        scriptNode = audioContext.createScriptProcessor(4096, 1, 1);
+        buffers = [];
+
+        scriptNode.onaudioprocess = (e) => {
+          buffers.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+        sourceNode.connect(scriptNode);
+        scriptNode.connect(audioContext.destination);
+
+        recordBtn.textContent = '停止錄音';
+        recordBtn.classList.add('recording');
+        actionRow.style.display = 'none';
+        preview.style.display = 'none';
+        doneMark.style.display = 'none';
+        setStatus('');
+
+        startTime = Date.now();
+        timerInterval = setInterval(() => {
+          timerEl.textContent = '錄音中：' + ((Date.now() - startTime) / 1000).toFixed(1) + ' 秒';
+        }, 100);
+      } catch (err) {
+        console.error(err);
+        setStatus('無法使用麥克風：' + err.message + '\n請確認瀏覽器已允許麥克風權限。');
+      }
+    }
+
+    async function stopRecording() {
+      if (timerInterval) clearInterval(timerInterval);
+      if (scriptNode) { scriptNode.disconnect(); scriptNode.onaudioprocess = null; scriptNode = null; }
+      if (sourceNode) { sourceNode.disconnect(); sourceNode = null; }
+      if (mediaStreamRef) { mediaStreamRef.getTracks().forEach(t => t.stop()); mediaStreamRef = null; }
+      if (audioContext) { await audioContext.close(); audioContext = null; }
+
+      recordedBlob = encodeWAV(buffers, actualSampleRate);
+      buffers = [];
+
+      preview.src = URL.createObjectURL(recordedBlob);
+      preview.style.display = 'block';
+      actionRow.style.display = 'flex';
+      recordBtn.textContent = '重新開始錄音';
+      recordBtn.classList.remove('recording');
+      timerEl.textContent = '錄音完成，先試聽再上傳。';
+    }
+
+    recordBtn.addEventListener('click', () => {
+      if (audioContext) stopRecording();
+      else startRecording();
+    });
+
+    discardBtn.addEventListener('click', () => {
+      recordedBlob = null;
+      preview.src = '';
+      preview.style.display = 'none';
+      actionRow.style.display = 'none';
+      timerEl.textContent = '';
+      recordBtn.textContent = '開始錄音';
+      setStatus('');
+    });
+
+    uploadBtn.addEventListener('click', async () => {
+      if (!recordedBlob) return;
+      uploadBtn.disabled = true;
+      setStatus('上傳中…');
+      try {
+        const formData = new FormData();
+        formData.append('file', new File([recordedBlob], 'recording.wav', { type: 'audio/wav' }));
+        const res = await fetch('/recordings/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        doneMark.style.display = 'block';
+        setStatus('上傳成功：' + data.filename + '\n回到電腦端按「同步手機錄音」即可使用。');
+        actionRow.style.display = 'none';
+        recordBtn.textContent = '再錄一段';
+      } catch (err) {
+        console.error(err);
+        setStatus('上傳失敗：' + err.message);
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
