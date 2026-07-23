@@ -84,6 +84,16 @@ def extract_notes_from_audio(audio_path: str) -> dict:
         freq = freqs[idx]
         midi = _freq_to_midi(freq)
         frame_midi.append(midi)
+
+    # 中值濾波平滑音高：消除雜訊造成的逐 frame 亂跳
+    smoothed = list(frame_midi)
+    for i in range(len(frame_midi)):
+        if frame_midi[i] is None:
+            continue
+        window = [m for m in frame_midi[max(0, i - 2): i + 3] if m is not None]
+        if window:
+            smoothed[i] = int(np.median(window))
+    frame_midi = smoothed
     
     # 將連續相同 MIDI 的 frame 合併成一個 note
     notes = []
@@ -141,6 +151,24 @@ def extract_notes_from_audio(audio_path: str) -> dict:
             }
         )
     
+    # ---- 後處理：過濾雜訊音符 ----
+    MIN_NOTE_DURATION = 0.08   # 短於 80ms 視為雜訊
+    MIDI_MIN, MIDI_MAX = 36, 96  # 合理的人聲/樂器音域（C2 ~ C7）
+    MAX_NOTES = 200            # 安全上限
+
+    cleaned = []
+    for n in notes:
+        if n["end"] - n["start"] < MIN_NOTE_DURATION:
+            continue
+        if not (MIDI_MIN <= n["midi"] <= MIDI_MAX):
+            continue
+        # 相同音高且間隔很近：合併成一個音
+        if cleaned and cleaned[-1]["midi"] == n["midi"] and n["start"] - cleaned[-1]["end"] < 0.05:
+            cleaned[-1]["end"] = n["end"]
+            continue
+        cleaned.append(n)
+    notes = cleaned[:MAX_NOTES]
+
     # 如果還是沒有音符，建立一個預設音符
     if not notes:
         duration = len(audio_data) / sample_rate

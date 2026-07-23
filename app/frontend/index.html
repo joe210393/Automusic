@@ -587,7 +587,7 @@
         }
 
         const sourceLabel = data.source === 'rules'
-          ? '（本地 AI 未連線，使用規則式推薦）'
+          ? '（本地 AI 沒有回應，先用規則式推薦。AI 可能在載入模型，可再按一次「✨ AI 建議和弦」重試）'
           : '（本地 AI）';
         setStatus(
           aiChordsInfo,
@@ -958,11 +958,14 @@
         return;
       }
       renderAudioBtn.disabled = true;
+      const ctrl = new AbortController();
+      const timeoutTimer = setTimeout(() => ctrl.abort(), 90000); // 90 秒逾時保護
       try {
         const res = await fetch('/render-audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildRenderBody()),
+          signal: ctrl.signal,
         });
         if (res.status === 501) {
           // 雲端版沒裝 FluidSynth：不當成錯誤，MIDI 播放仍可用
@@ -983,8 +986,13 @@
         songAudio.play().catch(() => {});
       } catch (err) {
         console.error(err);
-        setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
+        if (err.name === 'AbortError') {
+          setStatus(renderStatus, '高音質轉檔逾時（超過 90 秒），請按「🎧 產生高音質音檔」重試。');
+        } else {
+          setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
+        }
       } finally {
+        clearTimeout(timeoutTimer);
         renderAudioBtn.disabled = false;
       }
     }

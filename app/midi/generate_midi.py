@@ -65,12 +65,21 @@ def generate_full_midi(
     melody_end = max((n["end"] for n in quantized_notes), default=0.0)
     melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
 
+    # 安全上限：旋律最多 16 小節，超過的音符裁掉（避免異常輸入產生超長歌曲）
+    MAX_MELODY_BARS = 16
+    if melody_bars > MAX_MELODY_BARS:
+        melody_bars = MAX_MELODY_BARS
+        cutoff = melody_bars * bar_duration
+        quantized_notes = [n for n in quantized_notes if n["start"] < cutoff]
+        for n in quantized_notes:
+            n["end"] = min(n["end"], cutoff)
+
     # 沒有指定和弦時，依旋律內容挑最貼合的和弦（含 V→I 終止式）
     if chord_overrides is None:
         chord_overrides = select_chords_for_melody(quantized_notes, key, bpm, melody_bars)
 
     INTRO_BARS = 1
-    REPEATS = 2
+    REPEATS = 2 if melody_bars <= 8 else 1  # 旋律太長就不重複，控制歌曲長度
     OUTRO_BARS = 1
     total_bars = INTRO_BARS + melody_bars * REPEATS + OUTRO_BARS
 
