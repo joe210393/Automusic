@@ -2,11 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安裝系統依賴（aubio 和 soundfile 需要）
+# 安裝系統依賴（aubio、soundfile、FluidSynth 高音質轉檔）
 RUN apt-get update && apt-get install -y \
     libaubio-dev \
     libsndfile1 \
+    fluidsynth \
+    fluid-soundfont-gm \
     && rm -rf /var/lib/apt/lists/*
+
+# FluidSynth 用的 GM 音色庫路徑
+ENV SOUNDFONT_PATH=/usr/share/sounds/sf2/FluidR3_GM.sf2
 
 # 複製 requirements 並安裝 Python 依賴
 COPY requirements.txt .

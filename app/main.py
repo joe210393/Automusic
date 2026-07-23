@@ -7,6 +7,8 @@ from pathlib import Path
 from datetime import datetime
 import os
 import re
+import shutil
+import subprocess
 import tempfile
 import json
 import requests
@@ -38,6 +40,23 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # 錄音檔名只允許安全字元，避免路徑穿越
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
+
+
+def find_soundfont() -> Optional[str]:
+    """尋找可用的 SoundFont 音色庫（.sf2）。"""
+    candidates = []
+    if os.getenv("SOUNDFONT_PATH"):
+        candidates.append(Path(os.getenv("SOUNDFONT_PATH")))
+    project_sf_dir = Path(__file__).parent.parent / "soundfonts"
+    if project_sf_dir.exists():
+        candidates.extend(sorted(project_sf_dir.glob("*.sf2")))
+    # Linux（Docker / apt fluid-soundfont-gm）常見路徑
+    candidates.append(Path("/usr/share/sounds/sf2/FluidR3_GM.sf2"))
+    candidates.append(Path("/usr/share/sounds/sf2/default-GM.sf2"))
+    for p in candidates:
+        if p.exists():
+            return str(p)
+    return None
 
 
 # Request/Response models
@@ -347,6 +366,52 @@ def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -
     chords = chords[:num_bars]
     chords[-1] = "I"  # 結尾回主和弦
     return chords
+
+
+@app.post("/render-audio")
+def render_audio(request: RenderRequest):
+    """
+    用 FluidSynth + SoundFont 把編曲轉成真實樂器音色的 WAV 音檔。
+    需要本機安裝 fluidsynth 並有 .sf2 音色庫（雲端 Docker 版已內建）。
+    """
+    from app.midi.generate_midi import generate_full_midi
+
+    if not shutil.which("fluidsynth"):
+        raise HTTPException(status_code=501, detail="此伺服器未安裝 FluidSynth，無法產生高音質音檔")
+    soundfont = find_soundfont()
+    if not soundfont:
+        raise HTTPException(status_code=501, detail="找不到 SoundFont 音色庫（.sf2）")
+
+    notes_list = [
+        {"start": n.start, "end": n.end, "midi": n.midi, "velocity": n.velocity}
+        for n in request.notes
+    ]
+    midi_path = generate_full_midi(
+        notes=notes_list,
+        bpm=request.bpm,
+        key=request.key,
+        lyrics=request.lyrics.dict(),
+        chord_overrides=request.chord_overrides,
+        seed=request.seed,
+    )
+
+    wav_path = "/tmp/full_render.wav"
+    try:
+        subprocess.run(
+            ["fluidsynth", "-ni", "-F", wav_path, "-r", "44100", soundfont, midi_path],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(status_code=500, detail=f"FluidSynth 轉檔失敗：{e.stderr.decode()[:300]}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="FluidSynth 轉檔逾時")
+
+    if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 1000:
+        raise HTTPException(status_code=500, detail="音檔產生失敗")
+
+    return FileResponse(wav_path, media_type="audio/wav", filename="song.wav")
 
 
 @app.post("/ai-compose", response_model=AIComposeResponse)

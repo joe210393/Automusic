@@ -243,9 +243,12 @@
         <button id="aiChordsBtn" class="secondary" disabled>✨ AI 建議和弦</button>
         <button id="renderBtn" disabled>🎼 產生編曲 MIDI</button>
         <button id="playBtn" class="secondary" disabled>▶ 播放編曲</button>
+        <button id="renderAudioBtn" disabled>🎧 產生高音質音檔</button>
         <a id="downloadLink" href="#" download="full.mid" style="display:none;font-size:13px;">下載 MIDI</a>
       </div>
       <div id="renderStatus" class="status"></div>
+      <audio id="songAudio" controls style="display:none;"></audio>
+      <a id="audioDownloadLink" href="#" download="song.wav" style="display:none;font-size:13px;">下載音檔（WAV）</a>
     </div>
   </div>
 
@@ -517,6 +520,7 @@
         );
 
         renderBtn.disabled = false;
+        document.getElementById('renderAudioBtn').disabled = false;
         aiChordsBtn.disabled = false; // 已有分析結果，可以請 AI 幫忙給和弦
       } catch (err) {
         console.error(err);
@@ -745,6 +749,7 @@
 
         playMelodyBtn.disabled = false;
         renderBtn.disabled = false;
+        document.getElementById('renderAudioBtn').disabled = false;
         aiChordsBtn.disabled = false;
       } catch (err) {
         console.error(err);
@@ -782,17 +787,11 @@
       playGeneratedMelody();
     });
 
-    async function callRender() {
-      if (!lastAnalyzeResult) {
-        setStatus(renderStatus, '請先完成音訊分析。');
-        return;
-      }
-
+    function buildRenderBody() {
       const bpm = Number(bpmInput.value) || lastAnalyzeResult.bpm || 90;
       const key = lastAnalyzeResult.key || 'C';
       const notes = lastAnalyzeResult.notes || [];
-
-      const body = {
+      return {
         notes,
         bpm,
         key,
@@ -802,6 +801,15 @@
         },
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
       };
+    }
+
+    async function callRender() {
+      if (!lastAnalyzeResult) {
+        setStatus(renderStatus, '請先完成音訊分析。');
+        return;
+      }
+
+      const body = buildRenderBody();
 
       setStatus(renderStatus, '編曲與產生 MIDI 中…');
       renderBtn.disabled = true;
@@ -830,6 +838,7 @@
         setStatus(renderStatus, '已產生 MIDI，可以下載或直接在線上播放。');
         renderBtn.disabled = false;
         playBtn.disabled = false;
+        renderAudioBtn.disabled = false;
       } catch (err) {
         console.error(err);
         setStatus(renderStatus, '產生 MIDI 時發生錯誤：' + err.message);
@@ -922,6 +931,44 @@
 
     playBtn.addEventListener('click', () => {
       playMidi();
+    });
+
+    // --- 高音質音檔（FluidSynth + SoundFont 真實樂器音色） ---
+    const renderAudioBtn = document.getElementById('renderAudioBtn');
+    const songAudio = document.getElementById('songAudio');
+    const audioDownloadLink = document.getElementById('audioDownloadLink');
+
+    renderAudioBtn.addEventListener('click', async () => {
+      if (!lastAnalyzeResult) {
+        setStatus(renderStatus, '請先完成分析或生成旋律。');
+        return;
+      }
+      renderAudioBtn.disabled = true;
+      setStatus(renderStatus, '用真實樂器音色轉檔中…（幾秒鐘）');
+      try {
+        const res = await fetch('/render-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildRenderBody()),
+        });
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text);
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        songAudio.src = url;
+        songAudio.style.display = 'block';
+        audioDownloadLink.href = url;
+        audioDownloadLink.style.display = 'inline-block';
+        setStatus(renderStatus, '高音質音檔完成！可直接播放或下載。');
+        songAudio.play().catch(() => {});
+      } catch (err) {
+        console.error(err);
+        setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
+      } finally {
+        renderAudioBtn.disabled = false;
+      }
     });
 
     // 初始狀態：尚未錄音，僅允許按「開始錄音」

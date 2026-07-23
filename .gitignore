@@ -36,3 +36,6 @@ render_body.json
 
 # 手機錄音檔
 recordings/
+
+# SoundFont 音色庫（檔案太大，不進版控）
+soundfonts/
