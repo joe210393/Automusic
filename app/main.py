@@ -177,7 +177,7 @@ async def download_recording(filename: str):
 
 
 @app.post("/sync-recordings")
-async def sync_recordings(request: SyncRequest):
+def sync_recordings(request: SyncRequest):  # 同步函式：跑在 threadpool，避免阻塞事件迴圈
     """
     在本地電腦執行：從雲端（例如 Zeabur）把手機上傳的錄音抓回本地 recordings 目錄。
     只下載本地還沒有的檔案。
@@ -350,7 +350,7 @@ def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -
 
 
 @app.post("/ai-compose", response_model=AIComposeResponse)
-async def ai_compose(request: AIComposeRequest):
+def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool，LM 推論不會卡住其他請求
     """
     使用本地 LM Studio（例如 Gemma 3 12B）根據學生旋律建議和弦進行。
     若 LM Studio 連不上（例如部署在雲端時），自動改用規則式推薦，不會失敗。

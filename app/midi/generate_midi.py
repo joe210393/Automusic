@@ -1,5 +1,13 @@
 """
-MIDI 生成 - 將音符、和弦、Pattern 組合成完整的 MIDI 檔案
+MIDI 生成 - 將音符、和弦、Pattern 組合成一首有結構的歌
+
+歌曲結構：
+    前奏（1 小節，伴奏先進）
+    → 主旋律 A（旋律 + 完整伴奏）
+    → 主旋律 A'（旋律重複一次，聽起來像完整的一段）
+    → 尾奏（1 小節，收在主和弦）
+
+旋律貫穿整首歌，不會出現「旋律播完了伴奏還在空跑」的狀況。
 """
 
 import math
@@ -8,6 +16,13 @@ import mido
 from mido import MidiFile, MidiTrack, Message, MetaMessage
 import os
 from typing import List, Optional
+
+# GM 樂器（0-indexed program number）
+MELODY_PROGRAM = 0    # Acoustic Grand Piano（主旋律）
+BASS_PROGRAM = 33     # Electric Bass (finger)
+HARMONY_PROGRAM = 4   # Electric Piano 1（鋪底）
+
+CRASH = 49  # Crash Cymbal 1
 
 
 def generate_full_midi(
@@ -19,19 +34,10 @@ def generate_full_midi(
     seed: Optional[int] = None,
 ) -> str:
     """
-    生成完整的 MIDI 檔案
-    
-    Args:
-        notes: 旋律音符列表
-        bpm: 節拍速度
-        key: 調性
-        lyrics: 歌詞（可選）
-    
-    Returns:
-        MIDI 檔案路徑
+    生成完整的 MIDI 檔案（回傳檔案路徑）。
+    seed 相同時，伴奏變化型與結構完全相同，方便重現。
     """
     from app.audio.quantize import quantize_notes
-    from app.arrange.chords import infer_chords
     from app.arrange.patterns import (
         get_drum_pattern,
         get_bass_pattern,
@@ -39,198 +45,160 @@ def generate_full_midi(
         NUM_DRUM_VARIATIONS,
         NUM_BASS_VARIATIONS,
         NUM_HARMONY_VARIATIONS,
+        KICK,
     )
+    from app.arrange.chords import get_chord_notes
 
-    # 每次編曲隨機挑伴奏變化型（可用 seed 重現），讓輸出不會每次都一樣
     rng = random.Random(seed)
     drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
     bass_var = rng.randrange(NUM_BASS_VARIATIONS)
     harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
-    
-    # 量化音符
-    quantized_notes = quantize_notes(notes, bpm, grid="1/8")
-    
-    # 推斷和弦（先得到基礎 progression，用來估算長度與小節數）
-    chords = infer_chords(quantized_notes, key, bpm, time_signature=(4, 4))
 
-    # 若沒有指定 chord_overrides，預設使用固定 progression：I - vi - IV - V
-    # 對應 C 調時就是 C - Am - F - G，不依賴 AI 或旋律分析。
+    quantized_notes = quantize_notes(notes, bpm, grid="1/8")
+
     if chord_overrides is None:
         chord_overrides = ["I", "vi", "IV", "V"]
-    
-    # 建立 MIDI 檔案
+
+    beats_per_second = bpm / 60.0
+    bar_duration = 4.0 / beats_per_second
+
+    # ---- 歌曲結構 ----
+    melody_end = max((n["end"] for n in quantized_notes), default=0.0)
+    melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
+
+    INTRO_BARS = 1
+    REPEATS = 2
+    OUTRO_BARS = 1
+    total_bars = INTRO_BARS + melody_bars * REPEATS + OUTRO_BARS
+
+    # 各段主旋律的起始小節
+    section_start_bars = [INTRO_BARS + r * melody_bars for r in range(REPEATS)]
+    outro_bar = total_bars - OUTRO_BARS
+
+    # ---- 旋律：重複 REPEATS 次，貫穿整首歌 ----
+    full_melody = []
+    for r in range(REPEATS):
+        offset = (INTRO_BARS + r * melody_bars) * bar_duration
+        for n in quantized_notes:
+            m = dict(n)
+            m["start"] = n["start"] + offset
+            m["end"] = n["end"] + offset
+            full_melody.append(m)
+    full_melody.sort(key=lambda x: x["start"])
+
+    # ---- 每小節的和弦 ----
+    bar_chords = []
+    for bar in range(total_bars):
+        if bar < INTRO_BARS:
+            degree = chord_overrides[0]
+        elif bar >= outro_bar:
+            degree = "I"
+        else:
+            mel_bar = (bar - INTRO_BARS) % melody_bars
+            degree = chord_overrides[mel_bar % len(chord_overrides)]
+        bar_chords.append(degree)
+
+    # ---- 建立 MIDI ----
     mid = MidiFile()
     mid.ticks_per_beat = 480
-    
-    # Track 0: Melody（旋律）
+
     melody_track = MidiTrack()
-    mid.tracks.append(melody_track)
-    
-    # Track 1: Drums（鼓組）
     drums_track = MidiTrack()
-    mid.tracks.append(drums_track)
-    
-    # Track 2: Bass（低音）
     bass_track = MidiTrack()
-    mid.tracks.append(bass_track)
-    
-    # Track 3: Harmony（和聲）
     harmony_track = MidiTrack()
-    mid.tracks.append(harmony_track)
-    
-    # 設定 tempo（使用 MetaMessage，寫在第一個 track 即可）
+    for t in (melody_track, drums_track, bass_track, harmony_track):
+        mid.tracks.append(t)
+
     tempo = mido.bpm2tempo(bpm)
     melody_track.append(MetaMessage('set_tempo', tempo=tempo, time=0))
 
-    # 設定樂器音色（Program Change）：
-    # - melody：預設樂器（通常是鋼琴）
-    # - bass / harmony：使用吉他和弦感（Acoustic Guitar (nylon), GM #25 -> program 24）
-    guitar_program = 24
-    bass_track.append(Message('program_change', program=guitar_program, channel=1, time=0))
-    harmony_track.append(Message('program_change', program=guitar_program, channel=2, time=0))
-    
-    # 添加旋律音符
-    melody_current_time = 0
-    for note in quantized_notes:
-        start_ticks = int(note["start"] * mid.ticks_per_beat * bpm / 60)
-        end_ticks = int(note["end"] * mid.ticks_per_beat * bpm / 60)
-        duration_ticks = end_ticks - start_ticks
-        
-        # Note on（旋律是主角，維持原始力度）
-        delta_time = start_ticks - melody_current_time
-        if delta_time < 0:
-            delta_time = 0
-        melody_vel = max(70, min(110, note.get("velocity", 90)))
-        melody_track.append(
-            Message(
-                'note_on',
-                channel=0,
-                note=note["midi"],
-                velocity=melody_vel,
-                time=delta_time,
-            )
-        )
-        melody_current_time = start_ticks
-        
-        # Note off
-        melody_track.append(Message('note_off', channel=0, note=note["midi"], velocity=0, time=duration_ticks))
-        melody_current_time = end_ticks
-    
-    # 添加鼓組、Bass 和和聲
-    beats_per_second = bpm / 60.0
-    bar_duration = 4.0 / beats_per_second
-    
-    # ---- 自動延長伴奏：目標長度 15~30 秒 ----
-    # 先計算目前 progression 的長度
-    if chords:
-        original_num_bars = len(chords)
-        original_duration = original_num_bars * bar_duration
-    else:
-        original_num_bars = 0
-        original_duration = 0.0
-    
-    target_min_duration = 15.0  # 至少 15 秒
-    target_max_duration = 30.0  # 最長約 30 秒，避免太長
-    
-    extended_chords = []
-    if original_num_bars == 0:
-        # 沒有任何和弦時，保守起見直接用 4 小節 I
-        total_bars = 4
-        for bar in range(total_bars):
-            extended_chords.append(
-                {
-                    "bar": bar,
-                    "chord": "I",
-                    "start": bar * bar_duration,
-                    "end": (bar + 1) * bar_duration,
-                }
-            )
-    else:
-        # 至少複製一次 progression，直到達到目標長度或上限
-        total_bars = original_num_bars
-        if original_duration < target_min_duration:
-            # 需要額外幾個小節
-            need_duration = target_min_duration - original_duration
-            extra_bars = math.ceil(need_duration / bar_duration)
-            
-            # 避免超過最大長度
-            max_extra_bars = math.floor(
-                max(0.0, target_max_duration - original_duration) / bar_duration
-            )
-            extra_bars = max(0, min(extra_bars, max_extra_bars))
-            total_bars = original_num_bars + extra_bars
-        
-        # 依序填滿 extended_chords
-        for new_bar_index in range(total_bars):
-            # 使用 chord_overrides 決定和弦級數（例如 ["I","vi","IV","V"]）
-            src_chord = chord_overrides[new_bar_index % len(chord_overrides)]
-            bar_start = new_bar_index * bar_duration
-            bar_end = (new_bar_index + 1) * bar_duration
-            extended_chords.append(
-                {
-                    "bar": new_bar_index,
-                    "chord": src_chord,
-                    "start": bar_start,
-                    "end": bar_end,
-                }
-            )
-        
-        # 最後一小節強制回 I，讓結尾穩定
-        extended_chords[-1]["chord"] = "I"
-    
-    chords = extended_chords
-    
-    # 為每個 track 獨立追蹤時間
-    drums_current_time = 0
-    bass_current_time = 0
-    harmony_current_time = 0
-    
-    for chord_info in chords:
-        bar = chord_info["bar"]
-        chord_degree = chord_info["chord"]
-        bar_start_time = chord_info["start"]
-        
-        # 轉換為 ticks
-        bar_start_ticks = int(bar_start_time * mid.ticks_per_beat * bpm / 60)
-        
-        # 鼓組 Pattern
-        drum_events = get_drum_pattern(bar_duration, beats_per_bar=4, variation=drum_var)
-        for event in drum_events:
-            event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
-            delta_time = max(0, event_time_ticks - drums_current_time)
-            drums_track.append(Message('note_on', channel=9, note=event["note"], velocity=event["velocity"], time=delta_time))
-            duration_ticks = int(event["duration"] * mid.ticks_per_beat * bpm / 60)
-            drums_track.append(Message('note_off', channel=9, note=event["note"], velocity=0, time=duration_ticks))
-            drums_current_time = event_time_ticks + duration_ticks
-        
-        # Bass Pattern
-        bass_events = get_bass_pattern(chord_degree, key, bar_duration, beats_per_bar=4, variation=bass_var)
-        for event in bass_events:
-            event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
-            delta_time = max(0, event_time_ticks - bass_current_time)
-            bass_track.append(Message('note_on', channel=1, note=event["note"], velocity=event["velocity"], time=delta_time))
-            duration_ticks = int(event["duration"] * mid.ticks_per_beat * bpm / 60)
-            bass_track.append(Message('note_off', channel=1, note=event["note"], velocity=0, time=duration_ticks))
-            bass_current_time = event_time_ticks + duration_ticks
-        
-        # Harmony Pattern
-        harmony_events = get_harmony_pattern(chord_degree, key, bar_duration, variation=harmony_var)
-        for event in harmony_events:
-            event_time_ticks = int((bar_start_time + event["time"]) * mid.ticks_per_beat * bpm / 60)
-            delta_time = max(0, event_time_ticks - harmony_current_time)
-            harmony_track.append(Message('note_on', channel=2, note=event["note"], velocity=event["velocity"], time=delta_time))
-            duration_ticks = int(event["duration"] * mid.ticks_per_beat * bpm / 60)
-            harmony_track.append(Message('note_off', channel=2, note=event["note"], velocity=0, time=duration_ticks))
-            harmony_current_time = event_time_ticks + duration_ticks
-    
-    # 為每個 track 加上 end_of_track，確保 MIDI 在各種播放器中都正常結束
+    melody_track.append(Message('program_change', program=MELODY_PROGRAM, channel=0, time=0))
+    bass_track.append(Message('program_change', program=BASS_PROGRAM, channel=1, time=0))
+    harmony_track.append(Message('program_change', program=HARMONY_PROGRAM, channel=2, time=0))
+
+    def sec_to_ticks(sec: float) -> int:
+        return int(sec * mid.ticks_per_beat * beats_per_second)
+
+    def write_track_events(track, channel, timed_events):
+        """
+        timed_events: [(start_sec, duration_sec, note, velocity), ...]
+        正確處理同時發聲（和弦）與重疊音：全部轉成絕對 tick 排序後再算 delta。
+        """
+        msgs = []
+        for start_sec, dur_sec, note, vel in timed_events:
+            on = sec_to_ticks(start_sec)
+            off = on + max(1, sec_to_ticks(dur_sec))
+            msgs.append((on, 1, note, vel))
+            msgs.append((off, 0, note, 0))
+        # 同一 tick 時 note_off 先於 note_on
+        msgs.sort(key=lambda x: (x[0], x[1]))
+        current = 0
+        for t, kind, note, vel in msgs:
+            delta = max(0, t - current)
+            track.append(Message('note_on' if kind else 'note_off',
+                                 channel=channel, note=note, velocity=vel, time=delta))
+            current = max(current, t)
+
+    # ---- 旋律軌 ----
+    melody_events = [
+        (n["start"], n["end"] - n["start"], n["midi"], max(70, min(110, n.get("velocity", 90))))
+        for n in full_melody
+    ]
+    write_track_events(melody_track, 0, melody_events)
+
+    # ---- 伴奏軌：先收集全部事件，最後一次寫入 ----
+    drum_all = []
+    bass_all = []
+    harmony_all = []
+
+    for bar in range(total_bars):
+        bar_start = bar * bar_duration
+        degree = bar_chords[bar]
+        is_outro = bar >= outro_bar
+        # 段落開頭放 crash；段落結尾前一小節放過門
+        has_crash = (bar in section_start_bars) or is_outro
+        next_is_section = (bar + 1) in section_start_bars or (bar + 1) == outro_bar
+        has_fill = next_is_section and not is_outro
+
+        # 鼓
+        if is_outro:
+            drum_events = [
+                {"time": 0.0, "note": KICK, "velocity": 96, "duration": 0.1},
+                {"time": 0.0, "note": CRASH, "velocity": 88, "duration": 0.6},
+            ]
+        else:
+            drum_events = get_drum_pattern(bar_duration, beats_per_bar=4, variation=drum_var,
+                                           fill=has_fill, crash=has_crash)
+        drum_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in drum_events)
+
+        # Bass
+        if is_outro:
+            root = get_chord_notes(key, "I")[0] - 24
+            bass_events = [{"time": 0.0, "note": root, "velocity": 80, "duration": bar_duration * 0.95}]
+        else:
+            bass_events = get_bass_pattern(degree, key, bar_duration, beats_per_bar=4, variation=bass_var)
+        bass_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in bass_events)
+
+        # 和聲
+        if is_outro:
+            harmony_events = [
+                {"time": 0.0, "note": n - 12, "velocity": 60, "duration": bar_duration * 0.95}
+                for n in get_chord_notes(key, "I")
+            ]
+        else:
+            harmony_events = get_harmony_pattern(degree, key, bar_duration, variation=harmony_var)
+        harmony_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in harmony_events)
+
+    write_track_events(drums_track, 9, drum_all)
+    write_track_events(bass_track, 1, bass_all)
+    write_track_events(harmony_track, 2, harmony_all)
+
     for track in (melody_track, drums_track, bass_track, harmony_track):
         track.append(MetaMessage('end_of_track', time=0))
-    
-    # 儲存 MIDI 檔案
+
     output_dir = "/tmp"
     os.makedirs(output_dir, exist_ok=True)
     midi_path = os.path.join(output_dir, "full.mid")
     mid.save(midi_path)
-    
+
     return midi_path

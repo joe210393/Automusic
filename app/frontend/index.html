@@ -128,6 +128,7 @@
       <div class="row" style="margin-top:6px;">
         <button id="recordBtn">🎙 開始錄音</button>
         <button id="resetRecordingBtn" class="secondary" disabled>重錄</button>
+        <button id="uploadRecordingBtn" class="secondary" disabled>⬆️ 上傳錄音</button>
         <span id="recordTimer" style="font-size:13px;color:#6b7280;">尚未錄音</span>
       </div>
       <div id="recordingStatus" class="status"></div>
@@ -418,6 +419,7 @@
         setStatus(recordingStatus, '');
         analyzeBtn.disabled = false;
         resetRecordingBtn.disabled = false;
+        uploadRecordingBtn.disabled = false;
         recordBtn.textContent = '🎙 開始錄音';
       } catch (err) {
         console.error(err);
@@ -433,12 +435,33 @@
       }
     });
 
+    const uploadRecordingBtn = document.getElementById('uploadRecordingBtn');
+    uploadRecordingBtn.addEventListener('click', async () => {
+      if (!recordedBlob) return;
+      uploadRecordingBtn.disabled = true;
+      setStatus(recordingStatus, '上傳錄音中…');
+      try {
+        const formData = new FormData();
+        formData.append('file', new File([recordedBlob], 'recording.wav', { type: 'audio/wav' }));
+        const res = await fetch('/recordings/upload', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        setStatus(recordingStatus, '已上傳：' + data.filename + '（在電腦端按「同步手機錄音」即可取得）');
+      } catch (err) {
+        console.error(err);
+        setStatus(recordingStatus, '上傳失敗：' + err.message);
+      } finally {
+        uploadRecordingBtn.disabled = false;
+      }
+    });
+
     resetRecordingBtn.addEventListener('click', () => {
       recordedBlob = null;
       previewAudio.src = '';
       previewAudio.style.display = 'none';
       recordTimer.textContent = '尚未錄音';
       setStatus(recordingStatus, '');
+      uploadRecordingBtn.disabled = true;
       analyzeBtn.disabled = true;
       renderBtn.disabled = true;
       playBtn.disabled = true;
@@ -864,6 +887,11 @@
           envelope: { attack: 0.001, decay: 0.04, sustain: 0 },
         }).toDestination();
         hihatSynth.volume.value = -26;
+        const crashSynth = new Tone.NoiseSynth({
+          noise: { type: 'white' },
+          envelope: { attack: 0.001, decay: 0.8, sustain: 0 },
+        }).toDestination();
+        crashSynth.volume.value = -18;
 
         midi.tracks.forEach((track) => {
           const ch = track.channel;
@@ -873,6 +901,7 @@
               // 鼓軌：依 GM 音符對應鼓件
               if (note.midi === 36) kickSynth.triggerAttackRelease('C2', 0.1, t, note.velocity);
               else if (note.midi === 38) snareSynth.triggerAttackRelease(0.15, t, note.velocity);
+              else if (note.midi === 49) crashSynth.triggerAttackRelease(0.8, t, note.velocity);
               else hihatSynth.triggerAttackRelease(0.04, t, note.velocity);
             } else if (ch === 1) {
               bassSynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);

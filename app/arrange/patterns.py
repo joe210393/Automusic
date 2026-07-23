@@ -9,13 +9,20 @@
 KICK = 36
 SNARE = 38
 HIHAT_CLOSED = 42
+CRASH = 49
 
 NUM_DRUM_VARIATIONS = 3
 NUM_BASS_VARIATIONS = 3
 NUM_HARMONY_VARIATIONS = 3
 
 
-def get_drum_pattern(bar_duration: float, beats_per_bar: int = 4, variation: int = 0) -> list:
+def get_drum_pattern(
+    bar_duration: float,
+    beats_per_bar: int = 4,
+    variation: int = 0,
+    fill: bool = False,
+    crash: bool = False,
+) -> list:
     """
     生成鼓組 Pattern（MIDI 事件）
 
@@ -23,6 +30,8 @@ def get_drum_pattern(bar_duration: float, beats_per_bar: int = 4, variation: int
         0: 標準流行（kick 1,3 / snare 2,4 / hihat 8 分）
         1: 輕快（kick 1, 3.5 切分 / snare 2,4 / hihat 8 分）
         2: 簡約（kick 1,3 / snare 2,4，只有 4 分 hihat，適合慢歌）
+    fill:  最後一拍加小鼓過門（16 分音符漸強），用在段落交接前
+    crash: 第一拍加 crash（段落開頭）
     """
     beat = bar_duration / beats_per_bar
     events = []
@@ -53,10 +62,19 @@ def get_drum_pattern(bar_duration: float, beats_per_bar: int = 4, variation: int
         hit(b, SNARE, 84)
 
     t = 0.0
-    while t < beats_per_bar - 1e-6:
+    hihat_end = beats_per_bar - (1.0 if fill else 0.0)  # 過門時最後一拍讓給小鼓
+    while t < hihat_end - 1e-6:
         # hihat 放輕，只當節奏背景
         hit(t, HIHAT_CLOSED, 45, duration=0.04)
         t += hihat_step
+
+    if crash:
+        hit(0, CRASH, 85, duration=0.6)
+
+    if fill:
+        # 最後一拍：小鼓 16 分音符漸強過門
+        for i, vel in enumerate([60, 68, 78, 90]):
+            hit(beats_per_bar - 1 + i * 0.25, SNARE, vel, duration=0.06)
 
     return events
 
