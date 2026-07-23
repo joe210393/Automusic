@@ -18,8 +18,18 @@ frontend_dir = Path(__file__).parent / "frontend"
 if frontend_dir.exists():
     app.mount("/web", StaticFiles(directory=str(frontend_dir), html=True), name="web")
 
-# LM Studio（本地）設定：可用環境變數覆寫
-LM_STUDIO_URL = os.getenv("LM_STUDIO_URL", "http://192.168.1.199:1234/v1/chat/completions")
+# LM Studio 設定：依序嘗試多個網址（區網優先、再走 ngrok），可用環境變數覆寫
+# LM_STUDIO_URLS 用逗號分隔多個網址；LM_STUDIO_URL 單一網址（優先權最高，向下相容）
+_default_lm_urls = [
+    "http://192.168.1.198:1234/v1/chat/completions",                       # 區網（本地電腦跑時最快）
+    "https://tactually-venerable-inez.ngrok-free.dev/v1/chat/completions", # ngrok（雲端部署走這條）
+]
+if os.getenv("LM_STUDIO_URL"):
+    LM_STUDIO_URLS = [os.getenv("LM_STUDIO_URL")]
+elif os.getenv("LM_STUDIO_URLS"):
+    LM_STUDIO_URLS = [u.strip() for u in os.getenv("LM_STUDIO_URLS").split(",") if u.strip()]
+else:
+    LM_STUDIO_URLS = _default_lm_urls
 LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
 
 # 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
@@ -372,10 +382,13 @@ async def ai_compose(request: AIComposeRequest):
         "再次提醒：只回傳 JSON，格式為 {\"chords\":[\"I\",\"V\",\"vi\",\"IV\",...]}。"
     )
 
-    try:
+    def _ask_lm_studio(url: str) -> List[str]:
         resp = requests.post(
-            LM_STUDIO_URL,
-            headers={"Content-Type": "application/json"},
+            url,
+            headers={
+                "Content-Type": "application/json",
+                "ngrok-skip-browser-warning": "1",  # 避免 ngrok 免費版的瀏覽器警告頁
+            },
             json={
                 "model": LM_STUDIO_MODEL,
                 "messages": [
@@ -385,7 +398,7 @@ async def ai_compose(request: AIComposeRequest):
                 "temperature": 0.5,
                 "max_tokens": 256,
             },
-            timeout=(4, 30),  # 連線 4 秒逾時：連不上就快速改用規則式備援
+            timeout=(4, 60),  # 連線 4 秒逾時：連不上就快速換下一個網址
         )
         if resp.status_code != 200:
             raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
@@ -425,12 +438,18 @@ async def ai_compose(request: AIComposeRequest):
         # 修剪 / 補足到指定小節數
         while len(cleaned) < request.num_bars:
             cleaned.extend(cleaned)
-        cleaned = cleaned[: request.num_bars]
+        return cleaned[: request.num_bars]
 
-        return AIComposeResponse(chords=cleaned, source="lm_studio")
+    # 依序嘗試每個 LM Studio 網址，第一個成功的就用
+    for url in LM_STUDIO_URLS:
+        try:
+            chords = _ask_lm_studio(url)
+            return AIComposeResponse(chords=chords, source="lm_studio")
+        except Exception as e:
+            print(f"[ai-compose] LM Studio 網址失敗（{url}）：{e}")
+            continue
 
-    except Exception as e:
-        # LM Studio 連不上或回傳異常：改用規則式推薦（雲端部署時的正常路徑）
-        print(f"[ai-compose] LM Studio 不可用，改用規則式推薦：{e}")
-        fallback = _rule_based_chords(request.notes, request.key, request.bpm, request.num_bars)
-        return AIComposeResponse(chords=fallback, source="rules")
+    # 全部連不上：改用規則式推薦
+    print("[ai-compose] 所有 LM Studio 網址都不可用，改用規則式推薦")
+    fallback = _rule_based_chords(request.notes, request.key, request.bpm, request.num_bars)
+    return AIComposeResponse(chords=fallback, source="rules")
