@@ -162,6 +162,74 @@ def infer_chords(notes: list, key: str, bpm: float, time_signature: tuple = (4, 
     return chords
 
 
+def get_chord_pitch_classes(key: str, chord_degree: str) -> set:
+    """取得某調性中某和弦級數的三個音級（pitch class 集合）。"""
+    if key not in MAJOR_SCALE_DEGREES:
+        key = "C"
+    scale_degrees = MAJOR_SCALE_DEGREES[key]
+    scale_position = CHORD_SCALE_POSITIONS.get(chord_degree, 0)
+    root_pc = scale_degrees[scale_position]
+    intervals = CHORD_TYPES.get(chord_degree, CHORD_TYPES["I"])
+    return {(root_pc + iv) % 12 for iv in intervals}
+
+
+def select_chords_for_melody(
+    notes: list,
+    key: str,
+    bpm: float,
+    num_bars: int,
+    time_signature: tuple = (4, 4),
+) -> list:
+    """
+    為每小節挑選「最貼合旋律」的和弦：
+    - 依旋律音落在和弦內音上的總時值評分，選分數最高的和弦
+    - 鼓勵和前一小節不同，避免整首歌黏在同一個和弦
+    - 倒數第二小節放 V、最後一小節放 I（正格終止），收尾有句點感
+
+    回傳和弦級數列表，例如 ["I", "IV", "V", "I"]。
+    """
+    beats_per_second = bpm / 60.0
+    bar_duration = time_signature[0] / beats_per_second
+
+    candidates = ["I", "IV", "V", "vi"]
+    chords = []
+    prev = None
+
+    for bar in range(num_bars):
+        bar_start = bar * bar_duration
+        bar_end = bar_start + bar_duration
+
+        # 統計這個小節內每個音級的總時值
+        pc_duration = {}
+        for n in notes:
+            overlap = min(n.get("end", 0), bar_end) - max(n.get("start", 0), bar_start)
+            if overlap > 0:
+                pc = n.get("midi", 60) % 12
+                pc_duration[pc] = pc_duration.get(pc, 0.0) + overlap
+
+        if not pc_duration:
+            chords.append(prev or "I")
+            prev = chords[-1]
+            continue
+
+        best, best_score = "I", -1.0
+        for degree in candidates:
+            tones = get_chord_pitch_classes(key, degree)
+            score = sum(dur for pc, dur in pc_duration.items() if pc in tones)
+            if degree != prev:
+                score += 0.05  # 輕微鼓勵換和弦
+            if score > best_score:
+                best, best_score = degree, score
+        chords.append(best)
+        prev = best
+
+    # 終止式：V → I
+    if num_bars >= 2:
+        chords[-2] = "V"
+    chords[-1] = "I"
+    return chords
+
+
 def find_chord_containing_note(key: str, pitch_class: int) -> str:
     """
     找出包含指定音級的和弦（按優先順序）

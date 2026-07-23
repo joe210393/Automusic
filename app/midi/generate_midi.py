@@ -17,10 +17,10 @@ from mido import MidiFile, MidiTrack, Message, MetaMessage
 import os
 from typing import List, Optional
 
-# GM 樂器（0-indexed program number）
-MELODY_PROGRAM = 0    # Acoustic Grand Piano（主旋律）
-BASS_PROGRAM = 33     # Electric Bass (finger)
-HARMONY_PROGRAM = 4   # Electric Piano 1（鋪底）
+# GM 樂器（0-indexed program number）：每次編曲隨 seed 挑選，音色有變化
+MELODY_PROGRAM_CHOICES = [0, 4, 11, 24]   # 鋼琴 / 電鋼琴 / 顫音琴 / 尼龍吉他
+HARMONY_PROGRAM_CHOICES = [4, 0, 48]      # 電鋼琴 / 鋼琴 / 弦樂鋪底
+BASS_PROGRAM = 33                          # Electric Bass (finger)
 
 CRASH = 49  # Crash Cymbal 1
 
@@ -47,17 +47,16 @@ def generate_full_midi(
         NUM_HARMONY_VARIATIONS,
         KICK,
     )
-    from app.arrange.chords import get_chord_notes
+    from app.arrange.chords import get_chord_notes, select_chords_for_melody
 
     rng = random.Random(seed)
     drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
     bass_var = rng.randrange(NUM_BASS_VARIATIONS)
     harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
+    melody_program = rng.choice(MELODY_PROGRAM_CHOICES)
+    harmony_program = rng.choice(HARMONY_PROGRAM_CHOICES)
 
     quantized_notes = quantize_notes(notes, bpm, grid="1/8")
-
-    if chord_overrides is None:
-        chord_overrides = ["I", "vi", "IV", "V"]
 
     beats_per_second = bpm / 60.0
     bar_duration = 4.0 / beats_per_second
@@ -65,6 +64,10 @@ def generate_full_midi(
     # ---- 歌曲結構 ----
     melody_end = max((n["end"] for n in quantized_notes), default=0.0)
     melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
+
+    # 沒有指定和弦時，依旋律內容挑最貼合的和弦（含 V→I 終止式）
+    if chord_overrides is None:
+        chord_overrides = select_chords_for_melody(quantized_notes, key, bpm, melody_bars)
 
     INTRO_BARS = 1
     REPEATS = 2
@@ -93,6 +96,8 @@ def generate_full_midi(
             degree = chord_overrides[0]
         elif bar >= outro_bar:
             degree = "I"
+        elif bar == outro_bar - 1:
+            degree = "V"  # 尾奏前放屬和弦，V→I 正格終止收尾
         else:
             mel_bar = (bar - INTRO_BARS) % melody_bars
             degree = chord_overrides[mel_bar % len(chord_overrides)]
@@ -112,9 +117,9 @@ def generate_full_midi(
     tempo = mido.bpm2tempo(bpm)
     melody_track.append(MetaMessage('set_tempo', tempo=tempo, time=0))
 
-    melody_track.append(Message('program_change', program=MELODY_PROGRAM, channel=0, time=0))
+    melody_track.append(Message('program_change', program=melody_program, channel=0, time=0))
     bass_track.append(Message('program_change', program=BASS_PROGRAM, channel=1, time=0))
-    harmony_track.append(Message('program_change', program=HARMONY_PROGRAM, channel=2, time=0))
+    harmony_track.append(Message('program_change', program=harmony_program, channel=2, time=0))
 
     def sec_to_ticks(sec: float) -> int:
         return int(sec * mid.ticks_per_beat * beats_per_second)

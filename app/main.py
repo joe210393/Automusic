@@ -353,19 +353,11 @@ async def render_music(request: RenderRequest):
 
 
 def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -> List[str]:
-    """規則式和弦推薦（LM Studio 連不上時的備援，也可獨立使用）。"""
-    from app.arrange.chords import infer_chords
+    """規則式和弦推薦：依旋律評分挑和弦，含 V→I 終止式。"""
+    from app.arrange.chords import select_chords_for_melody
 
     notes_list = [{"start": n.start, "end": n.end, "midi": n.midi, "velocity": n.velocity} for n in notes]
-    inferred = infer_chords(notes_list, key, bpm, time_signature=(4, 4))
-    chords = [c["chord"] for c in inferred]
-    if not chords:
-        chords = ["I", "V", "vi", "IV"]
-    while len(chords) < num_bars:
-        chords.extend(chords)
-    chords = chords[:num_bars]
-    chords[-1] = "I"  # 結尾回主和弦
-    return chords
+    return select_chords_for_melody(notes_list, key, bpm, num_bars)
 
 
 @app.post("/render-audio")
@@ -398,7 +390,15 @@ def render_audio(request: RenderRequest):
     wav_path = "/tmp/full_render.wav"
     try:
         subprocess.run(
-            ["fluidsynth", "-ni", "-F", wav_path, "-r", "44100", soundfont, midi_path],
+            [
+                "fluidsynth", "-ni",
+                "-F", wav_path,
+                "-r", "44100",
+                "-g", "0.7",       # 整體增益，避免破音
+                "-R", "1",         # 殘響：空間感
+                "-C", "1",         # 合唱效果：音色厚一點
+                soundfont, midi_path,
+            ],
             check=True,
             capture_output=True,
             timeout=120,

@@ -244,6 +244,7 @@
         <button id="renderBtn" disabled>🎼 產生編曲 MIDI</button>
         <button id="playBtn" class="secondary" disabled>▶ 播放編曲</button>
         <button id="renderAudioBtn" disabled>🎧 產生高音質音檔</button>
+        <button id="remakeBtn" class="secondary" disabled>🔁 重新製作</button>
         <a id="downloadLink" href="#" download="full.mid" style="display:none;font-size:13px;">下載 MIDI</a>
       </div>
       <div id="renderStatus" class="status"></div>
@@ -521,6 +522,8 @@
 
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
+        document.getElementById('remakeBtn').disabled = false;
+        currentRenderSeed = Math.floor(Math.random() * 1e9);
         aiChordsBtn.disabled = false; // 已有分析結果，可以請 AI 幫忙給和弦
       } catch (err) {
         console.error(err);
@@ -750,6 +753,8 @@
         playMelodyBtn.disabled = false;
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
+        document.getElementById('remakeBtn').disabled = false;
+        currentRenderSeed = Math.floor(Math.random() * 1e9);
         aiChordsBtn.disabled = false;
       } catch (err) {
         console.error(err);
@@ -787,6 +792,9 @@
       playGeneratedMelody();
     });
 
+    // 編曲 seed：同一個 seed 產生相同的伴奏與音色，「重新製作」時換新 seed
+    let currentRenderSeed = Math.floor(Math.random() * 1e9);
+
     function buildRenderBody() {
       const bpm = Number(bpmInput.value) || lastAnalyzeResult.bpm || 90;
       const key = lastAnalyzeResult.key || 'C';
@@ -800,6 +808,7 @@
           chorus: '這是，創造的，屬於我們的旋律。',
         },
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
+        seed: currentRenderSeed,
       };
     }
 
@@ -835,10 +844,14 @@
         downloadLink.href = url;
         downloadLink.style.display = 'inline-block';
 
-        setStatus(renderStatus, '已產生 MIDI，可以下載或直接在線上播放。');
+        setStatus(renderStatus, '已產生 MIDI，正在轉高音質音檔…');
         renderBtn.disabled = false;
         playBtn.disabled = false;
         renderAudioBtn.disabled = false;
+        remakeBtn.disabled = false;
+
+        // 自動接著轉高音質音檔，一鍵聽到成品
+        await doRenderAudio();
       } catch (err) {
         console.error(err);
         setStatus(renderStatus, '產生 MIDI 時發生錯誤：' + err.message);
@@ -935,22 +948,27 @@
 
     // --- 高音質音檔（FluidSynth + SoundFont 真實樂器音色） ---
     const renderAudioBtn = document.getElementById('renderAudioBtn');
+    const remakeBtn = document.getElementById('remakeBtn');
     const songAudio = document.getElementById('songAudio');
     const audioDownloadLink = document.getElementById('audioDownloadLink');
 
-    renderAudioBtn.addEventListener('click', async () => {
+    async function doRenderAudio() {
       if (!lastAnalyzeResult) {
         setStatus(renderStatus, '請先完成分析或生成旋律。');
         return;
       }
       renderAudioBtn.disabled = true;
-      setStatus(renderStatus, '用真實樂器音色轉檔中…（幾秒鐘）');
       try {
         const res = await fetch('/render-audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(buildRenderBody()),
         });
+        if (res.status === 501) {
+          // 雲端版沒裝 FluidSynth：不當成錯誤，MIDI 播放仍可用
+          setStatus(renderStatus, '已產生 MIDI（此伺服器不支援高音質轉檔，可用「▶ 播放編曲」試聽）。');
+          return;
+        }
         if (!res.ok) {
           const text = await res.text();
           throw new Error(text);
@@ -961,7 +979,7 @@
         songAudio.style.display = 'block';
         audioDownloadLink.href = url;
         audioDownloadLink.style.display = 'inline-block';
-        setStatus(renderStatus, '高音質音檔完成！可直接播放或下載。');
+        setStatus(renderStatus, '完成！下方播放器是真實樂器音色的成品，可直接播放或下載。');
         songAudio.play().catch(() => {});
       } catch (err) {
         console.error(err);
@@ -969,6 +987,15 @@
       } finally {
         renderAudioBtn.disabled = false;
       }
+    }
+
+    renderAudioBtn.addEventListener('click', doRenderAudio);
+
+    remakeBtn.addEventListener('click', () => {
+      // 換一個 seed：不同的伴奏 pattern、不同的樂器音色，旋律與和弦不變
+      currentRenderSeed = Math.floor(Math.random() * 1e9);
+      setStatus(renderStatus, '重新製作中：換一組伴奏與音色…');
+      callRender();
     });
 
     // 初始狀態：尚未錄音，僅允許按「開始錄音」
