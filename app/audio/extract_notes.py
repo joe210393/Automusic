@@ -181,13 +181,22 @@ def extract_notes_from_audio(audio_path: str) -> dict:
             }
         )
     
-    # 估算 BPM（簡化版：根據平均 note 長度）
-    if len(notes) > 1:
-        avg_note_duration = float(
-            np.mean([n["end"] - n["start"] for n in notes])
-        )
-        estimated_bpm = 60.0 / avg_note_duration if avg_note_duration > 0 else 90.0
-        estimated_bpm = max(60.0, min(150.0, estimated_bpm))
+    # 估算 BPM：用「音符起始時間間隔」(IOI) 的中位數當基準拍，
+    # 再摺疊到常見歌曲速度範圍（70~140）。比舊版的平均音長穩定很多。
+    if len(notes) > 2:
+        starts = [n["start"] for n in notes]
+        iois = [b - a for a, b in zip(starts, starts[1:]) if (b - a) > 0.05]
+        if iois:
+            ioi = float(np.median(iois))
+            bpm = 60.0 / ioi
+            # 偵測到的間隔可能是八分/十六分音符：對摺回合理範圍
+            while bpm > 140.0:
+                bpm /= 2.0
+            while bpm < 70.0:
+                bpm *= 2.0
+            estimated_bpm = round(bpm)
+        else:
+            estimated_bpm = 90.0
     else:
         estimated_bpm = 90.0
     

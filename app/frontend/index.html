@@ -247,6 +247,10 @@
         <button id="remakeBtn" class="secondary" disabled>🔁 重新製作</button>
         <a id="downloadLink" href="#" download="full.mid" style="display:none;font-size:13px;">下載 MIDI</a>
       </div>
+      <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;margin-top:10px;cursor:pointer;">
+        <input type="checkbox" id="includeVoiceCheck" checked />
+        🎤 把我的錄音聲音加入作品（人聲主唱＋樂器伴奏）
+      </label>
       <div id="renderStatus" class="status"></div>
       <audio id="songAudio" controls style="display:none;"></audio>
       <a id="audioDownloadLink" href="#" download="song.wav" style="display:none;font-size:13px;">下載音檔（WAV）</a>
@@ -283,6 +287,7 @@
     let lastAnalyzeResult = null; // { notes, bpm, key }
     let lastMidiBlob = null;      // 伺服器回傳的 MIDI 檔案
     let lastAIChords = null;      // 例如 ["I","V","vi","IV"]
+    let currentRecordingFilename = null; // 目前這段錄音在伺服器上的檔名（混音用）
 
     function setStatus(el, text) {
       el.textContent = text || '';
@@ -414,6 +419,7 @@
         // 產生 WAV Blob（使用錄音時的實際取樣率）
         const wavBlob = encodeWAV(recordingBuffers, recordSampleRate);
         recordedBlob = wavBlob;
+        currentRecordingFilename = null; // 新錄音尚未上傳到伺服器
 
         const url = URL.createObjectURL(wavBlob);
         previewAudio.src = url;
@@ -450,6 +456,7 @@
         const res = await fetch('/recordings/upload', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
+        currentRecordingFilename = data.filename;
         setStatus(recordingStatus, '已上傳：' + data.filename + '（在電腦端按「同步手機錄音」即可取得）');
       } catch (err) {
         console.error(err);
@@ -461,6 +468,7 @@
 
     resetRecordingBtn.addEventListener('click', () => {
       recordedBlob = null;
+      currentRecordingFilename = null;
       previewAudio.src = '';
       previewAudio.style.display = 'none';
       recordTimer.textContent = '尚未錄音';
@@ -679,6 +687,7 @@
 
         // 當成剛錄好的音檔，接上原本的分析／編曲流程
         recordedBlob = blob;
+        currentRecordingFilename = filename; // 已在伺服器上，混音時直接引用
         previewAudio.src = URL.createObjectURL(blob);
         previewAudio.style.display = 'block';
         recordTimer.textContent = '已載入手機錄音：' + filename;
@@ -961,10 +970,27 @@
       const ctrl = new AbortController();
       const timeoutTimer = setTimeout(() => ctrl.abort(), 90000); // 90 秒逾時保護
       try {
+        const body = buildRenderBody();
+
+        // 勾選「加入錄音聲音」且有錄音時，把錄音混入成品
+        const includeVoice = document.getElementById('includeVoiceCheck').checked;
+        if (includeVoice && recordedBlob) {
+          if (!currentRecordingFilename) {
+            // 桌面麥克風錄音還沒上傳到伺服器：先上傳一次
+            const fd = new FormData();
+            fd.append('file', new File([recordedBlob], 'recording.wav', { type: 'audio/wav' }));
+            const ur = await fetch('/recordings/upload', { method: 'POST', body: fd });
+            if (ur.ok) currentRecordingFilename = (await ur.json()).filename;
+          }
+          if (currentRecordingFilename) {
+            body.include_recording_filename = currentRecordingFilename;
+          }
+        }
+
         const res = await fetch('/render-audio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildRenderBody()),
+          body: JSON.stringify(body),
           signal: ctrl.signal,
         });
         if (res.status === 501) {

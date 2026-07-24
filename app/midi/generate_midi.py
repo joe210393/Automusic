@@ -25,6 +25,31 @@ BASS_PROGRAM = 33                          # Electric Bass (finger)
 CRASH = 49  # Crash Cymbal 1
 
 
+def compute_song_structure(notes: list, bpm: float) -> dict:
+    """
+    計算歌曲結構（前奏/主旋律小節數/重複次數/尾奏）。
+    /render-audio 混入原始錄音時也用這個函式，確保時間軸一致。
+    """
+    from app.audio.quantize import quantize_notes
+
+    quantized = quantize_notes(notes, bpm, grid="1/8")
+    beats_per_second = bpm / 60.0
+    bar_duration = 4.0 / beats_per_second
+
+    melody_end = max((n["end"] for n in quantized), default=0.0)
+    melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
+    melody_bars = min(melody_bars, 16)  # 安全上限
+    repeats = 2 if melody_bars <= 8 else 1
+
+    return {
+        "intro_bars": 1,
+        "melody_bars": melody_bars,
+        "repeats": repeats,
+        "outro_bars": 1,
+        "bar_duration": bar_duration,
+    }
+
+
 def generate_full_midi(
     notes: list,
     bpm: float,
@@ -32,6 +57,7 @@ def generate_full_midi(
     lyrics: dict = None,
     chord_overrides: Optional[List[str]] = None,
     seed: Optional[int] = None,
+    melody_gain: float = 1.0,
 ) -> str:
     """
     生成完整的 MIDI 檔案（回傳檔案路徑）。
@@ -61,26 +87,22 @@ def generate_full_midi(
     beats_per_second = bpm / 60.0
     bar_duration = 4.0 / beats_per_second
 
-    # ---- 歌曲結構 ----
-    melody_end = max((n["end"] for n in quantized_notes), default=0.0)
-    melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
+    # ---- 歌曲結構（與 compute_song_structure 一致） ----
+    structure = compute_song_structure(notes, bpm)
+    melody_bars = structure["melody_bars"]
+    INTRO_BARS = structure["intro_bars"]
+    REPEATS = structure["repeats"]
+    OUTRO_BARS = structure["outro_bars"]
 
-    # 安全上限：旋律最多 16 小節，超過的音符裁掉（避免異常輸入產生超長歌曲）
-    MAX_MELODY_BARS = 16
-    if melody_bars > MAX_MELODY_BARS:
-        melody_bars = MAX_MELODY_BARS
-        cutoff = melody_bars * bar_duration
-        quantized_notes = [n for n in quantized_notes if n["start"] < cutoff]
-        for n in quantized_notes:
-            n["end"] = min(n["end"], cutoff)
+    # 超過旋律小節上限的音符裁掉
+    cutoff = melody_bars * bar_duration
+    quantized_notes = [n for n in quantized_notes if n["start"] < cutoff]
+    for n in quantized_notes:
+        n["end"] = min(n["end"], cutoff)
 
     # 沒有指定和弦時，依旋律內容挑最貼合的和弦（含 V→I 終止式）
     if chord_overrides is None:
         chord_overrides = select_chords_for_melody(quantized_notes, key, bpm, melody_bars)
-
-    INTRO_BARS = 1
-    REPEATS = 2 if melody_bars <= 8 else 1  # 旋律太長就不重複，控制歌曲長度
-    OUTRO_BARS = 1
     total_bars = INTRO_BARS + melody_bars * REPEATS + OUTRO_BARS
 
     # 各段主旋律的起始小節
@@ -154,8 +176,14 @@ def generate_full_midi(
             current = max(current, t)
 
     # ---- 旋律軌 ----
+    # melody_gain < 1 時旋律轉為小聲跟奏（例如混入原始人聲時）
     melody_events = [
-        (n["start"], n["end"] - n["start"], n["midi"], max(70, min(110, n.get("velocity", 90))))
+        (
+            n["start"],
+            n["end"] - n["start"],
+            n["midi"],
+            max(20, min(127, int(max(70, min(110, n.get("velocity", 90))) * melody_gain))),
+        )
         for n in full_melody
     ]
     write_track_events(melody_track, 0, melody_events)

@@ -42,6 +42,17 @@ RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
 
 
+def find_fluidsynth() -> Optional[str]:
+    """尋找 fluidsynth 執行檔（launchd 環境的 PATH 可能不含 Homebrew）。"""
+    p = shutil.which("fluidsynth")
+    if p:
+        return p
+    for c in ("/opt/homebrew/bin/fluidsynth", "/usr/local/bin/fluidsynth", "/usr/bin/fluidsynth"):
+        if os.path.exists(c):
+            return c
+    return None
+
+
 def find_soundfont() -> Optional[str]:
     """尋找可用的 SoundFont 音色庫（.sf2）。"""
     candidates = []
@@ -90,6 +101,7 @@ class RenderRequest(BaseModel):
     lyrics: LyricsResponse
     chord_overrides: Optional[List[str]] = None
     seed: Optional[int] = None  # 指定 seed 可重現同一套伴奏；不給則每次隨機變化
+    include_recording_filename: Optional[str] = None  # 混入 recordings/ 內的原始錄音（僅 /render-audio）
 
 
 class AIComposeRequest(BaseModel):
@@ -360,19 +372,46 @@ def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -
     return select_chords_for_melody(notes_list, key, bpm, num_bars)
 
 
+def _load_voice_mono_44k(path: Path):
+    """讀取錄音檔，轉單聲道並重取樣到 44100Hz。"""
+    import numpy as np
+    import soundfile as sf
+
+    data, sr = sf.read(str(path))
+    if data.ndim > 1:
+        data = np.mean(data, axis=1)
+    data = data.astype(np.float64)
+    if sr != 44100:
+        old_t = np.arange(len(data)) / sr
+        new_t = np.arange(int(len(data) * 44100 / sr)) / 44100.0
+        data = np.interp(new_t, old_t, data)
+    return data
+
+
 @app.post("/render-audio")
 def render_audio(request: RenderRequest):
     """
     用 FluidSynth + SoundFont 把編曲轉成真實樂器音色的 WAV 音檔。
-    需要本機安裝 fluidsynth 並有 .sf2 音色庫（雲端 Docker 版已內建）。
+    若指定 include_recording_filename，會把原始錄音（人聲）混入成品，
+    跟著歌曲結構在每次主旋律段落出現；MIDI 旋律則轉為小聲跟奏。
     """
-    from app.midi.generate_midi import generate_full_midi
+    from app.midi.generate_midi import generate_full_midi, compute_song_structure
 
-    if not shutil.which("fluidsynth"):
+    fluidsynth_bin = find_fluidsynth()
+    if not fluidsynth_bin:
         raise HTTPException(status_code=501, detail="此伺服器未安裝 FluidSynth，無法產生高音質音檔")
     soundfont = find_soundfont()
     if not soundfont:
         raise HTTPException(status_code=501, detail="找不到 SoundFont 音色庫（.sf2）")
+
+    # 檢查要混入的錄音檔
+    voice_path = None
+    if request.include_recording_filename:
+        if not SAFE_FILENAME_RE.match(request.include_recording_filename):
+            raise HTTPException(status_code=400, detail="錄音檔名不合法")
+        voice_path = RECORDINGS_DIR / request.include_recording_filename
+        if not voice_path.exists():
+            raise HTTPException(status_code=404, detail="找不到要混入的錄音檔")
 
     notes_list = [
         {"start": n.start, "end": n.end, "midi": n.midi, "velocity": n.velocity}
@@ -385,13 +424,14 @@ def render_audio(request: RenderRequest):
         lyrics=request.lyrics.dict(),
         chord_overrides=request.chord_overrides,
         seed=request.seed,
+        melody_gain=0.4 if voice_path else 1.0,  # 有人聲時 MIDI 旋律退居小聲跟奏
     )
 
     wav_path = "/tmp/full_render.wav"
     try:
         subprocess.run(
             [
-                "fluidsynth", "-ni",
+                fluidsynth_bin, "-ni",
                 "-F", wav_path,
                 "-r", "44100",
                 "-g", "0.7",       # 整體增益，避免破音
@@ -410,6 +450,45 @@ def render_audio(request: RenderRequest):
 
     if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 1000:
         raise HTTPException(status_code=500, detail="音檔產生失敗")
+
+    # ---- 混入原始錄音（人聲）----
+    if voice_path:
+        import numpy as np
+        import soundfile as sf
+
+        acc, _ = sf.read(wav_path)          # 伴奏，44100 立體聲
+        if acc.ndim == 1:
+            acc = np.stack([acc, acc], axis=1)
+        voice = _load_voice_mono_44k(voice_path)
+
+        structure = compute_song_structure(notes_list, request.bpm)
+        bar_dur = structure["bar_duration"]
+        section_len_samples = int(structure["melody_bars"] * bar_dur * 44100)
+        voice = voice[:section_len_samples]  # 裁到主旋律段長度，避免蓋到尾奏
+
+        # 人聲 peak 正規化
+        peak = float(np.max(np.abs(voice))) if len(voice) else 0.0
+        if peak > 0:
+            voice = voice * (0.9 / peak)
+
+        mix = acc * 0.7  # 伴奏稍退，留空間給人聲
+        for r in range(structure["repeats"]):
+            offset = int((structure["intro_bars"] + r * structure["melody_bars"]) * bar_dur * 44100)
+            end = min(len(mix), offset + len(voice))
+            if end <= offset:
+                continue
+            seg = voice[: end - offset]
+            mix[offset:end, 0] += seg * 0.95
+            mix[offset:end, 1] += seg * 0.95
+
+        # 防爆音
+        m = float(np.max(np.abs(mix)))
+        if m > 0.99:
+            mix = mix * (0.99 / m)
+
+        mixed_path = "/tmp/full_render_voice.wav"
+        sf.write(mixed_path, mix, 44100)
+        return FileResponse(mixed_path, media_type="audio/wav", filename="song.wav")
 
     return FileResponse(wav_path, media_type="audio/wav", filename="song.wav")
 
