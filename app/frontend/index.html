@@ -736,11 +736,30 @@
     loadRecordingBtn.addEventListener('click', async () => {
       const filename = recordingSelect.value;
       if (!filename) return;
+      loadRecordingBtn.disabled = true;
       setStatus(syncStatus, '載入錄音中…');
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 90000);
       try {
-        const res = await fetch('/recordings/' + encodeURIComponent(filename));
+        const res = await fetch('/recordings/' + encodeURIComponent(filename), { signal: controller.signal });
         if (!res.ok) throw new Error(await res.text());
-        const blob = await res.blob();
+
+        // 邊下載邊顯示進度，避免看起來像卡住
+        const total = Number(res.headers.get('Content-Length')) || 0;
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          const kb = (received / 1024).toFixed(0);
+          setStatus(syncStatus, total
+            ? `載入錄音中… ${kb} / ${(total / 1024).toFixed(0)} KB（${Math.round(received / total * 100)}%）`
+            : `載入錄音中… 已下載 ${kb} KB`);
+        }
+        const blob = new Blob(chunks, { type: res.headers.get('Content-Type') || 'audio/wav' });
 
         // 當成剛錄好的音檔，接上原本的分析／編曲流程
         recordedBlob = blob;
@@ -753,7 +772,14 @@
         setStatus(syncStatus, `已載入 ${filename}，請按上方「分析旋律 ＋ 建伴奏」。`);
       } catch (err) {
         console.error(err);
-        setStatus(syncStatus, '載入失敗：' + err.message);
+        if (err.name === 'AbortError') {
+          setStatus(syncStatus, '載入逾時（90 秒）。伺服器可能剛從休眠中喚醒，請再按一次「載入此錄音」。');
+        } else {
+          setStatus(syncStatus, '載入失敗：' + err.message);
+        }
+      } finally {
+        clearTimeout(timer);
+        loadRecordingBtn.disabled = false;
       }
     });
 
