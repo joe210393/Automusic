@@ -41,6 +41,15 @@ def compute_song_structure(notes: list, bpm: float) -> dict:
     melody_bars = min(melody_bars, 16)  # 安全上限
     repeats = 2 if melody_bars <= 8 else 1
 
+    # 成品控制在 1 分鐘內
+    MAX_SONG_SECONDS = 60.0
+    def total_seconds(mb, rp):
+        return (1 + mb * rp + 1) * bar_duration
+    if total_seconds(melody_bars, repeats) > MAX_SONG_SECONDS:
+        repeats = 1
+    if total_seconds(melody_bars, repeats) > MAX_SONG_SECONDS:
+        melody_bars = max(1, int(MAX_SONG_SECONDS / bar_duration) - 2)
+
     return {
         "intro_bars": 1,
         "melody_bars": melody_bars,

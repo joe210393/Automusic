@@ -231,6 +231,9 @@
         <div style="margin-top:16px;">
           <button id="analyzeBtn" class="secondary" disabled>分析旋律 ＋ 建伴奏</button>
         </div>
+        <div style="margin-top:16px;">
+          <button id="composeFromAudioBtn" disabled>✨ 從素材生成旋律（AI 創作）</button>
+        </div>
       </div>
       <div id="analysisInfo" class="status"></div>
       <div id="aiChordsInfo" class="status"></div>
@@ -428,6 +431,7 @@
         recordTimer.textContent = '已錄製完成，可以進行分析與編曲。';
         setStatus(recordingStatus, '');
         analyzeBtn.disabled = false;
+        document.getElementById('composeFromAudioBtn').disabled = false;
         resetRecordingBtn.disabled = false;
         uploadRecordingBtn.disabled = false;
         recordBtn.textContent = '🎙 開始錄音';
@@ -475,6 +479,7 @@
       setStatus(recordingStatus, '');
       uploadRecordingBtn.disabled = true;
       analyzeBtn.disabled = true;
+      document.getElementById('composeFromAudioBtn').disabled = true;
       renderBtn.disabled = true;
       playBtn.disabled = true;
       lastAnalyzeResult = null;
@@ -542,6 +547,52 @@
 
     analyzeBtn.addEventListener('click', () => {
       callAnalyze();
+    });
+
+    // --- 從素材生成旋律：素材提供「元素與感覺」，AI 創作新旋律 ---
+    const composeFromAudioBtn = document.getElementById('composeFromAudioBtn');
+
+    composeFromAudioBtn.addEventListener('click', async () => {
+      if (!recordedBlob) {
+        setStatus(analysisInfo, '請先錄音或載入素材。');
+        return;
+      }
+      composeFromAudioBtn.disabled = true;
+      setStatus(analysisInfo, '分析素材的元素與感覺，生成旋律中…');
+      try {
+        const formData = new FormData();
+        formData.append('file', new File([recordedBlob], 'material.wav', { type: 'audio/wav' }));
+        const res = await fetch('/compose-from-audio', { method: 'POST', body: formData });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json(); // { notes, bpm, key, material }
+
+        lastAnalyzeResult = data;
+        lastAIChords = null;
+        lastMidiBlob = null;
+        bpmInput.value = Math.round(data.bpm);
+
+        const m = data.material || {};
+        setStatus(
+          analysisInfo,
+          `素材感覺：${m.mood || ''}，能量 ${m.energy ?? '?'} 音/秒 → BPM ${Math.round(data.bpm)}，走向${m.contour || '平穩'}\n` +
+          `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽並產生編曲。`
+        );
+
+        // 素材模式：原始聲音預設不混入成品（素材是靈感，不是主唱）
+        document.getElementById('includeVoiceCheck').checked = false;
+
+        renderBtn.disabled = false;
+        document.getElementById('renderAudioBtn').disabled = false;
+        document.getElementById('remakeBtn').disabled = false;
+        currentRenderSeed = Math.floor(Math.random() * 1e9);
+        aiChordsBtn.disabled = false;
+        playMelodyBtn.disabled = false; // 可用 1b 區的「試聽旋律」聽生成結果
+      } catch (err) {
+        console.error(err);
+        setStatus(analysisInfo, '從素材生成旋律失敗：' + err.message);
+      } finally {
+        composeFromAudioBtn.disabled = false;
+      }
     });
 
     async function callAICompose() {
@@ -692,6 +743,7 @@
         previewAudio.style.display = 'block';
         recordTimer.textContent = '已載入手機錄音：' + filename;
         analyzeBtn.disabled = false;
+        document.getElementById('composeFromAudioBtn').disabled = false;
         setStatus(syncStatus, `已載入 ${filename}，請按上方「分析旋律 ＋ 建伴奏」。`);
       } catch (err) {
         console.error(err);

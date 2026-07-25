@@ -288,6 +288,34 @@ async def generate_melody_endpoint(request: MelodyRequest):
     )
 
 
+@app.post("/compose-from-audio")
+async def compose_from_audio(file: UploadFile = File(...)):
+    """
+    從素材聲音生成旋律：素材不會直接變成旋律，而是萃取它的
+    「元素（動機、音域）與感覺（明暗、能量、走向）」來創作一段新旋律。
+    回傳格式與 /analyze-audio 相容，可直接接編曲流程。
+    """
+    if not file.filename.lower().endswith(".wav"):
+        raise HTTPException(status_code=400, detail="只支援 WAV 格式")
+
+    from app.melody.from_audio import generate_melody_from_material
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp_file:
+        content = await file.read()
+        tmp_file.write(content)
+        tmp_path = tmp_file.name
+
+    try:
+        result = generate_melody_from_material(tmp_path)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    return result
+
+
 @app.post("/analyze-audio", response_model=AnalyzeResponse)
 async def analyze_audio(file: UploadFile = File(...)):
     """
