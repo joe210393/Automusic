@@ -469,7 +469,7 @@ def render_audio(request: RenderRequest):
             ],
             check=True,
             capture_output=True,
-            timeout=120,
+            timeout=300,
         )
     except subprocess.CalledProcessError as e:
         raise HTTPException(status_code=500, detail=f"FluidSynth 轉檔失敗：{e.stderr.decode()[:300]}")

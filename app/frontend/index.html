@@ -255,6 +255,12 @@
         🎤 把我的錄音聲音加入作品（人聲主唱＋樂器伴奏）
       </label>
       <div id="renderStatus" class="status"></div>
+      <div id="progressWrap" style="display:none;margin-top:12px;">
+        <div id="progressLabel" style="font-size:13px;color:#4b5563;margin-bottom:6px;">🎵 正在製作音樂…</div>
+        <div style="background:#e5e7eb;border-radius:999px;height:10px;overflow:hidden;">
+          <div id="progressBar" style="background:linear-gradient(90deg,#2563eb,#7c3aed);height:100%;width:0%;border-radius:999px;transition:width 0.4s ease;"></div>
+        </div>
+      </div>
       <audio id="songAudio" controls style="display:none;"></audio>
       <a id="audioDownloadLink" href="#" download="song.wav" style="display:none;font-size:13px;">下載音檔（WAV）</a>
     </div>
@@ -873,12 +879,49 @@
       };
     }
 
+    // --- 製作進度條（模擬進度：緩慢逼近上限，完成時補滿） ---
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar = document.getElementById('progressBar');
+    const progressLabel = document.getElementById('progressLabel');
+    let progressTimer = null;
+
+    function showProgress(label, startPct, ceilingPct) {
+      progressWrap.style.display = 'block';
+      progressLabel.textContent = label;
+      let pct = startPct;
+      progressBar.style.width = pct + '%';
+      if (progressTimer) clearInterval(progressTimer);
+      progressTimer = setInterval(() => {
+        pct += Math.max(0.15, (ceilingPct - pct) * 0.03);
+        if (pct > ceilingPct) pct = ceilingPct;
+        progressBar.style.width = pct.toFixed(1) + '%';
+      }, 300);
+    }
+
+    function finishProgress() {
+      if (progressTimer) clearInterval(progressTimer);
+      progressTimer = null;
+      progressBar.style.width = '100%';
+      setTimeout(() => {
+        progressWrap.style.display = 'none';
+        progressBar.style.width = '0%';
+      }, 800);
+    }
+
+    function hideProgress() {
+      if (progressTimer) clearInterval(progressTimer);
+      progressTimer = null;
+      progressWrap.style.display = 'none';
+      progressBar.style.width = '0%';
+    }
+
     async function callRender() {
       if (!lastAnalyzeResult) {
         setStatus(renderStatus, '請先完成音訊分析。');
         return;
       }
 
+      showProgress('🎼 正在編曲（和弦、鼓、貝斯、和聲）…', 5, 30);
       const body = buildRenderBody();
 
       setStatus(renderStatus, '編曲與產生 MIDI 中…');
@@ -915,6 +958,7 @@
         await doRenderAudio();
       } catch (err) {
         console.error(err);
+        hideProgress();
         setStatus(renderStatus, '產生 MIDI 時發生錯誤：' + err.message);
         renderBtn.disabled = false;
       }
@@ -1019,8 +1063,9 @@
         return;
       }
       renderAudioBtn.disabled = true;
+      showProgress('🎧 正在轉換真實樂器音色，製作你的音樂…', 40, 95);
       const ctrl = new AbortController();
-      const timeoutTimer = setTimeout(() => ctrl.abort(), 90000); // 90 秒逾時保護
+      const timeoutTimer = setTimeout(() => ctrl.abort(), 300000); // 5 分鐘逾時保護
       try {
         const body = buildRenderBody();
 
@@ -1047,6 +1092,7 @@
         });
         if (res.status === 501) {
           // 雲端版沒裝 FluidSynth：不當成錯誤，MIDI 播放仍可用
+          hideProgress();
           setStatus(renderStatus, '已產生 MIDI（此伺服器不支援高音質轉檔，可用「▶ 播放編曲」試聽）。');
           return;
         }
@@ -1060,12 +1106,14 @@
         songAudio.style.display = 'block';
         audioDownloadLink.href = url;
         audioDownloadLink.style.display = 'inline-block';
+        finishProgress();
         setStatus(renderStatus, '完成！下方播放器是真實樂器音色的成品，可直接播放或下載。');
         songAudio.play().catch(() => {});
       } catch (err) {
         console.error(err);
+        hideProgress();
         if (err.name === 'AbortError') {
-          setStatus(renderStatus, '高音質轉檔逾時（超過 90 秒），請按「🎧 產生高音質音檔」重試。');
+          setStatus(renderStatus, '高音質轉檔逾時（超過 5 分鐘），請按「🎧 產生高音質音檔」重試。');
         } else {
           setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
         }
