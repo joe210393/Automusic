@@ -965,14 +965,22 @@
     const songAudio = document.getElementById('songAudio');
     const audioDownloadLink = document.getElementById('audioDownloadLink');
 
+    let activeRenderAudioCtrl = null; // 防止兩個下載同時跑、進度互相亂跳
+
     async function doRenderAudio() {
       if (!lastAnalyzeResult) {
         setStatus(renderStatus, '請先完成分析或生成旋律。');
         return;
       }
+      // 已有下載在進行時，先取消舊的再開新的
+      if (activeRenderAudioCtrl) {
+        activeRenderAudioCtrl.superseded = true;
+        activeRenderAudioCtrl.abort();
+      }
       renderAudioBtn.disabled = true;
       showProgress('🎧 正在轉換真實樂器音色，製作你的音樂…', 40, 95);
       const ctrl = new AbortController();
+      activeRenderAudioCtrl = ctrl;
       // 逾時改成「停滯偵測」：只有 120 秒完全沒有資料進來才中止，
       // 下載慢但有在動就讓它跑完
       let lastActivity = Date.now();
@@ -1043,6 +1051,7 @@
         setStatus(renderStatus, '完成！下方播放器是真實樂器音色的成品，可直接播放或下載。');
         songAudio.play().catch(() => {});
       } catch (err) {
+        if (ctrl.superseded) return; // 被新的下載取代，不顯示錯誤
         console.error(err);
         hideProgress();
         if (err.name === 'AbortError') {
@@ -1052,7 +1061,10 @@
         }
       } finally {
         clearInterval(stallTimer);
-        renderAudioBtn.disabled = false;
+        if (activeRenderAudioCtrl === ctrl) {
+          activeRenderAudioCtrl = null;
+          renderAudioBtn.disabled = false;
+        }
       }
     }
 

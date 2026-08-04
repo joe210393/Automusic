@@ -145,8 +145,8 @@ def get_decoration_pattern(
     """
     from app.arrange.chords import get_chord_notes
 
-    # 高一個八度（72 附近），避開主旋律主要音域的中心
-    chord_notes = [n + 12 for n in get_chord_notes(key, chord_degree)]
+    # 落在中音域（60-72 附近）：在旋律下方織體，太高會刺耳
+    chord_notes = get_chord_notes(key, chord_degree)
     beat = bar_duration / 4.0
     events = []
 
@@ -155,7 +155,7 @@ def get_decoration_pattern(
             events.append({
                 "time": 0.0,
                 "note": note,
-                "velocity": 34,
+                "velocity": 30,
                 "duration": bar_duration * 0.98,
             })
     else:

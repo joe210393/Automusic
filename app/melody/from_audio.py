@@ -50,10 +50,10 @@ def _extract_features(mat_notes: list) -> dict:
     major_w = pc_weight[(root_pc + 4) % 12]
     is_minor = minor_w > major_w
 
-    # 音域中心（中位數）
+    # 音域中心（中位數）。上限壓在 69：旋律太高會刺耳，跟伴奏也搭不起來
     pitches = sorted(n["midi"] for n in mat_notes)
     center = pitches[len(pitches) // 2] if pitches else 66
-    center = max(55, min(80, center))
+    center = max(55, min(69, center))
 
     # 能量：每秒音符數
     total_dur = max((n["end"] for n in mat_notes), default=1.0)
@@ -157,9 +157,10 @@ def generate_melody_from_material(
     chord_tone_prob = rules.get("strong_beat_chord_tone_prob", 0.85)
 
     # 音階範圍以素材音域為中心（每次加一點隨機抖動，同一段素材也會有不同音域的版本）
+    # 上限 81（A5）：再高就會尖銳刺耳
     center = feat["center"] + rng.randint(-3, 3)
     low = max(48, center - 10)
-    high = min(88, center + 10)
+    high = min(81, center + 10)
     scale_pitches = build_scale_pitches(feat["root_pc"], intervals, low, high)
     while len(scale_pitches) < 5:
         low = max(36, low - 4)
@@ -267,7 +268,7 @@ def generate_melody_from_material(
 
             dur_sec = dur_beats * beat_sec
             note_len = dur_sec * (1.0 if is_final_note else 0.9)
-            velocity = rng.randint(88, 100) if on_strong_beat else rng.randint(76, 90)
+            velocity = rng.randint(80, 92) if on_strong_beat else rng.randint(68, 82)
 
             notes.append({
                 "start": round(current_time, 4),
