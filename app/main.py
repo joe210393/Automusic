@@ -32,7 +32,7 @@ elif os.getenv("LM_STUDIO_URLS"):
     LM_STUDIO_URLS = [u.strip() for u in os.getenv("LM_STUDIO_URLS").split(",") if u.strip()]
 else:
     LM_STUDIO_URLS = _default_lm_urls
-LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
+LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
 
 # 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
 RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", str(Path(__file__).parent.parent / "recordings")))
@@ -316,6 +316,14 @@ async def compose_from_audio(file: UploadFile = File(...)):
     return result
 
 
+@app.get("/theory")
+def get_theory():
+    """回傳樂理資料庫內容（app/theory/theory_db.json），方便查看目前的作曲規則。"""
+    from app.theory.knowledge import load_theory
+
+    return load_theory()
+
+
 @app.post("/analyze-audio", response_model=AnalyzeResponse)
 async def analyze_audio(file: UploadFile = File(...)):
     """
@@ -538,21 +546,22 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
         melody_tokens.append(f"{n.midi}@{round(n.start, 2)}-{round(n.end, 2)}")
     melody_str = ", ".join(melody_tokens)
 
-    # 準備提示詞：請模型只回傳 JSON，方便程式解析
+    # 準備提示詞：先讓模型「讀樂理資料庫」，再請它只回傳 JSON
+    from app.theory.knowledge import theory_prompt_text
+
     system_prompt = (
-        "你是一位流行音樂作曲老師，專門為兒童與親子課程設計簡單、穩定的和弦進行。\n"
-        "規則：\n"
-        "- 調性只考慮大調（例如 C, G, F...）。\n"
-        "- 只能使用這些和弦級數：I, IV, V, vi（必要時可以用 ii, iii，但盡量少用）。\n"
-        "- 每小節一個和弦，4/4 拍。\n"
-        "- 結尾要回到 I（主和弦），聽起來有收尾感。\n"
+        "你是一位流行音樂作曲老師，專門為兒童與親子課程設計簡單、穩定的和弦進行。\n\n"
+        + theory_prompt_text(compact=True)
+        + "\n\n格式規則：\n"
+        "- 只能使用這些和弦級數：I, ii, iii, IV, V, vi。每小節一個和弦，4/4 拍。\n"
+        "- 不要逐音分析，直接依旋律的整體感覺挑選，越快決定越好。\n"
         "- 回覆時，**只回傳 JSON**，格式為：{\"chords\":[\"I\",\"V\",\"vi\",\"IV\"]}，不要加任何註解或多餘文字。\n"
     )
     user_prompt = (
         f"調性（model 推測用）：{request.key}\n"
         f"BPM：約 {request.bpm}\n"
         f"學生旋律（MIDI 音高 @ 起訖秒數）：{melody_str}\n"
-        f"請為這段旋律設計 {request.num_bars} 小節的和弦進行。\n"
+        f"請為這段旋律設計 {request.num_bars} 小節的和弦進行。直接決定，不要分析過程。\n"
         "再次提醒：只回傳 JSON，格式為 {\"chords\":[\"I\",\"V\",\"vi\",\"IV\",...]}。"
     )
 
@@ -570,15 +579,21 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
                     {"role": "user", "content": user_prompt},
                 ],
                 "temperature": 0.5,
-                "max_tokens": 256,
+                # gemma-4 是推理模型，會先思考再作答（解析時也會從思考欄位撈 JSON）。
+                # 本機 31B 約 11 token/秒，上限 1024 約等 90 秒內。
+                "max_tokens": 1024,
             },
-            timeout=(4, 60),  # 連線 4 秒逾時：連不上就快速換下一個網址
+            timeout=(4, 300),  # 連線 4 秒逾時：連不上就快速換下一個網址；31B 推理模型作答需 1-3 分鐘
         )
         if resp.status_code != 200:
             raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
 
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        message = data["choices"][0]["message"]
+        content = message.get("content") or ""
+        if "{" not in content:
+            # 推理模型偶爾把答案留在思考欄位：從 reasoning_content 撈 JSON
+            content = message.get("reasoning_content") or content
 
         # 嘗試從 content 中擷取 JSON
         json_str = content.strip()
@@ -591,12 +606,16 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
         try:
             parsed = json.loads(json_str)
         except Exception:
-            # 嘗試從文字中抓第一個 {...}
-            start = json_str.find("{")
-            end = json_str.rfind("}")
-            if start != -1 and end != -1 and end > start:
-                parsed = json.loads(json_str[start : end + 1])
-            else:
+            # 從文字中找出所有 {"chords": ...}，取最後一個能解析的（推理模型的最終答案通常在最後）
+            candidates = re.findall(r'\{[^{}]*"chords"[^{}]*\}', json_str)
+            parsed = None
+            for cand in reversed(candidates):
+                try:
+                    parsed = json.loads(cand)
+                    break
+                except Exception:
+                    continue
+            if parsed is None:
                 raise RuntimeError("無法解析 LM Studio 回傳的 JSON")
 
         chords = parsed.get("chords")

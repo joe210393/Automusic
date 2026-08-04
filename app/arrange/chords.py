@@ -181,53 +181,18 @@ def select_chords_for_melody(
     time_signature: tuple = (4, 4),
 ) -> list:
     """
-    為每小節挑選「最貼合旋律」的和弦：
-    - 依旋律音落在和弦內音上的總時值評分，選分數最高的和弦
-    - 鼓勵和前一小節不同，避免整首歌黏在同一個和弦
-    - 倒數第二小節放 V、最後一小節放 I（正格終止），收尾有句點感
+    為旋律配和弦：先讀樂理資料庫（app/theory/theory_db.json），
+    把每一組經典和弦進行跟旋律比對評分，挑最貼合的整組進行。
 
-    回傳和弦級數列表，例如 ["I", "IV", "V", "I"]。
+    整組經典進行天生就有起承轉合，比逐小節單獨挑和弦更像一首歌。
+    （整首歌收尾的 V→I 終止式由 generate_midi 在歌曲層級處理。）
+
+    回傳和弦級數列表，例如 ["I", "V", "vi", "IV"]。
     """
-    beats_per_second = bpm / 60.0
-    bar_duration = time_signature[0] / beats_per_second
+    from app.theory.knowledge import best_progression_for_melody
 
-    candidates = ["I", "IV", "V", "vi"]
-    chords = []
-    prev = None
-
-    for bar in range(num_bars):
-        bar_start = bar * bar_duration
-        bar_end = bar_start + bar_duration
-
-        # 統計這個小節內每個音級的總時值
-        pc_duration = {}
-        for n in notes:
-            overlap = min(n.get("end", 0), bar_end) - max(n.get("start", 0), bar_start)
-            if overlap > 0:
-                pc = n.get("midi", 60) % 12
-                pc_duration[pc] = pc_duration.get(pc, 0.0) + overlap
-
-        if not pc_duration:
-            chords.append(prev or "I")
-            prev = chords[-1]
-            continue
-
-        best, best_score = "I", -1.0
-        for degree in candidates:
-            tones = get_chord_pitch_classes(key, degree)
-            score = sum(dur for pc, dur in pc_duration.items() if pc in tones)
-            if degree != prev:
-                score += 0.05  # 輕微鼓勵換和弦
-            if score > best_score:
-                best, best_score = degree, score
-        chords.append(best)
-        prev = best
-
-    # 終止式：V → I
-    if num_bars >= 2:
-        chords[-2] = "V"
-    chords[-1] = "I"
-    return chords
+    result = best_progression_for_melody(notes, key, bpm, num_bars, time_signature)
+    return result["degrees"]
 
 
 def find_chord_containing_note(key: str, pitch_class: int) -> str:

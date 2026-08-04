@@ -112,6 +112,22 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
     else:
         bpm, rhythms = 120.0, RHYTHMS_HIGH
 
+    # --- 讀樂理資料庫：依感覺挑一組經典和弦進行，旋律將跟著它走 ---
+    from app.theory.knowledge import pick_progression_for_mood, melody_rules
+    from app.arrange.chords import get_chord_pitch_classes
+
+    if feat["is_minor"]:
+        mood = "sad" if feat["density"] < 2.0 else "emotional"
+    elif feat["density"] >= 3.5:
+        mood = "energetic"
+    elif feat["density"] < 1.0:
+        mood = "calm"
+    else:
+        mood = "bright"
+
+    rules = melody_rules()
+    chord_tone_prob = rules.get("strong_beat_chord_tone_prob", 0.85)
+
     # 音階範圍以素材音域為中心
     low = max(48, feat["center"] - 10)
     high = min(88, feat["center"] + 10)
@@ -137,17 +153,37 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
         step_weights = [2, 4, 14, 22, 8, 22, 14, 4, 2]
     steps = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
 
-    # --- 生成 4 小節：動機 | 發展 | 動機 | 收尾 ---
+    # 和弦引擎只支援大調：小調感覺時用關係大調當調性（如 A 小調 → C 大調和弦）
+    key_pc = (feat["root_pc"] + 3) % 12 if feat["is_minor"] else feat["root_pc"]
+    key_name = NOTE_NAMES[key_pc]
+
+    # --- 生成 4 小節：動機 | 發展 | 動機 | 收尾（跟著樂理資料庫的和弦進行走） ---
+    NUM_BARS = 4
+    progression = pick_progression_for_mood(mood, NUM_BARS, rng)
+    bar_chord_tones = [
+        get_chord_pitch_classes(key_name, degree) for degree in progression["degrees"]
+    ]
+
     beat_sec = 60.0 / bpm
     notes = []
     current_time = 0.0
-    NUM_BARS = 4
 
     idx = scale_pitches.index(motif_scale[0])
+    prev_step = 0  # 上一次的移動量（音階步數），用於跳進解決
+
+    def snap_to_chord_tone(cur_idx: int, chord_pcs: set) -> int:
+        """把音就近吸附到當小節和弦的內音（在音階內找最近的和弦音）。"""
+        candidates = [
+            j for j, p in enumerate(scale_pitches) if p % 12 in chord_pcs
+        ]
+        if not candidates:
+            return cur_idx
+        return min(candidates, key=lambda j: abs(j - cur_idx))
 
     for bar in range(NUM_BARS):
         is_motif_bar = bar in (0, 2)
         is_last_bar = bar == NUM_BARS - 1
+        chord_pcs = bar_chord_tones[bar]
 
         if is_last_bar:
             pattern = rng.choice([[2, 2], [1, 1, 2], [2, 1, 1]])
@@ -156,25 +192,38 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
 
         for i, dur_beats in enumerate(pattern):
             is_final_note = is_last_bar and i == len(pattern) - 1
+            beat_pos = sum(pattern[:i])
+            on_strong_beat = abs(beat_pos - round(beat_pos)) < 1e-6 and int(round(beat_pos)) % 2 == 0
 
             if is_motif_bar and i < len(motif_scale):
                 # 動機音：素材的元素直接進旋律
-                idx = scale_pitches.index(motif_scale[i % len(motif_scale)])
+                new_idx = scale_pitches.index(motif_scale[i % len(motif_scale)])
             elif is_final_note:
-                # 收尾回主音
+                # 收尾回主音（樂理規則：最後一個音落在主音）
                 if tonic_pitches:
-                    idx = scale_pitches.index(
+                    new_idx = scale_pitches.index(
                         min(tonic_pitches, key=lambda p: abs(p - scale_pitches[idx]))
                     )
+                else:
+                    new_idx = idx
+            elif abs(prev_step) > 2:
+                # 樂理規則：大跳之後反向級進解決
+                direction = -1 if prev_step > 0 else 1
+                new_idx = max(0, min(len(scale_pitches) - 1, idx + direction))
             else:
                 step = rng.choices(steps, weights=step_weights)[0]
-                idx = max(0, min(len(scale_pitches) - 1, idx + step))
+                new_idx = max(0, min(len(scale_pitches) - 1, idx + step))
+
+            # 樂理規則：強拍高機率落在當小節和弦的內音，旋律與和聲才咬合
+            if on_strong_beat and not is_final_note and rng.random() < chord_tone_prob:
+                new_idx = snap_to_chord_tone(new_idx, chord_pcs)
+
+            prev_step = new_idx - idx
+            idx = new_idx
 
             dur_sec = dur_beats * beat_sec
             note_len = dur_sec * (1.0 if is_final_note else 0.9)
-            beat_pos = sum(pattern[:i])
-            on_downbeat = abs(beat_pos - round(beat_pos)) < 1e-6 and int(round(beat_pos)) % 2 == 0
-            velocity = rng.randint(88, 100) if on_downbeat else rng.randint(76, 90)
+            velocity = rng.randint(88, 100) if on_strong_beat else rng.randint(76, 90)
 
             notes.append({
                 "start": round(current_time, 4),
@@ -184,14 +233,11 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
             })
             current_time += dur_sec
 
-    # 和弦引擎只支援大調：小調感覺時用關係大調當調性（如 A 小調 → C 大調和弦）
-    key_pc = (feat["root_pc"] + 3) % 12 if feat["is_minor"] else feat["root_pc"]
-    key_name = NOTE_NAMES[key_pc]
-
     return {
         "notes": notes,
         "bpm": bpm,
         "key": key_name,
+        "chords": progression["degrees"],  # 旋律是照這組進行寫的，編曲時直接沿用
         "material": {
             "root": NOTE_NAMES[feat["root_pc"]],
             "mood": "小調（沉靜/憂鬱）" if feat["is_minor"] else "大調（明亮/開朗）",
@@ -199,5 +245,6 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
             "bpm": bpm,
             "contour": {1: "上行", -1: "下行", 0: "平穩"}[feat["contour"]],
             "num_material_notes": len(mat_notes),
+            "progression": progression["name"],
         },
     }

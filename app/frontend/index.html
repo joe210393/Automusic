@@ -570,17 +570,21 @@
         formData.append('file', new File([recordedBlob], 'material.wav', { type: 'audio/wav' }));
         const res = await fetch('/compose-from-audio', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
-        const data = await res.json(); // { notes, bpm, key, material }
+        const data = await res.json(); // { notes, bpm, key, chords, material }
 
         lastAnalyzeResult = data;
-        lastAIChords = null;
+        // 旋律是照樂理資料庫的和弦進行寫的，編曲直接沿用同一組和弦
+        lastAIChords = Array.isArray(data.chords) && data.chords.length ? data.chords : null;
         lastMidiBlob = null;
         bpmInput.value = Math.round(data.bpm);
 
         const m = data.material || {};
+        const progressionLine = m.progression
+          ? `和弦進行：${m.progression}（${(data.chords || []).join(' - ')}）\n` : '';
         setStatus(
           analysisInfo,
           `素材感覺：${m.mood || ''}，能量 ${m.energy ?? '?'} 音/秒 → BPM ${Math.round(data.bpm)}，走向${m.contour || '平穩'}\n` +
+          progressionLine +
           `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽並產生編曲。`
         );
 
@@ -622,7 +626,7 @@
       if (!estBars || estBars < 4) estBars = 4;
       if (estBars > 8) estBars = 8;
 
-      setStatus(aiChordsInfo, '向本地 AI 請求和弦建議中…');
+      setStatus(aiChordsInfo, '向本地 AI（gemma-4-31b）請求和弦建議中…推理模型需要思考，約 1～3 分鐘，請稍候。');
       aiChordsBtn.disabled = true;
 
       try {
