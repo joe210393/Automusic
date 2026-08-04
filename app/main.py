@@ -53,6 +53,41 @@ def find_fluidsynth() -> Optional[str]:
     return None
 
 
+def find_ffmpeg() -> Optional[str]:
+    """尋找 ffmpeg 執行檔（用來把成品 WAV 壓成 MP3，下載快很多）。"""
+    p = shutil.which("ffmpeg")
+    if p:
+        return p
+    for c in ("/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/usr/bin/ffmpeg"):
+        if os.path.exists(c):
+            return c
+    return None
+
+
+def compress_to_mp3(wav_path: str) -> Optional[str]:
+    """
+    把 WAV 壓成 MP3（160kbps）。成功回傳 MP3 路徑，失敗回傳 None（改傳 WAV）。
+    未壓縮 WAV 一首歌 5-10MB，行動網路下載要數分鐘；MP3 只有約十分之一。
+    """
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return None
+    mp3_path = wav_path.rsplit(".", 1)[0] + ".mp3"
+    try:
+        subprocess.run(
+            [ffmpeg, "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-b:a", "160k", mp3_path],
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+    except Exception as e:
+        print(f"[render-audio] MP3 壓縮失敗，改傳 WAV：{e}")
+        return None
+    if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 1000:
+        return mp3_path
+    return None
+
+
 def find_soundfont() -> Optional[str]:
     """尋找可用的 SoundFont 音色庫（.sf2）。"""
     candidates = []
@@ -528,8 +563,14 @@ def render_audio(request: RenderRequest):
 
         mixed_path = "/tmp/full_render_voice.wav"
         sf.write(mixed_path, mix, 44100)
+        mp3 = compress_to_mp3(mixed_path)
+        if mp3:
+            return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
         return FileResponse(mixed_path, media_type="audio/wav", filename="song.wav")
 
+    mp3 = compress_to_mp3(wav_path)
+    if mp3:
+        return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
     return FileResponse(wav_path, media_type="audio/wav", filename="song.wav")
 
 

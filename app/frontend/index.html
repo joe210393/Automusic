@@ -973,7 +973,12 @@
       renderAudioBtn.disabled = true;
       showProgress('🎧 正在轉換真實樂器音色，製作你的音樂…', 40, 95);
       const ctrl = new AbortController();
-      const timeoutTimer = setTimeout(() => ctrl.abort(), 300000); // 5 分鐘逾時保護
+      // 逾時改成「停滯偵測」：只有 120 秒完全沒有資料進來才中止，
+      // 下載慢但有在動就讓它跑完
+      let lastActivity = Date.now();
+      const stallTimer = setInterval(() => {
+        if (Date.now() - lastActivity > 120000) ctrl.abort();
+      }, 5000);
       try {
         const body = buildRenderBody();
 
@@ -1008,11 +1013,31 @@
           const text = await res.text();
           throw new Error(text);
         }
-        const blob = await res.blob();
+
+        // 邊下載邊顯示進度（成品可能有數 MB，慢網路下才知道它有在動）
+        lastActivity = Date.now();
+        const contentType = res.headers.get('Content-Type') || 'audio/wav';
+        const total = Number(res.headers.get('Content-Length')) || 0;
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          lastActivity = Date.now();
+          const mb = (received / 1048576).toFixed(1);
+          setStatus(renderStatus, total
+            ? `下載成品中… ${mb} / ${(total / 1048576).toFixed(1)} MB（${Math.round(received / total * 100)}%）`
+            : `下載成品中… 已收到 ${mb} MB`);
+        }
+        const blob = new Blob(chunks, { type: contentType });
         const url = URL.createObjectURL(blob);
         songAudio.src = url;
         songAudio.style.display = 'block';
         audioDownloadLink.href = url;
+        audioDownloadLink.download = contentType.includes('mpeg') ? 'song.mp3' : 'song.wav';
         audioDownloadLink.style.display = 'inline-block';
         finishProgress();
         setStatus(renderStatus, '完成！下方播放器是真實樂器音色的成品，可直接播放或下載。');
@@ -1021,12 +1046,12 @@
         console.error(err);
         hideProgress();
         if (err.name === 'AbortError') {
-          setStatus(renderStatus, '高音質轉檔逾時（超過 5 分鐘），請按「🎧 產生高音質音檔」重試。');
+          setStatus(renderStatus, '連線停滯（120 秒沒有收到任何資料），請按「🎧 重轉高音質音檔」重試。');
         } else {
           setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
         }
       } finally {
-        clearTimeout(timeoutTimer);
+        clearInterval(stallTimer);
         renderAudioBtn.disabled = false;
       }
     }
