@@ -204,6 +204,12 @@
         旋律配上鼓、貝斯、和聲與裝飾聲部，成為完整編曲。之後的人聲會在步驟 6 用你的聲紋演唱加入。
       </p>
       <div class="row" style="margin-top:6px;">
+        <span style="font-size:13px;color:#4b5563;">歌曲長度：</span>
+        <button class="durBtn" data-sec="30">30 秒（副歌）</button>
+        <button class="durBtn secondary" data-sec="60">60 秒</button>
+        <button class="durBtn secondary" data-sec="90">90 秒（完整）</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
         <button id="renderBtn" disabled>🎵 製作完整歌曲</button>
         <button id="remakeBtn" class="secondary" disabled>🔁 重新製作（換伴奏）</button>
         <button id="playBtn" class="secondary" disabled>▶ 試聽 MIDI 版</button>
@@ -534,6 +540,7 @@
         document.getElementById('renderAudioBtn').disabled = false;
         document.getElementById('remakeBtn').disabled = false;
         currentRenderSeed = Math.floor(Math.random() * 1e9);
+        stopMelodyPlayback(); // 換了新旋律，重置試聽狀態
         playMelodyBtn.disabled = false;
       } catch (err) {
         console.error(err);
@@ -714,6 +721,7 @@
         );
         setStatus(analysisInfo, `使用音階生成的旋律：${data.key} 調，BPM ${Math.round(data.bpm)}`);
 
+        stopMelodyPlayback(); // 換了新旋律，重置試聽狀態
         playMelodyBtn.disabled = false;
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
@@ -731,28 +739,72 @@
       callGenerateMelody();
     });
 
-    async function playGeneratedMelody() {
+    // --- 試聽旋律：可播放/暫停/繼續（用 Tone.Transport 排程） ---
+    let melodyPlayState = 'stopped'; // stopped | playing | paused
+    let melodyTransportSynth = null;
+
+    function stopMelodyPlayback() {
+      Tone.Transport.stop();
+      Tone.Transport.cancel();
+      if (melodyTransportSynth) {
+        melodyTransportSynth.dispose();
+        melodyTransportSynth = null;
+      }
+      melodyPlayState = 'stopped';
+      playMelodyBtn.textContent = '▶ 試聽旋律';
+    }
+
+    playMelodyBtn.addEventListener('click', async () => {
       if (!lastAnalyzeResult || !lastAnalyzeResult.notes || !lastAnalyzeResult.notes.length) {
         setStatus(analysisInfo, '尚未生成旋律。');
         return;
       }
       try {
         await Tone.start();
-        const synth = new Tone.PolySynth(Tone.Synth).toDestination();
-        const now = Tone.now() + 0.3;
-        for (const n of lastAnalyzeResult.notes) {
-          const freq = Tone.Frequency(n.midi, 'midi');
-          synth.triggerAttackRelease(freq, n.end - n.start, now + n.start, (n.velocity || 90) / 127);
+
+        if (melodyPlayState === 'playing') {
+          Tone.Transport.pause();
+          melodyPlayState = 'paused';
+          playMelodyBtn.textContent = '▶ 繼續';
+          return;
         }
-        setStatus(analysisInfo, '播放旋律中…');
+        if (melodyPlayState === 'paused') {
+          Tone.Transport.start();
+          melodyPlayState = 'playing';
+          playMelodyBtn.textContent = '⏸ 暫停';
+          return;
+        }
+
+        // stopped → 重新排程並播放
+        Tone.Transport.cancel();
+        melodyTransportSynth = new Tone.PolySynth(Tone.Synth).toDestination();
+        const notes = lastAnalyzeResult.notes;
+        for (const n of notes) {
+          Tone.Transport.schedule((time) => {
+            melodyTransportSynth.triggerAttackRelease(
+              Tone.Frequency(n.midi, 'midi'), n.end - n.start, time, (n.velocity || 90) / 127
+            );
+          }, n.start);
+        }
+        const totalDur = Math.max(...notes.map((n) => n.end)) + 0.3;
+        Tone.Transport.schedule(() => setTimeout(stopMelodyPlayback, 0), totalDur);
+        Tone.Transport.position = 0;
+        Tone.Transport.start();
+        melodyPlayState = 'playing';
+        playMelodyBtn.textContent = '⏸ 暫停';
       } catch (err) {
         console.error(err);
         setStatus(analysisInfo, '播放時發生錯誤：' + err.message);
       }
-    }
+    });
 
-    playMelodyBtn.addEventListener('click', () => {
-      playGeneratedMelody();
+    // 歌曲長度選擇（30 秒＝副歌；90 秒＝完整：主歌→副歌）
+    let songDuration = 30;
+    document.querySelectorAll('.durBtn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        songDuration = Number(btn.dataset.sec);
+        document.querySelectorAll('.durBtn').forEach((b) => b.classList.toggle('secondary', b !== btn));
+      });
     });
 
     // 編曲 seed：同一個 seed 產生相同的伴奏與音色，「重新製作」時換新 seed
@@ -773,6 +825,7 @@
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
         seed: currentRenderSeed,
         style: styleSelect.value !== 'auto' ? styleSelect.value : undefined,
+        duration_seconds: songDuration,
       };
     }
 

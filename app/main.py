@@ -138,6 +138,7 @@ class RenderRequest(BaseModel):
     seed: Optional[int] = None  # 指定 seed 可重現同一套伴奏；不給則每次隨機變化
     include_recording_filename: Optional[str] = None  # 混入 recordings/ 內的原始錄音（僅 /render-audio）
     style: Optional[str] = None  # 風格（pop/ballad/folk/rock/jazz/lullaby），影響鼓/貝斯/樂器音色
+    duration_seconds: int = 30  # 歌曲長度：30（副歌）/ 60 / 90（完整：主歌→副歌）
 
 
 class AIComposeRequest(BaseModel):
@@ -426,6 +427,7 @@ async def render_music(request: RenderRequest):
         chord_overrides=request.chord_overrides,
         seed=request.seed,
         style=request.style,
+        duration_seconds=request.duration_seconds,
     )
     
     if not os.path.exists(midi_path):
@@ -500,6 +502,7 @@ def render_audio(request: RenderRequest):
         seed=request.seed,
         melody_gain=0.4 if voice_path else 1.0,  # 有人聲時 MIDI 旋律退居小聲跟奏
         style=request.style,
+        duration_seconds=request.duration_seconds,
     )
 
     wav_path = "/tmp/full_render.wav"
@@ -536,7 +539,7 @@ def render_audio(request: RenderRequest):
             acc = np.stack([acc, acc], axis=1)
         voice = _load_voice_mono_44k(voice_path)
 
-        structure = compute_song_structure(notes_list, request.bpm)
+        structure = compute_song_structure(notes_list, request.bpm, target_seconds=request.duration_seconds)
         bar_dur = structure["bar_duration"]
         section_len_samples = int(structure["melody_bars"] * bar_dur * 44100)
         voice = voice[:section_len_samples]  # 裁到主旋律段長度，避免蓋到尾奏

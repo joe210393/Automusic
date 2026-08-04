@@ -25,10 +25,15 @@ BASS_PROGRAM = 33                          # Electric Bass (finger)
 CRASH = 49  # Crash Cymbal 1
 
 
-def compute_song_structure(notes: list, bpm: float) -> dict:
+def compute_song_structure(notes: list, bpm: float, target_seconds: int = 30) -> dict:
     """
     計算歌曲結構（前奏/主旋律小節數/重複次數/尾奏）。
-    /render-audio 混入原始錄音時也用這個函式，確保時間軸一致。
+
+    target_seconds 決定歌曲長度：
+        30：只有副歌——主旋律以完整編制重複到約 30 秒
+        60：中等長度，重複更多次
+        90：完整歌曲——前段做成「主歌」（安靜編制），後段才是全編制副歌
+    quiet_repeats 表示前面幾次主旋律用安靜編制（無鼓、長音貝斯、鋪底和聲）。
     """
     from app.audio.quantize import quantize_notes
 
@@ -39,21 +44,31 @@ def compute_song_structure(notes: list, bpm: float) -> dict:
     melody_end = max((n["end"] for n in quantized), default=0.0)
     melody_bars = max(1, math.ceil(melody_end / bar_duration - 1e-6))
     melody_bars = min(melody_bars, 16)  # 安全上限
-    repeats = 2 if melody_bars <= 8 else 1
 
-    # 成品控制在 1 分鐘內
-    MAX_SONG_SECONDS = 60.0
-    def total_seconds(mb, rp):
-        return (1 + mb * rp + 1) * bar_duration
-    if total_seconds(melody_bars, repeats) > MAX_SONG_SECONDS:
-        repeats = 1
-    if total_seconds(melody_bars, repeats) > MAX_SONG_SECONDS:
-        melody_bars = max(1, int(MAX_SONG_SECONDS / bar_duration) - 2)
+    target = max(15.0, float(target_seconds))
+    section_seconds = melody_bars * bar_duration
+    available = target - 2 * bar_duration  # 扣掉前奏＋尾奏
+    repeats = max(1, round(available / section_seconds))
+
+    # 不要超過目標長度太多（容忍 15%）
+    def total_seconds(rp):
+        return (1 + melody_bars * rp + 1) * bar_duration
+    while repeats > 1 and total_seconds(repeats) > target * 1.15:
+        repeats -= 1
+
+    # 90 秒的完整結構：前面的重複當「主歌」（安靜編制），醞釀到副歌
+    if target_seconds >= 90 and repeats >= 3:
+        quiet_repeats = max(1, repeats // 3)
+    elif target_seconds >= 60 and repeats >= 4:
+        quiet_repeats = 1
+    else:
+        quiet_repeats = 0
 
     return {
         "intro_bars": 1,
         "melody_bars": melody_bars,
         "repeats": repeats,
+        "quiet_repeats": quiet_repeats,
         "outro_bars": 1,
         "bar_duration": bar_duration,
     }
@@ -68,12 +83,15 @@ def generate_full_midi(
     seed: Optional[int] = None,
     melody_gain: float = 1.0,
     style: Optional[str] = None,
+    duration_seconds: int = 30,
 ) -> str:
     """
     生成完整的 MIDI 檔案（回傳檔案路徑）。
     seed 相同時，伴奏變化型與結構完全相同，方便重現。
     style 指定風格時，鼓/貝斯/和聲的變化型與樂器音色依樂理資料庫的風格定義挑選
     （例如搖籃曲：音樂盒主奏、無鼓；搖滾：電吉他、切分大鼓）。
+    duration_seconds（30/60/90）決定歌曲長度與結構：30 秒＝副歌重複、
+    90 秒＝完整歌曲（前段安靜主歌 → 全編制副歌）。
     """
     from app.audio.quantize import quantize_notes
     from app.arrange.patterns import (
@@ -117,10 +135,11 @@ def generate_full_midi(
     bar_duration = 4.0 / beats_per_second
 
     # ---- 歌曲結構（與 compute_song_structure 一致） ----
-    structure = compute_song_structure(notes, bpm)
+    structure = compute_song_structure(notes, bpm, target_seconds=duration_seconds)
     melody_bars = structure["melody_bars"]
     INTRO_BARS = structure["intro_bars"]
     REPEATS = structure["repeats"]
+    QUIET_REPEATS = structure["quiet_repeats"]
     OUTRO_BARS = structure["outro_bars"]
 
     # 超過旋律小節上限的音符裁掉
@@ -230,13 +249,19 @@ def generate_full_midi(
         bar_start = bar * bar_duration
         degree = bar_chords[bar]
         is_outro = bar >= outro_bar
+        # 這個小節屬於第幾次主旋律重複；前面 QUIET_REPEATS 次是「主歌」（安靜編制）
+        rep_idx = (bar - INTRO_BARS) // melody_bars if INTRO_BARS <= bar < outro_bar else -1
+        is_quiet = 0 <= rep_idx < QUIET_REPEATS
+        # 有主歌段時，前奏也跟著安靜，避免「前奏大聲→主歌突然安靜」的突兀感
+        if QUIET_REPEATS > 0 and bar < INTRO_BARS:
+            is_quiet = True
         # 段落開頭放 crash；段落結尾前一小節放過門
         has_crash = (bar in section_start_bars) or is_outro
         next_is_section = (bar + 1) in section_start_bars or (bar + 1) == outro_bar
         has_fill = next_is_section and not is_outro
 
-        # 鼓（drum_var 為 None 表示此風格不用鼓，例如搖籃曲）
-        if drum_var is None:
+        # 鼓（drum_var 為 None 表示此風格不用鼓，例如搖籃曲；主歌段不進鼓，副歌才全編制）
+        if drum_var is None or is_quiet:
             drum_events = []
         elif is_outro:
             drum_events = [
@@ -248,26 +273,28 @@ def generate_full_midi(
                                            fill=has_fill, crash=has_crash)
         drum_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in drum_events)
 
-        # Bass
+        # Bass（主歌段改長音根音，安靜鋪底）
         if is_outro:
             root = get_chord_notes(key, "I")[0] - 24
             bass_events = [{"time": 0.0, "note": root, "velocity": 80, "duration": bar_duration * 0.95}]
         else:
-            bass_events = get_bass_pattern(degree, key, bar_duration, beats_per_bar=4, variation=bass_var)
+            bass_events = get_bass_pattern(degree, key, bar_duration, beats_per_bar=4,
+                                           variation=1 if is_quiet else bass_var)
         bass_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in bass_events)
 
-        # 和聲
+        # 和聲（主歌段改長和弦鋪底）
         if is_outro:
             harmony_events = [
                 {"time": 0.0, "note": n - 12, "velocity": 60, "duration": bar_duration * 0.95}
                 for n in get_chord_notes(key, "I")
             ]
         else:
-            harmony_events = get_harmony_pattern(degree, key, bar_duration, variation=harmony_var)
+            harmony_events = get_harmony_pattern(degree, key, bar_duration,
+                                                 variation=0 if is_quiet else harmony_var)
         harmony_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in harmony_events)
 
-        # 裝飾聲部（第四條線：高音域分解和弦或長音鋪底）
-        if decoration:
+        # 裝飾聲部（第四條線：高音域分解和弦或長音鋪底；主歌段不進，留給副歌）
+        if decoration and not is_quiet:
             deco_type = "pad" if is_outro else decoration.get("type", "arp")
             deco_events = get_decoration_pattern(degree, key, bar_duration, deco_type=deco_type)
             deco_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco_events)
