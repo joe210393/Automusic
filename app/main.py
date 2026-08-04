@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -102,6 +102,7 @@ class RenderRequest(BaseModel):
     chord_overrides: Optional[List[str]] = None
     seed: Optional[int] = None  # 指定 seed 可重現同一套伴奏；不給則每次隨機變化
     include_recording_filename: Optional[str] = None  # 混入 recordings/ 內的原始錄音（僅 /render-audio）
+    style: Optional[str] = None  # 風格（pop/ballad/folk/rock/jazz/lullaby），影響鼓/貝斯/樂器音色
 
 
 class AIComposeRequest(BaseModel):
@@ -289,10 +290,11 @@ async def generate_melody_endpoint(request: MelodyRequest):
 
 
 @app.post("/compose-from-audio")
-async def compose_from_audio(file: UploadFile = File(...)):
+async def compose_from_audio(file: UploadFile = File(...), style: Optional[str] = Form(None)):
     """
     從素材聲音生成旋律：素材不會直接變成旋律，而是萃取它的
     「元素（動機、音域）與感覺（明暗、能量、走向）」來創作一段新旋律。
+    style 可指定風格（pop/ballad/folk/rock/jazz/lullaby），省略則依素材感覺自動決定。
     回傳格式與 /analyze-audio 相容，可直接接編曲流程。
     """
     if not file.filename.lower().endswith(".wav"):
@@ -306,7 +308,7 @@ async def compose_from_audio(file: UploadFile = File(...)):
         tmp_path = tmp_file.name
 
     try:
-        result = generate_melody_from_material(tmp_path)
+        result = generate_melody_from_material(tmp_path, style=style)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:
@@ -388,6 +390,7 @@ async def render_music(request: RenderRequest):
         lyrics=request.lyrics.dict(),
         chord_overrides=request.chord_overrides,
         seed=request.seed,
+        style=request.style,
     )
     
     if not os.path.exists(midi_path):
@@ -461,6 +464,7 @@ def render_audio(request: RenderRequest):
         chord_overrides=request.chord_overrides,
         seed=request.seed,
         melody_gain=0.4 if voice_path else 1.0,  # 有人聲時 MIDI 旋律退居小聲跟奏
+        style=request.style,
     )
 
     wav_path = "/tmp/full_render.wav"

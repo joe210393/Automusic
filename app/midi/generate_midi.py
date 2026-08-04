@@ -67,10 +67,13 @@ def generate_full_midi(
     chord_overrides: Optional[List[str]] = None,
     seed: Optional[int] = None,
     melody_gain: float = 1.0,
+    style: Optional[str] = None,
 ) -> str:
     """
     生成完整的 MIDI 檔案（回傳檔案路徑）。
     seed 相同時，伴奏變化型與結構完全相同，方便重現。
+    style 指定風格時，鼓/貝斯/和聲的變化型與樂器音色依樂理資料庫的風格定義挑選
+    （例如搖籃曲：音樂盒主奏、無鼓；搖滾：電吉他、切分大鼓）。
     """
     from app.audio.quantize import quantize_notes
     from app.arrange.patterns import (
@@ -84,12 +87,23 @@ def generate_full_midi(
     )
     from app.arrange.chords import get_chord_notes, select_chords_for_melody
 
+    from app.theory.knowledge import get_style
+
     rng = random.Random(seed)
-    drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
-    bass_var = rng.randrange(NUM_BASS_VARIATIONS)
-    harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
-    melody_program = rng.choice(MELODY_PROGRAM_CHOICES)
-    harmony_program = rng.choice(HARMONY_PROGRAM_CHOICES)
+    style_cfg = get_style(style)
+    if style_cfg:
+        drum_choices = style_cfg.get("drum_variations", [])
+        drum_var = rng.choice(drum_choices) if drum_choices else None  # None = 這個風格不用鼓
+        bass_var = rng.choice(style_cfg.get("bass_variations") or [0])
+        harmony_var = rng.choice(style_cfg.get("harmony_variations") or [0])
+        melody_program = rng.choice(style_cfg.get("melody_programs") or MELODY_PROGRAM_CHOICES)
+        harmony_program = rng.choice(style_cfg.get("harmony_programs") or HARMONY_PROGRAM_CHOICES)
+    else:
+        drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
+        bass_var = rng.randrange(NUM_BASS_VARIATIONS)
+        harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
+        melody_program = rng.choice(MELODY_PROGRAM_CHOICES)
+        harmony_program = rng.choice(HARMONY_PROGRAM_CHOICES)
 
     quantized_notes = quantize_notes(notes, bpm, grid="1/8")
 
@@ -211,8 +225,10 @@ def generate_full_midi(
         next_is_section = (bar + 1) in section_start_bars or (bar + 1) == outro_bar
         has_fill = next_is_section and not is_outro
 
-        # 鼓
-        if is_outro:
+        # 鼓（drum_var 為 None 表示此風格不用鼓，例如搖籃曲）
+        if drum_var is None:
+            drum_events = []
+        elif is_outro:
             drum_events = [
                 {"time": 0.0, "note": KICK, "velocity": 96, "duration": 0.1},
                 {"time": 0.0, "note": CRASH, "velocity": 88, "duration": 0.6},

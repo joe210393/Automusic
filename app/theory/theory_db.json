@@ -64,8 +64,104 @@
       "moods": ["sad", "emotional"],
       "weight": 3,
       "note": "停留在小調色彩，說故事的感覺"
+    },
+    {
+      "name": "搖滾動力",
+      "degrees": ["I", "IV", "V", "IV"],
+      "moods": ["rock", "energetic"],
+      "weight": 3,
+      "note": "I-IV-V 循環不回主和弦，持續推進不停歇，搖滾常用"
+    },
+    {
+      "name": "循環圈",
+      "degrees": ["vi", "ii", "V", "I"],
+      "moods": ["jazzy", "calm"],
+      "weight": 3,
+      "note": "五度循環 vi-ii-V-I，爵士標準曲的骨架，優雅有方向感"
+    },
+    {
+      "name": "搖籃曲進行",
+      "degrees": ["I", "IV", "I", "V"],
+      "moods": ["lullaby", "calm", "simple"],
+      "weight": 3,
+      "note": "只在 I、IV、V 之間輕輕擺盪，安穩無起伏，適合哄睡"
     }
   ],
+
+  "styles": {
+    "pop": {
+      "label": "流行 Pop",
+      "moods": ["bright", "energetic", "warm"],
+      "bpm_range": [100, 120],
+      "rhythm_energy": "mid",
+      "drum_variations": [0, 1],
+      "bass_variations": [2, 0],
+      "harmony_variations": [2, 1],
+      "melody_programs": [0, 4],
+      "harmony_programs": [4, 0],
+      "note": "標準流行配置：鋼琴/電鋼琴主奏、行進感貝斯"
+    },
+    "ballad": {
+      "label": "抒情 Ballad",
+      "moods": ["emotional", "warm", "sad"],
+      "bpm_range": [70, 85],
+      "rhythm_energy": "low",
+      "drum_variations": [2],
+      "bass_variations": [1],
+      "harmony_variations": [1, 0],
+      "melody_programs": [0, 11],
+      "harmony_programs": [48, 0],
+      "note": "慢板：簡約鼓、長音貝斯、弦樂鋪底、分解和弦"
+    },
+    "folk": {
+      "label": "民謠／兒歌",
+      "moods": ["simple", "bright", "warm"],
+      "bpm_range": [88, 105],
+      "rhythm_energy": "mid",
+      "drum_variations": [2, 0],
+      "bass_variations": [0],
+      "harmony_variations": [2, 0],
+      "melody_programs": [24, 0],
+      "harmony_programs": [24, 4],
+      "note": "尼龍吉他主奏、根音五音交替貝斯，樸實好唱"
+    },
+    "rock": {
+      "label": "搖滾 Rock",
+      "moods": ["rock", "energetic"],
+      "bpm_range": [115, 135],
+      "rhythm_energy": "high",
+      "drum_variations": [1, 0],
+      "bass_variations": [2],
+      "harmony_variations": [2],
+      "melody_programs": [29, 27],
+      "harmony_programs": [29, 27],
+      "note": "過載/清音電吉他、八度行進貝斯、切分大鼓"
+    },
+    "jazz": {
+      "label": "爵士 Jazz",
+      "moods": ["jazzy", "calm"],
+      "bpm_range": [85, 100],
+      "rhythm_energy": "mid",
+      "drum_variations": [2],
+      "bass_variations": [0],
+      "harmony_variations": [0, 1],
+      "melody_programs": [11, 26],
+      "harmony_programs": [4, 26],
+      "note": "顫音琴/爵士吉他主奏、walking 感貝斯、電鋼琴鋪底"
+    },
+    "lullaby": {
+      "label": "搖籃曲",
+      "moods": ["lullaby", "calm"],
+      "bpm_range": [62, 74],
+      "rhythm_energy": "low",
+      "drum_variations": [],
+      "bass_variations": [1],
+      "harmony_variations": [1],
+      "melody_programs": [10, 8],
+      "harmony_programs": [48],
+      "note": "音樂盒/鋼片琴主奏、無鼓、弦樂鋪底、分解和弦搖曳感"
+    }
+  },
 
   "cadences": {
     "authentic": {

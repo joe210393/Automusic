@@ -79,13 +79,21 @@ def _snap_to_scale(pitch: int, scale_pitches: list) -> int:
     return min(scale_pitches, key=lambda s: abs(s - pitch))
 
 
-def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -> dict:
+def generate_melody_from_material(
+    audio_path: str,
+    seed: Optional[int] = None,
+    style: Optional[str] = None,
+) -> dict:
     """
     分析素材聲音，生成帶有素材元素與感覺的 4 小節旋律。
 
+    style 指定風格（pop / ballad / folk / rock / jazz / lullaby）時，
+    BPM、節奏密度、和弦進行會依樂理資料庫的風格定義決定；
+    不指定（auto）則完全由素材的感覺推導。
+
     Returns:
         {
-          "notes": [...], "bpm": float, "key": str,          # 可直接接 /render-music 流程
+          "notes": [...], "bpm": float, "key": str, "chords": [...],
           "material": {...特徵摘要，給前端顯示...}
         }
     """
@@ -103,27 +111,38 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
     scale_type = "minor_pentatonic" if feat["is_minor"] else "major_pentatonic"
     intervals = SCALE_INTERVALS[scale_type]
 
-    if feat["density"] < 1.0:
-        bpm, rhythms = 75.0, RHYTHMS_LOW
-    elif feat["density"] < 2.0:
-        bpm, rhythms = 90.0, RHYTHMS_MID
-    elif feat["density"] < 3.5:
-        bpm, rhythms = 105.0, RHYTHMS_MID
-    else:
-        bpm, rhythms = 120.0, RHYTHMS_HIGH
-
-    # --- 讀樂理資料庫：依感覺挑一組經典和弦進行，旋律將跟著它走 ---
-    from app.theory.knowledge import pick_progression_for_mood, melody_rules
+    # --- 讀樂理資料庫：風格與感覺決定 BPM、節奏密度、和弦進行 ---
+    from app.theory.knowledge import pick_progression_for_mood, melody_rules, get_style
     from app.arrange.chords import get_chord_pitch_classes
 
-    if feat["is_minor"]:
-        mood = "sad" if feat["density"] < 2.0 else "emotional"
-    elif feat["density"] >= 3.5:
-        mood = "energetic"
-    elif feat["density"] < 1.0:
-        mood = "calm"
+    style_cfg = get_style(style)
+    rhythm_table = {"low": RHYTHMS_LOW, "mid": RHYTHMS_MID, "high": RHYTHMS_HIGH}
+
+    if style_cfg:
+        # 指定風格：BPM 與節奏由風格定義，感覺從風格的 mood 清單挑
+        lo, hi = style_cfg["bpm_range"]
+        bpm = float(rng.randint(lo, hi))
+        rhythms = rhythm_table[style_cfg.get("rhythm_energy", "mid")]
+        mood = rng.choice(style_cfg["moods"])
     else:
-        mood = "bright"
+        # 自動：由素材的能量與明暗推導
+        if feat["density"] < 1.0:
+            bpm, rhythms = 75.0, RHYTHMS_LOW
+        elif feat["density"] < 2.0:
+            bpm, rhythms = 90.0, RHYTHMS_MID
+        elif feat["density"] < 3.5:
+            bpm, rhythms = 105.0, RHYTHMS_MID
+        else:
+            bpm, rhythms = 120.0, RHYTHMS_HIGH
+
+        if feat["is_minor"]:
+            mood = "sad" if feat["density"] < 2.0 else "emotional"
+        elif feat["density"] >= 3.5:
+            mood = "energetic"
+        elif feat["density"] < 1.0:
+            mood = "calm"
+        else:
+            mood = "bright"
 
     rules = melody_rules()
     chord_tone_prob = rules.get("strong_beat_chord_tone_prob", 0.85)
@@ -246,5 +265,6 @@ def generate_melody_from_material(audio_path: str, seed: Optional[int] = None) -
             "contour": {1: "上行", -1: "下行", 0: "平穩"}[feat["contour"]],
             "num_material_notes": len(mat_notes),
             "progression": progression["name"],
+            "style": style_cfg["label"] if style_cfg else "自動（依素材感覺）",
         },
     }

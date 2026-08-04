@@ -26,6 +26,18 @@ def melody_rules() -> dict:
     return load_theory()["melody_rules"]
 
 
+def get_style(name: Optional[str]) -> Optional[dict]:
+    """取得風格定義；name 為 None、'auto' 或不存在時回傳 None（代表自動）。"""
+    if not name or name == "auto":
+        return None
+    return load_theory().get("styles", {}).get(name)
+
+
+def list_styles() -> dict:
+    """回傳所有風格（給前端下拉選單用）。"""
+    return load_theory().get("styles", {})
+
+
 def _fit_to_bars(degrees: List[str], num_bars: int) -> List[str]:
     """
     把進行重複/裁切到指定小節數。

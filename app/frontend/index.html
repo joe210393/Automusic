@@ -116,15 +116,16 @@
 </head>
 <body>
   <div class="container">
-    <h1>Music Education MVP Demo</h1>
+    <h1>Automusic — 把生活的聲音變成一首歌</h1>
     <p style="font-size:13px;color:#4b5563;max-width:720px;">
-      錄一小段單音旋律 → 系統幫你分析音符與調性 → 選擇 BPM 與風格 → 自動編曲並在線上播放。
-      （MVP 僅支援單音旋律，建議 5–15 秒、安靜環境錄音）
+      <b>步驟 1</b> 收集一段聲音素材（哼唱、環境音都可以）→
+      <b>步驟 2</b> 選風格，AI 萃取素材的「元素與感覺」創作旋律 →
+      <b>步驟 3</b> 自動編曲，一分鐘內的完整作品。
     </p>
 
-    <!-- 錄音區塊 -->
+    <!-- 步驟 1：收集聲音素材 -->
     <div class="card">
-      <div class="section-title">1. 錄製你的單音旋律</div>
+      <div class="section-title">步驟 1｜收集聲音素材</div>
       <div class="row" style="margin-top:6px;">
         <button id="recordBtn">🎙 開始錄音</button>
         <button id="resetRecordingBtn" class="secondary" disabled>重錄</button>
@@ -133,121 +134,75 @@
       </div>
       <div id="recordingStatus" class="status"></div>
       <audio id="previewAudio" controls style="display:none;"></audio>
+
+      <div style="border-top:1px dashed #d1d5db;margin-top:14px;padding-top:12px;">
+        <div style="font-size:13px;color:#4b5563;margin-bottom:8px;">
+          📱 <b>或用手機收音</b>：手機開啟 <code id="mobileUrlHint">…/web/record.html</code> 錄音上傳，再按同步抓回這台電腦。
+        </div>
+        <div class="row">
+          <div style="flex:1;min-width:220px;">
+            <label for="remoteUrlInput">雲端網址</label>
+            <input id="remoteUrlInput" type="text" value="https://automusic.zeabur.app"
+                   style="padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;width:100%;box-sizing:border-box;" />
+          </div>
+          <div style="margin-top:16px;">
+            <button id="syncBtn" class="secondary">🔄 同步手機錄音</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <div style="flex:1;min-width:220px;">
+            <label for="recordingSelect">已下載的錄音</label>
+            <select id="recordingSelect" style="width:100%;"></select>
+          </div>
+          <div style="margin-top:16px;">
+            <button id="loadRecordingBtn" class="secondary" disabled>📥 載入此錄音</button>
+          </div>
+        </div>
+        <div id="syncStatus" class="status"></div>
+      </div>
     </div>
 
-    <!-- 手機錄音同步區塊 -->
+    <!-- 步驟 2：選風格，AI 生成旋律 -->
     <div class="card">
-      <div class="section-title">1a. 或：同步手機錄音</div>
+      <div class="section-title">步驟 2｜選擇風格，AI 從素材創作旋律</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        用手機開啟雲端錄音頁（<code id="mobileUrlHint">…/web/record.html</code>）錄音上傳後，按下方「同步」抓回本機。
+        素材不會直接變成旋律——系統萃取它的動機、音域、明暗與能量，依樂理資料庫的經典和弦進行寫出一段新旋律。
       </p>
-      <div class="row">
-        <div style="flex:1;min-width:220px;">
-          <label for="remoteUrlInput">雲端網址</label>
-          <input id="remoteUrlInput" type="text" value="https://automusic.zeabur.app"
-                 style="padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;width:100%;box-sizing:border-box;" />
-        </div>
-        <div style="margin-top:16px;">
-          <button id="syncBtn" class="secondary">🔄 同步手機錄音</button>
-        </div>
-      </div>
-      <div class="row" style="margin-top:10px;">
-        <div style="flex:1;min-width:220px;">
-          <label for="recordingSelect">已下載的錄音</label>
-          <select id="recordingSelect" style="width:100%;"></select>
-        </div>
-        <div style="margin-top:16px;">
-          <button id="loadRecordingBtn" class="secondary" disabled>📥 載入此錄音</button>
-        </div>
-      </div>
-      <div id="syncStatus" class="status"></div>
-    </div>
-
-    <!-- 音階生成旋律區塊（不需要錄音） -->
-    <div class="card">
-      <div class="section-title">1b. 或：輸入音階，直接生成旋律（免錄音）</div>
       <div class="row" style="margin-top:6px;">
         <div>
-          <label for="rootSelect">根音</label>
-          <select id="rootSelect">
-            <option value="C" selected>C</option>
-            <option value="C#">C#</option>
-            <option value="D">D</option>
-            <option value="Eb">Eb</option>
-            <option value="E">E</option>
-            <option value="F">F</option>
-            <option value="F#">F#</option>
-            <option value="G">G</option>
-            <option value="Ab">Ab</option>
-            <option value="A">A</option>
-            <option value="Bb">Bb</option>
-            <option value="B">B</option>
+          <label for="styleSelect">風格</label>
+          <select id="styleSelect">
+            <option value="auto" selected>🎲 自動（依素材感覺）</option>
+            <option value="pop">🎤 流行 Pop</option>
+            <option value="ballad">💧 抒情 Ballad</option>
+            <option value="folk">🪕 民謠／兒歌</option>
+            <option value="rock">🎸 搖滾 Rock</option>
+            <option value="jazz">🎷 爵士 Jazz</option>
+            <option value="lullaby">🌙 搖籃曲</option>
           </select>
         </div>
         <div>
-          <label for="scaleSelect">音階</label>
-          <select id="scaleSelect">
-            <option value="major" selected>大調</option>
-            <option value="minor">小調</option>
-            <option value="major_pentatonic">大調五聲</option>
-            <option value="minor_pentatonic">小調五聲</option>
-            <option value="custom">自訂音名</option>
-          </select>
-        </div>
-        <div id="customNotesWrap" style="display:none;">
-          <label for="customNotesInput">自訂音名（空格分隔）</label>
-          <input id="customNotesInput" type="text" placeholder="例如：C D E G A"
-                 style="padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;min-width:160px;" />
-        </div>
-        <div>
-          <label for="barsInput">小節數</label>
-          <input id="barsInput" type="number" min="1" max="16" value="4" />
+          <label for="bpmInput">BPM（自動帶入，可調）</label>
+          <input id="bpmInput" type="number" min="60" max="160" value="90" />
         </div>
         <div style="margin-top:16px;">
-          <button id="generateMelodyBtn">🎲 生成旋律</button>
+          <button id="composeFromAudioBtn" disabled>✨ 從素材生成旋律</button>
         </div>
         <div style="margin-top:16px;">
           <button id="playMelodyBtn" class="secondary" disabled>▶ 試聽旋律</button>
         </div>
       </div>
-      <div id="melodyStatus" class="status"></div>
-    </div>
-
-    <!-- 參數設定與分析結果 -->
-    <div class="card">
-      <div class="section-title">2. 分析與設定</div>
-      <div class="row" style="margin-top:6px;">
-        <div>
-          <label for="bpmInput">BPM（速度）</label>
-          <input id="bpmInput" type="number" min="60" max="160" value="90" />
-        </div>
-        <div>
-          <label for="styleSelect">風格</label>
-          <select id="styleSelect">
-            <option value="pop-edu" selected>Pop / Education（預設）</option>
-            <option value="soft">Soft（溫柔鋼琴伴奏）— 預留</option>
-          </select>
-        </div>
-        <div style="margin-top:16px;">
-          <button id="analyzeBtn" class="secondary" disabled>分析旋律 ＋ 建伴奏</button>
-        </div>
-        <div style="margin-top:16px;">
-          <button id="composeFromAudioBtn" disabled>✨ 從素材生成旋律（AI 創作）</button>
-        </div>
-      </div>
       <div id="analysisInfo" class="status"></div>
-      <div id="aiChordsInfo" class="status"></div>
     </div>
 
-    <!-- 播放區塊 -->
+    <!-- 步驟 3：製作完整歌曲 -->
     <div class="card">
-      <div class="section-title">3. 產生作品並播放</div>
+      <div class="section-title">步驟 3｜自動編曲，完成你的歌</div>
       <div class="row" style="margin-top:6px;">
-        <button id="aiChordsBtn" class="secondary" disabled>✨ AI 建議和弦</button>
-        <button id="renderBtn" disabled>🎼 產生編曲 MIDI</button>
-        <button id="playBtn" class="secondary" disabled>▶ 播放編曲</button>
-        <button id="renderAudioBtn" disabled>🎧 產生高音質音檔</button>
-        <button id="remakeBtn" class="secondary" disabled>🔁 重新製作</button>
+        <button id="renderBtn" disabled>🎵 製作完整歌曲</button>
+        <button id="remakeBtn" class="secondary" disabled>🔁 重新製作（換伴奏）</button>
+        <button id="playBtn" class="secondary" disabled>▶ 試聽 MIDI 版</button>
+        <button id="renderAudioBtn" class="secondary" disabled>🎧 重轉高音質音檔</button>
         <a id="downloadLink" href="#" download="full.mid" style="display:none;font-size:13px;">下載 MIDI</a>
       </div>
       <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;margin-top:10px;cursor:pointer;">
@@ -264,6 +219,55 @@
       <audio id="songAudio" controls style="display:none;"></audio>
       <a id="audioDownloadLink" href="#" download="song.wav" style="display:none;font-size:13px;">下載音檔（WAV）</a>
     </div>
+
+    <!-- 進階：免錄音直接生成旋律 -->
+    <details style="margin-top:4px;">
+      <summary style="cursor:pointer;font-size:14px;color:#4b5563;">🧪 進階：免錄音，輸入音階直接生成旋律</summary>
+      <div class="card" style="margin-top:10px;">
+        <div class="row" style="margin-top:6px;">
+          <div>
+            <label for="rootSelect">根音</label>
+            <select id="rootSelect">
+              <option value="C" selected>C</option>
+              <option value="C#">C#</option>
+              <option value="D">D</option>
+              <option value="Eb">Eb</option>
+              <option value="E">E</option>
+              <option value="F">F</option>
+              <option value="F#">F#</option>
+              <option value="G">G</option>
+              <option value="Ab">Ab</option>
+              <option value="A">A</option>
+              <option value="Bb">Bb</option>
+              <option value="B">B</option>
+            </select>
+          </div>
+          <div>
+            <label for="scaleSelect">音階</label>
+            <select id="scaleSelect">
+              <option value="major" selected>大調</option>
+              <option value="minor">小調</option>
+              <option value="major_pentatonic">大調五聲</option>
+              <option value="minor_pentatonic">小調五聲</option>
+              <option value="custom">自訂音名</option>
+            </select>
+          </div>
+          <div id="customNotesWrap" style="display:none;">
+            <label for="customNotesInput">自訂音名（空格分隔）</label>
+            <input id="customNotesInput" type="text" placeholder="例如：C D E G A"
+                   style="padding:6px 10px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;min-width:160px;" />
+          </div>
+          <div>
+            <label for="barsInput">小節數</label>
+            <input id="barsInput" type="number" min="1" max="16" value="4" />
+          </div>
+          <div style="margin-top:16px;">
+            <button id="generateMelodyBtn" class="secondary">🎲 生成旋律</button>
+          </div>
+        </div>
+        <div id="melodyStatus" class="status"></div>
+      </div>
+    </details>
   </div>
 
   <script>
@@ -272,12 +276,9 @@
     const recordTimer = document.getElementById('recordTimer');
     const recordingStatus = document.getElementById('recordingStatus');
     const previewAudio = document.getElementById('previewAudio');
-    const analyzeBtn = document.getElementById('analyzeBtn');
     const analysisInfo = document.getElementById('analysisInfo');
-    const aiChordsInfo = document.getElementById('aiChordsInfo');
     const bpmInput = document.getElementById('bpmInput');
     const styleSelect = document.getElementById('styleSelect');
-    const aiChordsBtn = document.getElementById('aiChordsBtn');
     const renderBtn = document.getElementById('renderBtn');
     const playBtn = document.getElementById('playBtn');
     const renderStatus = document.getElementById('renderStatus');
@@ -434,9 +435,8 @@
         previewAudio.src = url;
         previewAudio.style.display = 'block';
 
-        recordTimer.textContent = '已錄製完成，可以進行分析與編曲。';
+        recordTimer.textContent = '已錄製完成，到步驟 2 選風格生成旋律。';
         setStatus(recordingStatus, '');
-        analyzeBtn.disabled = false;
         document.getElementById('composeFromAudioBtn').disabled = false;
         resetRecordingBtn.disabled = false;
         uploadRecordingBtn.disabled = false;
@@ -484,7 +484,6 @@
       recordTimer.textContent = '尚未錄音';
       setStatus(recordingStatus, '');
       uploadRecordingBtn.disabled = true;
-      analyzeBtn.disabled = true;
       document.getElementById('composeFromAudioBtn').disabled = true;
       renderBtn.disabled = true;
       playBtn.disabled = true;
@@ -493,66 +492,7 @@
       lastAIChords = null;
       downloadLink.style.display = 'none';
       setStatus(analysisInfo, '');
-      setStatus(aiChordsInfo, '');
       setStatus(renderStatus, '');
-    });
-
-    async function callAnalyze() {
-      if (!recordedBlob) {
-        setStatus(analysisInfo, '請先錄音。');
-        return;
-      }
-
-      setStatus(analysisInfo, '上傳並分析中…');
-      renderBtn.disabled = true;
-      playBtn.disabled = true;
-      lastAnalyzeResult = null;
-      lastAIChords = null;
-      setStatus(aiChordsInfo, '');
-
-      const formData = new FormData();
-      const file = new File([recordedBlob], 'recording.wav', { type: 'audio/wav' });
-      formData.append('file', file);
-
-      try {
-        const res = await fetch('/analyze-audio', {
-          method: 'POST',
-          body: formData,
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error('分析失敗：' + text);
-        }
-
-        const data = await res.json();
-        lastAnalyzeResult = data;
-
-        // 將偵測到的 bpm 帶入輸入框
-        if (typeof data.bpm === 'number') {
-          bpmInput.value = Math.round(data.bpm);
-        }
-
-        const noteCount = (data.notes || []).length;
-        setStatus(
-          analysisInfo,
-          `偵測到約 ${noteCount} 個音符\nBPM ≈ ${Math.round(data.bpm)}，調性推測：${data.key}`
-        );
-
-        renderBtn.disabled = false;
-        document.getElementById('renderAudioBtn').disabled = false;
-        document.getElementById('remakeBtn').disabled = false;
-        currentRenderSeed = Math.floor(Math.random() * 1e9);
-        aiChordsBtn.disabled = false; // 已有分析結果，可以請 AI 幫忙給和弦
-      } catch (err) {
-        console.error(err);
-        setStatus(analysisInfo, '分析時發生錯誤：' + err.message);
-        aiChordsBtn.disabled = true;
-      }
-    }
-
-    analyzeBtn.addEventListener('click', () => {
-      callAnalyze();
     });
 
     // --- 從素材生成旋律：素材提供「元素與感覺」，AI 創作新旋律 ---
@@ -568,6 +508,7 @@
       try {
         const formData = new FormData();
         formData.append('file', new File([recordedBlob], 'material.wav', { type: 'audio/wav' }));
+        if (styleSelect.value !== 'auto') formData.append('style', styleSelect.value);
         const res = await fetch('/compose-from-audio', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json(); // { notes, bpm, key, chords, material }
@@ -583,9 +524,9 @@
           ? `和弦進行：${m.progression}（${(data.chords || []).join(' - ')}）\n` : '';
         setStatus(
           analysisInfo,
-          `素材感覺：${m.mood || ''}，能量 ${m.energy ?? '?'} 音/秒 → BPM ${Math.round(data.bpm)}，走向${m.contour || '平穩'}\n` +
+          `風格：${m.style || '自動'}｜素材感覺：${m.mood || ''}，能量 ${m.energy ?? '?'} 音/秒 → BPM ${Math.round(data.bpm)}\n` +
           progressionLine +
-          `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽並產生編曲。`
+          `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽，或到步驟 3 製作完整歌曲。`
         );
 
         // 素材模式：原始聲音預設不混入成品（素材是靈感，不是主唱）
@@ -595,84 +536,13 @@
         document.getElementById('renderAudioBtn').disabled = false;
         document.getElementById('remakeBtn').disabled = false;
         currentRenderSeed = Math.floor(Math.random() * 1e9);
-        aiChordsBtn.disabled = false;
-        playMelodyBtn.disabled = false; // 可用 1b 區的「試聽旋律」聽生成結果
+        playMelodyBtn.disabled = false;
       } catch (err) {
         console.error(err);
         setStatus(analysisInfo, '從素材生成旋律失敗：' + err.message);
       } finally {
         composeFromAudioBtn.disabled = false;
       }
-    });
-
-    async function callAICompose() {
-      if (!lastAnalyzeResult) {
-        setStatus(aiChordsInfo, '請先完成音訊分析。');
-        return;
-      }
-
-      const bpm = Number(bpmInput.value) || lastAnalyzeResult.bpm || 90;
-      const key = lastAnalyzeResult.key || 'C';
-      const notes = lastAnalyzeResult.notes || [];
-
-      if (!notes.length) {
-        setStatus(aiChordsInfo, '沒有偵測到有效音符，無法請 AI 建議和弦。');
-        return;
-      }
-
-      // 粗略估計需要幾個小節（4/4）
-      const totalDuration = notes.reduce((max, n) => Math.max(max, n.end || 0), 0);
-      let estBars = Math.ceil((totalDuration * bpm) / 60 / 4);
-      if (!estBars || estBars < 4) estBars = 4;
-      if (estBars > 8) estBars = 8;
-
-      setStatus(aiChordsInfo, '向本地 AI（gemma-4-31b）請求和弦建議中…推理模型需要思考，約 1～3 分鐘，請稍候。');
-      aiChordsBtn.disabled = true;
-
-      try {
-        const res = await fetch('/ai-compose', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            notes,
-            bpm,
-            key,
-            num_bars: estBars,
-          }),
-        });
-
-        if (!res.ok) {
-          const text = await res.text();
-          throw new Error('AI 和弦失敗：' + text);
-        }
-
-        const data = await res.json(); // { chords: [...] }
-        lastAIChords = data.chords || [];
-
-        if (!lastAIChords.length) {
-          setStatus(aiChordsInfo, 'AI 回傳的和弦為空，請再試一次。');
-          aiChordsBtn.disabled = false;
-          return;
-        }
-
-        const sourceLabel = data.source === 'rules'
-          ? '（本地 AI 沒有回應，先用規則式推薦。AI 可能在載入模型，可再按一次「✨ AI 建議和弦」重試）'
-          : '（本地 AI）';
-        setStatus(
-          aiChordsInfo,
-          '建議和弦：' + lastAIChords.join(' | ') + ' ' + sourceLabel
-        );
-        aiChordsBtn.disabled = false;
-        renderBtn.disabled = false;
-      } catch (err) {
-        console.error(err);
-        setStatus(aiChordsInfo, 'AI 建議和弦時發生錯誤：' + err.message);
-        aiChordsBtn.disabled = false;
-      }
-    }
-
-    aiChordsBtn.addEventListener('click', () => {
-      callAICompose();
     });
 
     // --- 手機錄音同步 ---
@@ -771,9 +641,8 @@
         previewAudio.src = URL.createObjectURL(blob);
         previewAudio.style.display = 'block';
         recordTimer.textContent = '已載入手機錄音：' + filename;
-        analyzeBtn.disabled = false;
         document.getElementById('composeFromAudioBtn').disabled = false;
-        setStatus(syncStatus, `已載入 ${filename}，請按上方「分析旋律 ＋ 建伴奏」。`);
+        setStatus(syncStatus, `已載入 ${filename}，到步驟 2 選風格、按「✨ 從素材生成旋律」。`);
       } catch (err) {
         console.error(err);
         if (err.name === 'AbortError') {
@@ -836,23 +705,22 @@
         }
 
         const data = await res.json(); // { notes, bpm, key }
-        // 生成的旋律直接當成「分析結果」，可以走原本的 AI 和弦 / 編曲流程
+        // 生成的旋律直接當成「素材旋律」，可以走步驟 3 的編曲流程
         lastAnalyzeResult = data;
         lastAIChords = null;
         lastMidiBlob = null;
 
         setStatus(
           melodyStatus,
-          `已生成 ${data.notes.length} 個音符（${data.key} 調，${body.num_bars} 小節）。可以試聽，或直接進行 AI 和弦 / 編曲。`
+          `已生成 ${data.notes.length} 個音符（${data.key} 調，${body.num_bars} 小節）。可用步驟 2 的「試聽旋律」，或到步驟 3 製作歌曲。`
         );
-        setStatus(analysisInfo, `使用生成的旋律：${data.key} 調，BPM ${Math.round(data.bpm)}`);
+        setStatus(analysisInfo, `使用音階生成的旋律：${data.key} 調，BPM ${Math.round(data.bpm)}`);
 
         playMelodyBtn.disabled = false;
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
         document.getElementById('remakeBtn').disabled = false;
         currentRenderSeed = Math.floor(Math.random() * 1e9);
-        aiChordsBtn.disabled = false;
       } catch (err) {
         console.error(err);
         setStatus(melodyStatus, '生成旋律時發生錯誤：' + err.message);
@@ -867,7 +735,7 @@
 
     async function playGeneratedMelody() {
       if (!lastAnalyzeResult || !lastAnalyzeResult.notes || !lastAnalyzeResult.notes.length) {
-        setStatus(melodyStatus, '尚未生成旋律。');
+        setStatus(analysisInfo, '尚未生成旋律。');
         return;
       }
       try {
@@ -878,10 +746,10 @@
           const freq = Tone.Frequency(n.midi, 'midi');
           synth.triggerAttackRelease(freq, n.end - n.start, now + n.start, (n.velocity || 90) / 127);
         }
-        setStatus(melodyStatus, '播放旋律中…');
+        setStatus(analysisInfo, '播放旋律中…');
       } catch (err) {
         console.error(err);
-        setStatus(melodyStatus, '播放時發生錯誤：' + err.message);
+        setStatus(analysisInfo, '播放時發生錯誤：' + err.message);
       }
     }
 
@@ -906,6 +774,7 @@
         },
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
         seed: currentRenderSeed,
+        style: styleSelect.value !== 'auto' ? styleSelect.value : undefined,
       };
     }
 
@@ -947,7 +816,7 @@
 
     async function callRender() {
       if (!lastAnalyzeResult) {
-        setStatus(renderStatus, '請先完成音訊分析。');
+        setStatus(renderStatus, '請先在步驟 2 生成旋律。');
         return;
       }
 
@@ -1163,8 +1032,6 @@
     });
 
     // 初始狀態：尚未錄音，僅允許按「開始錄音」
-    analyzeBtn.disabled = true;
-    aiChordsBtn.disabled = true;
     renderBtn.disabled = true;
     playBtn.disabled = true;
   </script>
