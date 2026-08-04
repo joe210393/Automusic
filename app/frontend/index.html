@@ -118,9 +118,11 @@
   <div class="container">
     <h1>Automusic — 把生活的聲音變成一首歌</h1>
     <p style="font-size:13px;color:#4b5563;max-width:720px;">
-      <b>步驟 1</b> 收集一段聲音素材（哼唱、環境音都可以）→
-      <b>步驟 2</b> 選風格，AI 萃取素材的「元素與感覺」創作旋律 →
-      <b>步驟 3</b> 自動編曲，一分鐘內的完整作品。
+      收集的聲音素材是<b>創作的靈感 DNA</b>——它不會直接出現在歌裡，而是化成旋律與感覺。
+    </p>
+    <p style="font-size:12px;color:#6b7280;max-width:720px;line-height:1.8;">
+      <b>1</b> 收集素材 → <b>2</b> 素材轉旋律 → <b>3</b> 素材轉歌曲
+      → <span style="opacity:.55;"><b>4</b> 關鍵字產生歌詞（開發中）→ <b>5</b> 人聲錄音（開發中）→ <b>6</b> 用你的聲紋唱出歌詞、合成完整歌曲（開發中）</span>
     </p>
 
     <!-- 步驟 1：收集聲音素材 -->
@@ -164,9 +166,9 @@
 
     <!-- 步驟 2：選風格，AI 生成旋律 -->
     <div class="card">
-      <div class="section-title">步驟 2｜選擇風格，AI 從素材創作旋律</div>
+      <div class="section-title">步驟 2｜素材轉旋律（選風格，AI 創作）</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        素材不會直接變成旋律——系統萃取它的動機、音域、明暗與能量，依樂理資料庫的經典和弦進行寫出一段新旋律。
+        系統萃取素材的動機、音域、明暗與能量，依樂理資料庫的經典和弦進行寫出一段新旋律。
       </p>
       <div class="row" style="margin-top:6px;">
         <div>
@@ -195,9 +197,12 @@
       <div id="analysisInfo" class="status"></div>
     </div>
 
-    <!-- 步驟 3：製作完整歌曲 -->
+    <!-- 步驟 3：素材轉歌曲 -->
     <div class="card">
-      <div class="section-title">步驟 3｜自動編曲，完成你的歌</div>
+      <div class="section-title">步驟 3｜素材轉歌曲（自動編曲）</div>
+      <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
+        旋律配上鼓、貝斯、和聲與裝飾聲部，成為完整編曲。之後的人聲會在步驟 6 用你的聲紋演唱加入。
+      </p>
       <div class="row" style="margin-top:6px;">
         <button id="renderBtn" disabled>🎵 製作完整歌曲</button>
         <button id="remakeBtn" class="secondary" disabled>🔁 重新製作（換伴奏）</button>
@@ -205,10 +210,6 @@
         <button id="renderAudioBtn" class="secondary" disabled>🎧 重轉高音質音檔</button>
         <a id="downloadLink" href="#" download="full.mid" style="display:none;font-size:13px;">下載 MIDI</a>
       </div>
-      <label style="display:inline-flex;align-items:center;gap:6px;font-size:14px;margin-top:10px;cursor:pointer;">
-        <input type="checkbox" id="includeVoiceCheck" checked />
-        🎤 把我的錄音聲音加入作品（人聲主唱＋樂器伴奏）
-      </label>
       <div id="renderStatus" class="status"></div>
       <div id="progressWrap" style="display:none;margin-top:12px;">
         <div id="progressLabel" style="font-size:13px;color:#4b5563;margin-bottom:6px;">🎵 正在製作音樂…</div>
@@ -528,9 +529,6 @@
           progressionLine +
           `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽，或到步驟 3 製作完整歌曲。`
         );
-
-        // 素材模式：原始聲音預設不混入成品（素材是靈感，不是主唱）
-        document.getElementById('includeVoiceCheck').checked = false;
 
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
@@ -988,22 +986,8 @@
         if (Date.now() - lastActivity > 120000) ctrl.abort();
       }, 5000);
       try {
+        // 素材是創作靈感，不混入成品；人聲將在步驟 6 以聲紋演唱的方式加入
         const body = buildRenderBody();
-
-        // 勾選「加入錄音聲音」且有錄音時，把錄音混入成品
-        const includeVoice = document.getElementById('includeVoiceCheck').checked;
-        if (includeVoice && recordedBlob) {
-          if (!currentRecordingFilename) {
-            // 桌面麥克風錄音還沒上傳到伺服器：先上傳一次
-            const fd = new FormData();
-            fd.append('file', new File([recordedBlob], 'recording.wav', { type: 'audio/wav' }));
-            const ur = await fetch('/recordings/upload', { method: 'POST', body: fd });
-            if (ur.ok) currentRecordingFilename = (await ur.json()).filename;
-          }
-          if (currentRecordingFilename) {
-            body.include_recording_filename = currentRecordingFilename;
-          }
-        }
 
         const res = await fetch('/render-audio', {
           method: 'POST',
