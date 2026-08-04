@@ -901,6 +901,13 @@
         }).toDestination();
         harmonySynth.volume.value = -14;
 
+        // 裝飾聲部（高音域分解和弦/鋪底），音量壓低當背景織體
+        const decoSynth = new Tone.PolySynth(Tone.Synth, {
+          oscillator: { type: 'triangle' },
+          envelope: { attack: 0.005, decay: 0.2, sustain: 0.2, release: 0.3 },
+        }).toDestination();
+        decoSynth.volume.value = -18;
+
         const kickSynth = new Tone.MembraneSynth().toDestination();
         kickSynth.volume.value = -4;
         const snareSynth = new Tone.NoiseSynth({
@@ -933,6 +940,8 @@
               bassSynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
             } else if (ch === 2) {
               harmonySynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
+            } else if (ch === 3) {
+              decoSynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
             } else {
               melodySynth.triggerAttackRelease(note.name, note.duration, t, note.velocity);
             }

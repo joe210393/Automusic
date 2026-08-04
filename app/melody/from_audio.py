@@ -22,9 +22,18 @@ from app.melody.generator import build_scale_pitches, SCALE_INTERVALS
 NOTE_NAMES = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
 
 # 依能量分級的節奏型（單位：拍，總和 4）
-RHYTHMS_LOW = [[2, 2], [1, 1, 2], [2, 1, 1], [1, 1, 1, 1]]
-RHYTHMS_MID = [[1, 1, 1, 1], [1, 0.5, 0.5, 1, 1], [1.5, 0.5, 1, 1], [1, 1, 2]]
-RHYTHMS_HIGH = [[0.5, 0.5, 1, 0.5, 0.5, 1], [1, 0.5, 0.5, 1, 1], [0.5, 0.5, 0.5, 0.5, 1, 1]]
+RHYTHMS_LOW = [
+    [2, 2], [1, 1, 2], [2, 1, 1], [1, 1, 1, 1],
+    [3, 1], [1, 3], [1.5, 1.5, 1],
+]
+RHYTHMS_MID = [
+    [1, 1, 1, 1], [1, 0.5, 0.5, 1, 1], [1.5, 0.5, 1, 1], [1, 1, 2],
+    [0.5, 0.5, 1, 1, 1], [1, 1, 1, 0.5, 0.5], [2, 0.5, 0.5, 1], [1.5, 0.5, 1.5, 0.5],
+]
+RHYTHMS_HIGH = [
+    [0.5, 0.5, 1, 0.5, 0.5, 1], [1, 0.5, 0.5, 1, 1], [0.5, 0.5, 0.5, 0.5, 1, 1],
+    [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1], [1, 0.5, 0.5, 0.5, 0.5, 1], [0.5, 1, 0.5, 1, 1],
+]
 
 
 def _extract_features(mat_notes: list) -> dict:
@@ -147,9 +156,10 @@ def generate_melody_from_material(
     rules = melody_rules()
     chord_tone_prob = rules.get("strong_beat_chord_tone_prob", 0.85)
 
-    # 音階範圍以素材音域為中心
-    low = max(48, feat["center"] - 10)
-    high = min(88, feat["center"] + 10)
+    # 音階範圍以素材音域為中心（每次加一點隨機抖動，同一段素材也會有不同音域的版本）
+    center = feat["center"] + rng.randint(-3, 3)
+    low = max(48, center - 10)
+    high = min(88, center + 10)
     scale_pitches = build_scale_pitches(feat["root_pc"], intervals, low, high)
     while len(scale_pitches) < 5:
         low = max(36, low - 4)
@@ -190,6 +200,20 @@ def generate_melody_from_material(
     idx = scale_pitches.index(motif_scale[0])
     prev_step = 0  # 上一次的移動量（音階步數），用於跳進解決
 
+    # 動機變形：第 3 小節的動機隨機選一種變化（原樣重現 / 逆行 / 移高一級），
+    # 讓「動機再現」不是死板複製
+    transform = rng.choice(["original", "reversed", "shifted"])
+    if transform == "reversed":
+        motif_bar2 = list(reversed(motif_scale))
+    elif transform == "shifted":
+        motif_bar2 = [
+            scale_pitches[min(len(scale_pitches) - 1, scale_pitches.index(p) + 1)]
+            for p in motif_scale
+        ]
+    else:
+        motif_bar2 = motif_scale
+    motif_by_bar = {0: motif_scale, 2: motif_bar2}
+
     def snap_to_chord_tone(cur_idx: int, chord_pcs: set) -> int:
         """把音就近吸附到當小節和弦的內音（在音階內找最近的和弦音）。"""
         candidates = [
@@ -214,9 +238,10 @@ def generate_melody_from_material(
             beat_pos = sum(pattern[:i])
             on_strong_beat = abs(beat_pos - round(beat_pos)) < 1e-6 and int(round(beat_pos)) % 2 == 0
 
-            if is_motif_bar and i < len(motif_scale):
-                # 動機音：素材的元素直接進旋律
-                new_idx = scale_pitches.index(motif_scale[i % len(motif_scale)])
+            if is_motif_bar and i < len(motif_by_bar[bar]):
+                # 動機音：素材的元素直接進旋律（第 3 小節可能是變形版）
+                cur_motif = motif_by_bar[bar]
+                new_idx = scale_pitches.index(cur_motif[i % len(cur_motif)])
             elif is_final_note:
                 # 收尾回主音（樂理規則：最後一個音落在主音）
                 if tonic_pitches:

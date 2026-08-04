@@ -130,6 +130,53 @@ def get_bass_pattern(
     return events
 
 
+def get_decoration_pattern(
+    chord_degree: str,
+    key: str,
+    bar_duration: float,
+    deco_type: str = "arp",
+) -> list:
+    """
+    裝飾聲部：在旋律上方的高音域補一層薄薄的織體，讓編曲不只三條線。
+
+    deco_type:
+        "arp": 8 分音符分解和弦（根-三-五-高八根 上下行），像吉他指彈/鋼琴右手
+        "pad": 整小節長音和弦鋪底（高音域、very soft）
+    """
+    from app.arrange.chords import get_chord_notes
+
+    # 高一個八度（72 附近），避開主旋律主要音域的中心
+    chord_notes = [n + 12 for n in get_chord_notes(key, chord_degree)]
+    beat = bar_duration / 4.0
+    events = []
+
+    if deco_type == "pad":
+        for note in chord_notes:
+            events.append({
+                "time": 0.0,
+                "note": note,
+                "velocity": 34,
+                "duration": bar_duration * 0.98,
+            })
+    else:
+        # 分解和弦：根-三-五-八 上行再下行，8 分音符
+        seq = [
+            chord_notes[0], chord_notes[1], chord_notes[2], chord_notes[0] + 12,
+            chord_notes[2], chord_notes[1],
+        ]
+        # 補滿 8 個 8 分音符
+        seq = (seq + seq)[:8]
+        for i, note in enumerate(seq):
+            events.append({
+                "time": i * beat * 0.5,
+                "note": note,
+                "velocity": 42,
+                "duration": beat * 0.48,
+            })
+
+    return events
+
+
 def get_harmony_pattern(
     chord_degree: str,
     key: str,

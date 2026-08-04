@@ -85,25 +85,31 @@ def generate_full_midi(
         NUM_HARMONY_VARIATIONS,
         KICK,
     )
+    from app.arrange.patterns import get_decoration_pattern
     from app.arrange.chords import get_chord_notes, select_chords_for_melody
 
-    from app.theory.knowledge import get_style
+    from app.theory.knowledge import get_style, pick_ensemble
 
     rng = random.Random(seed)
     style_cfg = get_style(style)
     if style_cfg:
+        # 指定風格：樂器與鼓由風格定義
         drum_choices = style_cfg.get("drum_variations", [])
         drum_var = rng.choice(drum_choices) if drum_choices else None  # None = 這個風格不用鼓
         bass_var = rng.choice(style_cfg.get("bass_variations") or [0])
         harmony_var = rng.choice(style_cfg.get("harmony_variations") or [0])
         melody_program = rng.choice(style_cfg.get("melody_programs") or MELODY_PROGRAM_CHOICES)
         harmony_program = rng.choice(style_cfg.get("harmony_programs") or HARMONY_PROGRAM_CHOICES)
+        decoration = style_cfg.get("decoration")
     else:
-        drum_var = rng.randrange(NUM_DRUM_VARIATIONS)
+        # 自動：每次隨機挑一組「樂團編制」（吉他彈唱、鋼琴詩人、薩克斯風之夜…）
+        ensemble = pick_ensemble(None, rng)
+        melody_program = ensemble["melody_program"]
+        harmony_program = ensemble["harmony_program"]
+        decoration = ensemble.get("decoration")
+        drum_var = rng.randrange(NUM_DRUM_VARIATIONS) if ensemble.get("drums", True) else None
         bass_var = rng.randrange(NUM_BASS_VARIATIONS)
         harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
-        melody_program = rng.choice(MELODY_PROGRAM_CHOICES)
-        harmony_program = rng.choice(HARMONY_PROGRAM_CHOICES)
 
     quantized_notes = quantize_notes(notes, bpm, grid="1/8")
 
@@ -165,7 +171,8 @@ def generate_full_midi(
     drums_track = MidiTrack()
     bass_track = MidiTrack()
     harmony_track = MidiTrack()
-    for t in (melody_track, drums_track, bass_track, harmony_track):
+    deco_track = MidiTrack()
+    for t in (melody_track, drums_track, bass_track, harmony_track, deco_track):
         mid.tracks.append(t)
 
     tempo = mido.bpm2tempo(bpm)
@@ -174,6 +181,8 @@ def generate_full_midi(
     melody_track.append(Message('program_change', program=melody_program, channel=0, time=0))
     bass_track.append(Message('program_change', program=BASS_PROGRAM, channel=1, time=0))
     harmony_track.append(Message('program_change', program=harmony_program, channel=2, time=0))
+    if decoration:
+        deco_track.append(Message('program_change', program=decoration.get("program", 0), channel=3, time=0))
 
     def sec_to_ticks(sec: float) -> int:
         return int(sec * mid.ticks_per_beat * beats_per_second)
@@ -215,6 +224,7 @@ def generate_full_midi(
     drum_all = []
     bass_all = []
     harmony_all = []
+    deco_all = []
 
     for bar in range(total_bars):
         bar_start = bar * bar_duration
@@ -256,11 +266,18 @@ def generate_full_midi(
             harmony_events = get_harmony_pattern(degree, key, bar_duration, variation=harmony_var)
         harmony_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in harmony_events)
 
+        # 裝飾聲部（第四條線：高音域分解和弦或長音鋪底）
+        if decoration:
+            deco_type = "pad" if is_outro else decoration.get("type", "arp")
+            deco_events = get_decoration_pattern(degree, key, bar_duration, deco_type=deco_type)
+            deco_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco_events)
+
     write_track_events(drums_track, 9, drum_all)
     write_track_events(bass_track, 1, bass_all)
     write_track_events(harmony_track, 2, harmony_all)
+    write_track_events(deco_track, 3, deco_all)
 
-    for track in (melody_track, drums_track, bass_track, harmony_track):
+    for track in (melody_track, drums_track, bass_track, harmony_track, deco_track):
         track.append(MetaMessage('end_of_track', time=0))
 
     output_dir = "/tmp"

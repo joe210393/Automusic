@@ -38,6 +38,16 @@ def list_styles() -> dict:
     return load_theory().get("styles", {})
 
 
+def pick_ensemble(mood: Optional[str], rng) -> dict:
+    """
+    挑一組樂團編制（主奏樂器＋和聲樂器＋裝飾聲部＋是否用鼓）。
+    有 mood 時優先挑感覺相符的編制，讓「自動」模式每次都換不同樂團。
+    """
+    ensembles = load_theory().get("ensembles", [])
+    candidates = [e for e in ensembles if mood and mood in e.get("moods", [])] or ensembles
+    return rng.choice(candidates)
+
+
 def _fit_to_bars(degrees: List[str], num_bars: int) -> List[str]:
     """
     把進行重複/裁切到指定小節數。

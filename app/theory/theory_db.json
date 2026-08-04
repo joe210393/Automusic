@@ -1,206 +1,611 @@
 {
   "description": "Automusic 樂理資料庫：作曲引擎在生成音樂前會先讀取這裡的規則。可以直接編輯這個檔案來調整作曲風格，不需要改程式。",
-
   "progressions": [
     {
       "name": "流行四和弦（Axis）",
-      "degrees": ["I", "V", "vi", "IV"],
-      "moods": ["bright", "warm", "energetic"],
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "energetic"
+      ],
       "weight": 5,
       "note": "近代流行歌最常見的進行，明亮、朗朗上口（Let It Be、多數流行金曲）"
     },
     {
       "name": "50 年代進行（Doo-wop）",
-      "degrees": ["I", "vi", "IV", "V"],
-      "moods": ["warm", "bright", "calm"],
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "calm"
+      ],
       "weight": 4,
       "note": "溫暖復古，適合抒情與兒歌（Stand by Me）"
     },
     {
       "name": "卡農進行",
-      "degrees": ["I", "V", "vi", "iii", "IV", "I", "IV", "V"],
-      "moods": ["warm", "calm", "emotional"],
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "iii",
+        "IV",
+        "I",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "calm",
+        "emotional"
+      ],
       "weight": 4,
       "note": "Pachelbel 卡農，優雅流動，8 小節一循環"
     },
     {
       "name": "抒情小調進行",
-      "degrees": ["vi", "IV", "I", "V"],
-      "moods": ["sad", "emotional", "energetic"],
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "sad",
+        "emotional",
+        "energetic"
+      ],
       "weight": 5,
       "note": "以關係小調開頭，憂鬱但有推進力，適合小調感覺的素材"
     },
     {
       "name": "民謠進行",
-      "degrees": ["I", "IV", "V", "I"],
-      "moods": ["bright", "simple", "calm"],
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "bright",
+        "simple",
+        "calm"
+      ],
       "weight": 3,
       "note": "最基本的 I-IV-V，穩定樸實，適合童謠"
     },
     {
       "name": "溫柔進行",
-      "degrees": ["I", "IV", "vi", "V"],
-      "moods": ["warm", "calm"],
+      "degrees": [
+        "I",
+        "IV",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "calm"
+      ],
       "weight": 3,
       "note": "柔和，第三小節的 vi 帶一點感性"
     },
     {
       "name": "上行推進",
-      "degrees": ["I", "iii", "IV", "V"],
-      "moods": ["bright", "energetic"],
+      "degrees": [
+        "I",
+        "iii",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic"
+      ],
       "weight": 2,
       "note": "根音逐步上行，越來越亮，適合能量高的素材"
     },
     {
       "name": "爵士二五一",
-      "degrees": ["ii", "V", "I", "I"],
-      "moods": ["calm", "jazzy"],
+      "degrees": [
+        "ii",
+        "V",
+        "I",
+        "I"
+      ],
+      "moods": [
+        "calm",
+        "jazzy"
+      ],
       "weight": 2,
       "note": "ii-V-I 是最有解決感的進行，收尾特別穩"
     },
     {
       "name": "小調敘事",
-      "degrees": ["vi", "IV", "vi", "V"],
-      "moods": ["sad", "emotional"],
+      "degrees": [
+        "vi",
+        "IV",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "sad",
+        "emotional"
+      ],
       "weight": 3,
       "note": "停留在小調色彩，說故事的感覺"
     },
     {
       "name": "搖滾動力",
-      "degrees": ["I", "IV", "V", "IV"],
-      "moods": ["rock", "energetic"],
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "IV"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
       "weight": 3,
       "note": "I-IV-V 循環不回主和弦，持續推進不停歇，搖滾常用"
     },
     {
       "name": "循環圈",
-      "degrees": ["vi", "ii", "V", "I"],
-      "moods": ["jazzy", "calm"],
+      "degrees": [
+        "vi",
+        "ii",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
       "weight": 3,
       "note": "五度循環 vi-ii-V-I，爵士標準曲的骨架，優雅有方向感"
     },
     {
       "name": "搖籃曲進行",
-      "degrees": ["I", "IV", "I", "V"],
-      "moods": ["lullaby", "calm", "simple"],
+      "degrees": [
+        "I",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "lullaby",
+        "calm",
+        "simple"
+      ],
       "weight": 3,
       "note": "只在 I、IV、V 之間輕輕擺盪，安穩無起伏，適合哄睡"
     }
   ],
-
+  "ensembles": [
+    {
+      "name": "木吉他彈唱（民謠歌手）",
+      "melody_program": 25,
+      "harmony_program": 24,
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      },
+      "drums": true,
+      "moods": [
+        "bright",
+        "warm",
+        "simple",
+        "energetic"
+      ]
+    },
+    {
+      "name": "鋼琴詩人",
+      "melody_program": 0,
+      "harmony_program": 48,
+      "decoration": {
+        "type": "arp",
+        "program": 0
+      },
+      "drums": false,
+      "moods": [
+        "emotional",
+        "calm",
+        "sad",
+        "warm"
+      ]
+    },
+    {
+      "name": "薩克斯風之夜",
+      "melody_program": 64,
+      "harmony_program": 4,
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      },
+      "drums": true,
+      "moods": [
+        "jazzy",
+        "warm",
+        "calm"
+      ]
+    },
+    {
+      "name": "弦樂室內樂",
+      "melody_program": 40,
+      "harmony_program": 48,
+      "decoration": {
+        "type": "arp",
+        "program": 45
+      },
+      "drums": false,
+      "moods": [
+        "emotional",
+        "calm",
+        "sad"
+      ]
+    },
+    {
+      "name": "電吉他樂團",
+      "melody_program": 29,
+      "harmony_program": 27,
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      },
+      "drums": true,
+      "moods": [
+        "rock",
+        "energetic",
+        "bright"
+      ]
+    },
+    {
+      "name": "音樂盒夢境",
+      "melody_program": 10,
+      "harmony_program": 48,
+      "decoration": {
+        "type": "arp",
+        "program": 8
+      },
+      "drums": false,
+      "moods": [
+        "lullaby",
+        "calm"
+      ]
+    },
+    {
+      "name": "長笛田園",
+      "melody_program": 73,
+      "harmony_program": 24,
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      },
+      "drums": false,
+      "moods": [
+        "bright",
+        "calm",
+        "simple"
+      ]
+    },
+    {
+      "name": "復古電鋼琴",
+      "melody_program": 4,
+      "harmony_program": 4,
+      "decoration": {
+        "type": "pad",
+        "program": 50
+      },
+      "drums": true,
+      "moods": [
+        "warm",
+        "jazzy",
+        "bright"
+      ]
+    },
+    {
+      "name": "小號雅緻",
+      "melody_program": 56,
+      "harmony_program": 48,
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      },
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ]
+    },
+    {
+      "name": "溫柔口哨",
+      "melody_program": 78,
+      "harmony_program": 24,
+      "decoration": {
+        "type": "arp",
+        "program": 25
+      },
+      "drums": true,
+      "moods": [
+        "simple",
+        "bright",
+        "calm"
+      ]
+    }
+  ],
   "styles": {
     "pop": {
       "label": "流行 Pop",
-      "moods": ["bright", "energetic", "warm"],
-      "bpm_range": [100, 120],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "bpm_range": [
+        100,
+        120
+      ],
       "rhythm_energy": "mid",
-      "drum_variations": [0, 1],
-      "bass_variations": [2, 0],
-      "harmony_variations": [2, 1],
-      "melody_programs": [0, 4],
-      "harmony_programs": [4, 0],
-      "note": "標準流行配置：鋼琴/電鋼琴主奏、行進感貝斯"
+      "drum_variations": [
+        0,
+        1
+      ],
+      "bass_variations": [
+        2,
+        0
+      ],
+      "harmony_variations": [
+        2,
+        1
+      ],
+      "melody_programs": [
+        0,
+        4
+      ],
+      "harmony_programs": [
+        4,
+        0
+      ],
+      "note": "標準流行配置：鋼琴/電鋼琴主奏、行進感貝斯",
+      "decoration": {
+        "type": "arp",
+        "program": 0
+      }
     },
     "ballad": {
       "label": "抒情 Ballad",
-      "moods": ["emotional", "warm", "sad"],
-      "bpm_range": [70, 85],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "bpm_range": [
+        70,
+        85
+      ],
       "rhythm_energy": "low",
-      "drum_variations": [2],
-      "bass_variations": [1],
-      "harmony_variations": [1, 0],
-      "melody_programs": [0, 11],
-      "harmony_programs": [48, 0],
-      "note": "慢板：簡約鼓、長音貝斯、弦樂鋪底、分解和弦"
+      "drum_variations": [
+        2
+      ],
+      "bass_variations": [
+        1
+      ],
+      "harmony_variations": [
+        1,
+        0
+      ],
+      "melody_programs": [
+        0,
+        11
+      ],
+      "harmony_programs": [
+        48,
+        0
+      ],
+      "note": "慢板：簡約鼓、長音貝斯、弦樂鋪底、分解和弦",
+      "decoration": {
+        "type": "arp",
+        "program": 0
+      }
     },
     "folk": {
       "label": "民謠／兒歌",
-      "moods": ["simple", "bright", "warm"],
-      "bpm_range": [88, 105],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "bpm_range": [
+        88,
+        105
+      ],
       "rhythm_energy": "mid",
-      "drum_variations": [2, 0],
-      "bass_variations": [0],
-      "harmony_variations": [2, 0],
-      "melody_programs": [24, 0],
-      "harmony_programs": [24, 4],
-      "note": "尼龍吉他主奏、根音五音交替貝斯，樸實好唱"
+      "drum_variations": [
+        2,
+        0
+      ],
+      "bass_variations": [
+        0
+      ],
+      "harmony_variations": [
+        2,
+        0
+      ],
+      "melody_programs": [
+        24,
+        0
+      ],
+      "harmony_programs": [
+        24,
+        4
+      ],
+      "note": "尼龍吉他主奏、根音五音交替貝斯，樸實好唱",
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      }
     },
     "rock": {
       "label": "搖滾 Rock",
-      "moods": ["rock", "energetic"],
-      "bpm_range": [115, 135],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "bpm_range": [
+        115,
+        135
+      ],
       "rhythm_energy": "high",
-      "drum_variations": [1, 0],
-      "bass_variations": [2],
-      "harmony_variations": [2],
-      "melody_programs": [29, 27],
-      "harmony_programs": [29, 27],
-      "note": "過載/清音電吉他、八度行進貝斯、切分大鼓"
+      "drum_variations": [
+        1,
+        0
+      ],
+      "bass_variations": [
+        2
+      ],
+      "harmony_variations": [
+        2
+      ],
+      "melody_programs": [
+        29,
+        27
+      ],
+      "harmony_programs": [
+        29,
+        27
+      ],
+      "note": "過載/清音電吉他、八度行進貝斯、切分大鼓",
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      }
     },
     "jazz": {
       "label": "爵士 Jazz",
-      "moods": ["jazzy", "calm"],
-      "bpm_range": [85, 100],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "bpm_range": [
+        85,
+        100
+      ],
       "rhythm_energy": "mid",
-      "drum_variations": [2],
-      "bass_variations": [0],
-      "harmony_variations": [0, 1],
-      "melody_programs": [11, 26],
-      "harmony_programs": [4, 26],
-      "note": "顫音琴/爵士吉他主奏、walking 感貝斯、電鋼琴鋪底"
+      "drum_variations": [
+        2
+      ],
+      "bass_variations": [
+        0
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        11,
+        26
+      ],
+      "harmony_programs": [
+        4,
+        26
+      ],
+      "note": "顫音琴/爵士吉他主奏、walking 感貝斯、電鋼琴鋪底",
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      }
     },
     "lullaby": {
       "label": "搖籃曲",
-      "moods": ["lullaby", "calm"],
-      "bpm_range": [62, 74],
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "bpm_range": [
+        62,
+        74
+      ],
       "rhythm_energy": "low",
       "drum_variations": [],
-      "bass_variations": [1],
-      "harmony_variations": [1],
-      "melody_programs": [10, 8],
-      "harmony_programs": [48],
-      "note": "音樂盒/鋼片琴主奏、無鼓、弦樂鋪底、分解和弦搖曳感"
+      "bass_variations": [
+        1
+      ],
+      "harmony_variations": [
+        1
+      ],
+      "melody_programs": [
+        10,
+        8
+      ],
+      "harmony_programs": [
+        48
+      ],
+      "note": "音樂盒/鋼片琴主奏、無鼓、弦樂鋪底、分解和弦搖曳感",
+      "decoration": {
+        "type": "arp",
+        "program": 8
+      }
     }
   },
-
   "cadences": {
     "authentic": {
-      "degrees": ["V", "I"],
+      "degrees": [
+        "V",
+        "I"
+      ],
       "note": "正格終止：最強的收尾感，歌曲結尾一律使用"
     },
     "plagal": {
-      "degrees": ["IV", "I"],
+      "degrees": [
+        "IV",
+        "I"
+      ],
       "note": "變格終止（阿們終止）：柔和的收尾，可用於段落中間"
     },
     "half": {
-      "degrees": ["I", "V"],
+      "degrees": [
+        "I",
+        "V"
+      ],
       "note": "半終止：停在 V 有懸念，用於段落中間製造期待"
     }
   },
-
   "melody_rules": {
     "strong_beat_chord_tone_prob": 0.85,
     "stepwise_preference": "旋律以級進（相鄰音）為主，跳進不超過三成",
     "max_leap_scale_steps": 4,
     "leap_resolution": "大跳（超過 2 個音階音）之後，下一個音要反向級進，聽起來才自然",
-    "phrase_end_stable_tones": [0, 4, 7],
+    "phrase_end_stable_tones": [
+      0,
+      4,
+      7
+    ],
     "final_note": "整段旋律的最後一個音落在主音，並拉長時值",
     "climax": "全曲最高音只出現一次，安排在中後段（黃金分割附近）最有張力",
     "note": "strong_beat_chord_tone_prob：強拍上落在當小節和弦內音的機率；phrase_end_stable_tones：樂句結尾允許的音（相對主音的半音數：主音/三音/五音）"
   },
-
   "voice_leading": {
     "max_movement_semitones": 5,
     "note": "和聲聲部移動越小越平滑；共同音保留，其他聲部就近移動"
   },
-
   "arrangement_rules": {
     "bass": "低音以和弦根音為主，強拍必為根音，弱拍可加五音",
     "harmony": "和聲聲部彈和弦內音，避免和主旋律同音域打架",
     "drums": "大鼓踩 1、3 拍，小鼓在 2、4 拍（backbeat），段落結尾可加過門",
     "dynamics": "強拍力度略大於弱拍，段落開頭比結尾有力"
   },
-
   "llm_prompt_rules": [
     "優先從這些經典進行中挑選或變化：I-V-vi-IV（流行）、I-vi-IV-V（50年代）、vi-IV-I-V（抒情）、I-IV-V-I（民謠）、ii-V-I（爵士收尾）",
     "相鄰兩小節盡量共用至少一個音（共同音），聽起來才連貫",
