@@ -1082,7 +1082,7 @@
       const ctrl = new AbortController();
       vpSingCtrl = ctrl;
       vpSingBtn.disabled = true;
-      setStatus(vpSingStatus, '🎤 正在用你的聲紋逐字合成歌聲並混音… 需要一到數分鐘，請稍候。');
+      setStatus(vpSingStatus, '🎤 正在合成歌聲底稿，並用 AI 聲音轉換模型重新生成自然人聲… 依歌曲長度約需 2-5 分鐘，請耐心等候。');
 
       let stallTimer = null;
       try {
@@ -1099,6 +1099,7 @@
           throw new Error(`HTTP ${res.status}: ${errText}`);
         }
         const contentType = res.headers.get('Content-Type') || 'audio/wav';
+        const vocalEngine = res.headers.get('X-Vocal-Engine') || '';
         const total = Number(res.headers.get('Content-Length')) || 0;
         const reader = res.body.getReader();
         const chunks = [];
@@ -1127,7 +1128,12 @@
         dl.href = url;
         dl.download = contentType.includes('mpeg') ? 'song-sung.mp3' : 'song-sung.wav';
         dl.style.display = 'inline-block';
-        setStatus(vpSingStatus, '完成！這是用你的聲紋唱出的歌。');
+        setStatus(
+          vpSingStatus,
+          vocalEngine === 'seed-vc'
+            ? '完成！人聲由 AI 聲音轉換模型（Seed-VC）生成，這是用你的聲紋唱出的歌。'
+            : '完成！（此伺服器未啟用 AI 聲音轉換，人聲為合成器版本。）'
+        );
         audio.play().catch(() => {});
       } catch (err) {
         if (ctrl.superseded) return;

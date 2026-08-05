@@ -390,6 +390,33 @@ async def voiceprint_reset():
     return {"ok": True}
 
 
+# ---------- 神經歌聲轉換服務（給雲端部署委託本地電腦用） ----------
+
+@app.post("/vc/convert")
+def vc_convert(source: UploadFile = File(...), reference: UploadFile = File(...)):
+    """
+    用本機的 Seed-VC 做歌聲轉換：source 是聲碼器人聲底稿，reference 是音色參考。
+    雲端（Zeabur）沒有 GPU/模型時，可透過這個端點把轉換交給本地電腦跑。
+    """
+    from app.voice import neural_vc
+
+    if not neural_vc.is_available():
+        raise HTTPException(status_code=501, detail="此伺服器未安裝 Seed-VC")
+
+    import tempfile
+    src_path = tempfile.mktemp(prefix="vc_src_", suffix=".wav")
+    ref_path = tempfile.mktemp(prefix="vc_ref_", suffix=".wav")
+    with open(src_path, "wb") as f:
+        f.write(source.file.read())
+    with open(ref_path, "wb") as f:
+        f.write(reference.file.read())
+
+    out = neural_vc.convert_voice_local(src_path, ref_path)
+    if not out:
+        raise HTTPException(status_code=500, detail="Seed-VC 轉換失敗")
+    return FileResponse(out, media_type="audio/wav", filename="converted.wav")
+
+
 @app.post("/generate-lyrics", response_model=LyricsResponse)
 async def generate_lyrics(request: LyricsRequest):
     """
@@ -755,7 +782,8 @@ def render_audio(request: RenderRequest):
     if request.use_voiceprint:
         import numpy as np
         import soundfile as sf
-        from app.voice.sing import build_vocal_track
+        from app.voice.sing import build_vocal_track, apply_reverb, load_mono
+        from app.voice import neural_vc
 
         manifest = _load_voiceprint_manifest()
         if not manifest.get("lines"):
@@ -777,7 +805,27 @@ def render_audio(request: RenderRequest):
         if vocal is None:
             raise HTTPException(status_code=400, detail="聲紋錄音無法使用，請在步驟 5 重錄")
 
-        # 人聲響度對齊伴奏（略突出但不搶戲，太大聲會放大合成瑕疵）
+        # 神經歌聲轉換（Seed-VC）：把聲碼器底稿重新生成成自然人聲。
+        # 沒裝模型（例如雲端容器）就用底稿，不會失敗。
+        vocal_engine = "vocoder"
+        ref_path = neural_vc.build_reference_wav(VOICEPRINT_DIR, manifest)
+        if ref_path and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
+            src_path = "/tmp/vocal_draft.wav"
+            sf.write(src_path, vocal, 44100)
+            converted = neural_vc.convert_voice(src_path, ref_path)
+            if converted:
+                v = load_mono(converted, 44100)
+                # 對齊長度（模型輸出可能差幾個 frame）
+                if len(v) < len(vocal):
+                    v = np.pad(v, (0, len(vocal) - len(v)))
+                vocal = v[: len(vocal)]
+                vocal_engine = "seed-vc"
+            else:
+                print("[render-audio] 神經轉換不可用，改用聲碼器底稿")
+
+        vocal = apply_reverb(vocal)
+
+        # 人聲響度對齊伴奏（略突出但不搶戲）
         acc_rms = float(np.sqrt(np.mean(acc ** 2)))
         voc_rms = float(np.sqrt(np.mean(vocal[vocal != 0] ** 2))) if np.any(vocal != 0) else 0.0
         if voc_rms > 1e-6:
@@ -792,10 +840,11 @@ def render_audio(request: RenderRequest):
 
         sung_path = "/tmp/full_render_sung.wav"
         sf.write(sung_path, mix, 44100)
+        headers = {"X-Vocal-Engine": vocal_engine}
         mp3 = compress_to_mp3(sung_path)
         if mp3:
-            return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
-        return FileResponse(sung_path, media_type="audio/wav", filename="song.wav")
+            return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3", headers=headers)
+        return FileResponse(sung_path, media_type="audio/wav", filename="song.wav", headers=headers)
 
     mp3 = compress_to_mp3(wav_path)
     if mp3:

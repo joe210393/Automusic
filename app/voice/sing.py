@@ -278,14 +278,20 @@ def build_vocal_track(
                 continue
             mix[start:end] += y[: end - start]
 
-    # 簡單殘響（兩個延遲抽頭），讓人聲跟有殘響的伴奏融在一起
-    d1, d2 = int(0.09 * fs), int(0.17 * fs)
-    rev = mix.copy()
-    rev[d1:] += mix[:-d1] * 0.28
-    rev[d2:] += mix[:-d2] * 0.16
-    mix = rev
-
     peak = float(np.max(np.abs(mix)))
     if peak > 0.95:
         mix *= 0.95 / peak
     return mix
+
+
+def apply_reverb(x: np.ndarray, fs: int = 44100) -> np.ndarray:
+    """簡單殘響（兩個延遲抽頭），讓人聲跟有殘響的伴奏融在一起。
+    要在神經聲音轉換「之後」才加，殘響進模型會干擾轉換品質。"""
+    d1, d2 = int(0.09 * fs), int(0.17 * fs)
+    rev = x.copy()
+    rev[d1:] += x[:-d1] * 0.28
+    rev[d2:] += x[:-d2] * 0.16
+    peak = float(np.max(np.abs(rev)))
+    if peak > 0.95:
+        rev *= 0.95 / peak
+    return rev
