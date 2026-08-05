@@ -426,6 +426,15 @@ async def lm_proxy(path: str, request: Request):
     )
 
 
+@app.api_route("/v1/{path:path}", methods=["GET", "POST"])
+async def lm_proxy_v1(path: str, request: Request):
+    """
+    /v1/* 直通 LM Studio：讓其他專案沿用舊的 ngrok 網址
+    （以前這個網域直接指向 LM Studio，現在指向 FastAPI，補這條保持相容）。
+    """
+    return await lm_proxy("v1/" + path, request)
+
+
 # ---------- 神經歌聲轉換服務（給雲端部署委託本地電腦用） ----------
 
 @app.post("/vc/convert")
