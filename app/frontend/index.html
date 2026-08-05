@@ -121,8 +121,8 @@
       收集的聲音素材是<b>創作的靈感 DNA</b>——它不會直接出現在歌裡，而是化成旋律與感覺。
     </p>
     <p style="font-size:12px;color:#6b7280;max-width:720px;line-height:1.8;">
-      <b>1</b> 收集素材 → <b>2</b> 素材轉旋律 → <b>3</b> 素材轉歌曲
-      → <span style="opacity:.55;"><b>4</b> 關鍵字產生歌詞（開發中）→ <b>5</b> 人聲錄音（開發中）→ <b>6</b> 用你的聲紋唱出歌詞、合成完整歌曲（開發中）</span>
+      <b>1</b> 收集素材 → <b>2</b> 素材轉旋律 → <b>3</b> 素材轉歌曲 → <b>4</b> 關鍵字產生歌詞
+      → <span style="opacity:.55;"><b>5</b> 人聲錄音（開發中）→ <b>6</b> 用你的聲紋唱出歌詞、合成完整歌曲（開發中）</span>
     </p>
 
     <!-- 步驟 1：收集聲音素材 -->
@@ -225,6 +225,36 @@
       </div>
       <audio id="songAudio" controls style="display:none;"></audio>
       <a id="audioDownloadLink" href="#" download="song.wav" style="display:none;font-size:13px;">下載音檔（WAV）</a>
+    </div>
+
+    <!-- 步驟 4：關鍵字填詞 -->
+    <div class="card">
+      <div class="section-title">步驟 4｜關鍵字填詞（搭配風格產生歌詞）</div>
+      <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
+        輸入幾個關鍵字，AI 會依步驟 2 選的風格寫出主歌 4 句＋副歌 4 句。
+        歌詞會在步驟 6 由你的聲紋唱出來。
+      </p>
+      <div class="row" style="margin-top:6px;">
+        <div style="flex:1;min-width:220px;">
+          <label for="lyricsKeywordsInput">關鍵字（用逗號或空格分隔）</label>
+          <input id="lyricsKeywordsInput" type="text" placeholder="例如：海邊、夏天、好朋友"
+                 style="padding:8px 12px;border-radius:999px;border:1px solid #d1d5db;font-size:14px;width:100%;box-sizing:border-box;" />
+        </div>
+        <div style="margin-top:16px;">
+          <button id="genLyricsBtn">✍️ 產生歌詞</button>
+        </div>
+        <div style="margin-top:16px;">
+          <button id="regenLyricsBtn" class="secondary" disabled>🔁 換一版</button>
+        </div>
+      </div>
+      <div id="lyricsStatus" class="status"></div>
+      <div id="lyricsResult" style="display:none;margin-top:12px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;padding:14px 18px;">
+        <div id="lyricsTitle" style="font-size:16px;font-weight:700;margin-bottom:8px;"></div>
+        <div style="font-size:12px;color:#9ca3af;margin-bottom:2px;">主歌</div>
+        <div id="lyricsVerse" style="font-size:14px;line-height:1.9;white-space:pre-line;margin-bottom:10px;"></div>
+        <div style="font-size:12px;color:#9ca3af;margin-bottom:2px;">副歌</div>
+        <div id="lyricsChorus" style="font-size:14px;line-height:1.9;white-space:pre-line;font-weight:600;"></div>
+      </div>
     </div>
 
     <!-- 進階：免錄音直接生成旋律 -->
@@ -807,6 +837,61 @@
       });
     });
 
+    // --- 步驟 4：關鍵字填詞 ---
+    const lyricsKeywordsInput = document.getElementById('lyricsKeywordsInput');
+    const genLyricsBtn = document.getElementById('genLyricsBtn');
+    const regenLyricsBtn = document.getElementById('regenLyricsBtn');
+    const lyricsStatus = document.getElementById('lyricsStatus');
+    const lyricsResult = document.getElementById('lyricsResult');
+    let lastLyrics = null; // { title, verse, chorus }
+
+    async function generateLyricsAI() {
+      const keywords = lyricsKeywordsInput.value
+        .split(/[，,、\s]+/)
+        .map((k) => k.trim())
+        .filter(Boolean);
+      if (!keywords.length) {
+        setStatus(lyricsStatus, '請先輸入至少一個關鍵字，例如：海邊、夏天、好朋友。');
+        return;
+      }
+      genLyricsBtn.disabled = true;
+      regenLyricsBtn.disabled = true;
+      const style = styleSelect.value !== 'auto' ? styleSelect.value : undefined;
+      setStatus(lyricsStatus, `✍️ AI 作詞中（風格：${style ? styleSelect.options[styleSelect.selectedIndex].text : '自由發揮'}）…本地 AI 約需 1-2 分鐘，請稍候。`);
+      try {
+        const res = await fetch('/generate-lyrics-ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ keywords, style }),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        const data = await res.json(); // { title, verse, chorus, source }
+        lastLyrics = { title: data.title, verse: data.verse, chorus: data.chorus };
+        document.getElementById('lyricsTitle').textContent = `《${data.title}》`;
+        document.getElementById('lyricsVerse').textContent = data.verse;
+        document.getElementById('lyricsChorus').textContent = data.chorus;
+        lyricsResult.style.display = 'block';
+        setStatus(
+          lyricsStatus,
+          data.source === 'lm_studio'
+            ? '完成！不滿意可按「🔁 換一版」。歌詞會在步驟 6 由你的聲紋唱出。'
+            : '完成（AI 暫時連不上，使用簡易模板）。可按「🔁 換一版」重試 AI。'
+        );
+      } catch (err) {
+        console.error(err);
+        setStatus(lyricsStatus, '產生歌詞失敗：' + err.message);
+      } finally {
+        genLyricsBtn.disabled = false;
+        regenLyricsBtn.disabled = false;
+      }
+    }
+
+    genLyricsBtn.addEventListener('click', generateLyricsAI);
+    regenLyricsBtn.addEventListener('click', generateLyricsAI);
+
     // 編曲 seed：同一個 seed 產生相同的伴奏與音色，「重新製作」時換新 seed
     let currentRenderSeed = Math.floor(Math.random() * 1e9);
 
@@ -818,10 +903,12 @@
         notes,
         bpm,
         key,
-        lyrics: {
-          verse: '輕輕地，我們一起，唱出心中的歌。',
-          chorus: '這是，創造的，屬於我們的旋律。',
-        },
+        lyrics: lastLyrics
+          ? { verse: lastLyrics.verse, chorus: lastLyrics.chorus }
+          : {
+              verse: '輕輕地，我們一起，唱出心中的歌。',
+              chorus: '這是，創造的，屬於我們的旋律。',
+            },
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
         seed: currentRenderSeed,
         style: styleSelect.value !== 'auto' ? styleSelect.value : undefined,

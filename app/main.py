@@ -116,6 +116,19 @@ class LyricsResponse(BaseModel):
     chorus: str
 
 
+class AILyricsRequest(BaseModel):
+    keywords: List[str]           # 關鍵字，例如 ["海邊", "夏天", "朋友"]
+    style: Optional[str] = None   # pop/ballad/folk/rock/jazz/lullaby，影響歌詞語氣
+    seed: Optional[int] = None    # 換一版時給不同 seed（目前僅影響備援模板）
+
+
+class AILyricsResponse(BaseModel):
+    title: str
+    verse: str    # 主歌，多行以換行分隔
+    chorus: str   # 副歌，多行以換行分隔
+    source: str = "lm_studio"  # lm_studio（本地 AI）或 template（模板備援）
+
+
 class Note(BaseModel):
     start: float
     end: float
@@ -290,6 +303,75 @@ async def generate_lyrics(request: LyricsRequest):
     
     result = gen_lyrics(request.keywords, request.emotion)
     return LyricsResponse(**result)
+
+
+@app.post("/generate-lyrics-ai", response_model=AILyricsResponse)
+def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threadpool，LM 推論不會卡住其他請求
+    """
+    步驟 4｜關鍵字填詞：用本地 LM Studio（gemma）依關鍵字＋風格寫出主歌與副歌。
+    LM 連不上時退回模板式歌詞，不會失敗。
+    """
+    keywords = [k.strip() for k in request.keywords if k and k.strip()]
+    if not keywords:
+        raise HTTPException(status_code=400, detail="請至少輸入一個關鍵字")
+    keywords = keywords[:6]  # 太多關鍵字反而寫不好
+
+    from app.lyrics.ai_writer import build_lyrics_prompts, parse_lyrics_json
+
+    system_prompt, user_prompt = build_lyrics_prompts(keywords, request.style)
+
+    for url in LM_STUDIO_URLS:
+        try:
+            resp = requests.post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "1",
+                },
+                json={
+                    "model": LM_STUDIO_MODEL,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.9,  # 作詞要有創意，溫度開高一點
+                    # gemma-4 是推理模型，會先思考再寫詞，token 要留多一點
+                    "max_tokens": 2048,
+                },
+                timeout=(4, 300),
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
+
+            message = resp.json()["choices"][0]["message"]
+            content = message.get("content") or ""
+            if "{" not in content:
+                content = message.get("reasoning_content") or content
+
+            parsed = parse_lyrics_json(content)
+            if not parsed:
+                raise RuntimeError("無法解析 LM Studio 回傳的歌詞 JSON")
+            return AILyricsResponse(**parsed, source="lm_studio")
+        except Exception as e:
+            print(f"[generate-lyrics-ai] LM Studio 網址失敗（{url}）：{e}")
+            continue
+
+    # 全部連不上：退回模板式歌詞
+    print("[generate-lyrics-ai] 所有 LM Studio 網址都不可用，改用模板歌詞")
+    from app.lyrics.generator import generate_lyrics as gen_lyrics
+
+    style_emotion = {
+        "pop": "開心", "rock": "開心",
+        "ballad": "溫暖", "lullaby": "溫暖",
+        "folk": "平靜", "jazz": "平靜",
+    }
+    result = gen_lyrics(keywords, style_emotion.get(request.style or "", "溫暖"))
+    return AILyricsResponse(
+        title=keywords[0] + "之歌",
+        verse=result["verse"],
+        chorus=result["chorus"],
+        source="template",
+    )
 
 
 @app.post("/generate-melody", response_model=MelodyResponse)
