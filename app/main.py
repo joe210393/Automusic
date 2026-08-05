@@ -751,8 +751,9 @@ def render_audio(request: RenderRequest):
         lyrics=request.lyrics.dict(),
         chord_overrides=request.chord_overrides,
         seed=request.seed,
-        # 有人聲（原始錄音混入或聲紋演唱）時，MIDI 旋律退居小聲跟奏
-        melody_gain=0.4 if voice_path else (0.5 if request.use_voiceprint else 1.0),
+        # 聲紋演唱時關掉 MIDI 主旋律（兩個聲音疊在一起超魔音）；
+        # 只有混入原始錄音時才留小聲跟奏
+        melody_gain=0.0 if request.use_voiceprint else (0.4 if voice_path else 1.0),
         style=request.style,
         duration_seconds=request.duration_seconds,
     )

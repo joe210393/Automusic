@@ -1,10 +1,9 @@
 """
-神經歌聲轉換（Seed-VC）：把 WORLD 聲碼器合成的「音高正確但機械」的人聲底稿，
-用零樣本聲音轉換模型重新生成成自然的人聲（音色來自使用者的聲紋錄音，不需訓練）。
+神經歌聲轉換（Seed-VC）：
+把「音高／節奏正確、音色仍像說話」的人聲底稿，用零樣本模型轉成更自然的歌聲。
+音色參考來自步驟 5 的聲紋錄音，不需訓練。
 
-Seed-VC 安裝在獨立目錄（預設 ~/seed-vc，自帶 venv），用 subprocess 呼叫，
-跟主應用的依賴完全隔離。沒安裝的環境（例如 Zeabur 容器）自動退回聲碼器輸出，
-或透過 VC_REMOTE_URLS 把轉換委託給有裝 Seed-VC 的機器（例如經 ngrok 的本地電腦）。
+長音檔會切成約 12 秒一段分開轉換再接回（長檔一次丟進去品質很差）。
 """
 import os
 import subprocess
@@ -17,16 +16,16 @@ import soundfile as sf
 
 SEED_VC_DIR = Path(os.getenv("SEED_VC_DIR", str(Path.home() / "seed-vc")))
 
-# 雲端部署時把轉換委託給本地電腦（逗號分隔多個網址，依序嘗試）。
-# 預設走 ngrok 固定網域（指向本地 8080 的 FastAPI，它有 /vc/convert）。
 _default_vc_urls = "https://tactually-venerable-inez.ngrok-free.dev"
 VC_REMOTE_URLS = [
     u.strip() for u in os.getenv("VC_REMOTE_URLS", _default_vc_urls).split(",") if u.strip()
 ]
 
+CHUNK_SECONDS = 12.0
+CHUNK_OVERLAP = 0.25  # 秒，交叉淡入淡出
+
 
 def is_available() -> bool:
-    """本機是否裝好 Seed-VC（原始碼＋自己的 venv）。"""
     return (
         (SEED_VC_DIR / "inference.py").exists()
         and (SEED_VC_DIR / ".venv" / "bin" / "python").exists()
@@ -34,7 +33,6 @@ def is_available() -> bool:
 
 
 def build_reference_wav(voiceprint_dir: Path, manifest: dict, max_seconds: float = 20.0) -> Optional[str]:
-    """把幾句聲紋錄音串成一個音色參考檔（Seed-VC 建議 1~30 秒）。"""
     from app.voice.sing import load_mono, trim_silence
 
     fs = 44100
@@ -61,18 +59,22 @@ def build_reference_wav(voiceprint_dir: Path, manifest: dict, max_seconds: float
     if not parts:
         return None
     ref = np.concatenate(parts)
+    # 響度正規化，避免參考音太小聲讓轉換飄掉
+    peak = float(np.max(np.abs(ref)))
+    if peak > 1e-6:
+        ref = ref * (0.8 / peak)
     ref_path = tempfile.mktemp(prefix="vc_ref_", suffix=".wav")
     sf.write(ref_path, ref, fs)
     return ref_path
 
 
-def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: int = 30,
-                        timeout: int = 1200) -> Optional[str]:
-    """在本機跑 Seed-VC 歌聲轉換（f0-condition 保留旋律音高）。回傳輸出 wav 路徑。"""
-    if not is_available():
-        return None
-    out_dir = tempfile.mkdtemp(prefix="seedvc_out_")
-    env = {**os.environ, "PYTORCH_ENABLE_MPS_FALLBACK": "1"}
+def _run_seedvc_once(source_wav: str, reference_wav: str, out_dir: str,
+                     diffusion_steps: int, timeout: int) -> Optional[str]:
+    env = {
+        **os.environ,
+        "PYTORCH_ENABLE_MPS_FALLBACK": "1",
+        "HOME": os.environ.get("HOME") or str(Path.home()),
+    }
     cmd = [
         str(SEED_VC_DIR / ".venv" / "bin" / "python"), "inference.py",
         "--source", source_wav,
@@ -81,7 +83,7 @@ def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: in
         "--diffusion-steps", str(diffusion_steps),
         "--length-adjust", "1.0",
         "--inference-cfg-rate", "0.7",
-        "--f0-condition", "True",       # 歌聲轉換：跟著底稿的旋律音高
+        "--f0-condition", "True",
         "--auto-f0-adjust", "False",
         "--semi-tone-shift", "0",
     ]
@@ -91,17 +93,91 @@ def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: in
             check=True, capture_output=True, timeout=timeout,
         )
     except subprocess.CalledProcessError as e:
-        print(f"[neural-vc] Seed-VC 執行失敗：{e.stderr.decode(errors='ignore')[-500:]}")
+        print(f"[neural-vc] Seed-VC 失敗：{e.stderr.decode(errors='ignore')[-800:]}")
         return None
     except Exception as e:
-        print(f"[neural-vc] Seed-VC 執行失敗：{e}")
+        print(f"[neural-vc] Seed-VC 失敗：{e}")
         return None
     wavs = sorted(Path(out_dir).glob("*.wav"))
     return str(wavs[0]) if wavs else None
 
 
-def convert_voice_remote(source_wav: str, reference_wav: str, timeout: int = 1200) -> Optional[str]:
-    """把轉換委託給遠端機器的 /vc/convert（例如 Zeabur → 本地 Mac）。"""
+def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: int = 40,
+                        timeout: int = 1800) -> Optional[str]:
+    """本機 Seed-VC；長音檔自動切片轉換。"""
+    if not is_available():
+        return None
+
+    x, fs = sf.read(source_wav, dtype="float64")
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+    duration = len(x) / fs
+
+    # 短於一個 chunk：直接轉
+    if duration <= CHUNK_SECONDS + 1.0:
+        out_dir = tempfile.mkdtemp(prefix="seedvc_out_")
+        return _run_seedvc_once(source_wav, reference_wav, out_dir, diffusion_steps, timeout)
+
+    # 長音檔：只轉「有聲音」的段落，靜音直接保留（省時間也比較穩）
+    print(f"[neural-vc] 音檔 {duration:.1f}s，切成約 {CHUNK_SECONDS:.0f}s 一段轉換")
+    chunk_n = int(CHUNK_SECONDS * fs)
+    hop = int((CHUNK_SECONDS - CHUNK_OVERLAP) * fs)
+    out = np.zeros_like(x)
+    weight = np.zeros_like(x)
+    fade = int(CHUNK_OVERLAP * fs)
+    window = np.ones(chunk_n)
+    if fade > 0 and fade * 2 < chunk_n:
+        window[:fade] = np.linspace(0, 1, fade)
+        window[-fade:] = np.linspace(1, 0, fade)
+
+    pos = 0
+    idx = 0
+    while pos < len(x):
+        end = min(pos + chunk_n, len(x))
+        seg = x[pos:end]
+        # 幾乎靜音的段落跳過轉換
+        if float(np.sqrt(np.mean(seg ** 2))) < 1e-4:
+            out[pos:end] += seg
+            weight[pos:end] += 1.0
+            pos += hop
+            idx += 1
+            continue
+
+        seg_path = tempfile.mktemp(prefix=f"vc_chunk_{idx}_", suffix=".wav")
+        sf.write(seg_path, seg, fs)
+        out_dir = tempfile.mkdtemp(prefix=f"seedvc_chunk_{idx}_")
+        converted = _run_seedvc_once(
+            seg_path, reference_wav, out_dir, diffusion_steps,
+            timeout=max(180, int(timeout * (end - pos) / len(x) * 2)),
+        )
+        if converted:
+            y, yfs = sf.read(converted, dtype="float64")
+            if y.ndim > 1:
+                y = y.mean(axis=1)
+            if yfs != fs:
+                n = int(len(y) * fs / yfs)
+                y = np.interp(np.linspace(0, len(y) - 1, n), np.arange(len(y)), y)
+            if len(y) < len(seg):
+                y = np.pad(y, (0, len(seg) - len(y)))
+            y = y[: len(seg)]
+            w = window[: len(seg)]
+            out[pos:end] += y * w
+            weight[pos:end] += w
+        else:
+            # 這段失敗就保留底稿，不要整首報廢
+            out[pos:end] += seg
+            weight[pos:end] += 1.0
+        pos += hop
+        idx += 1
+
+    weight = np.maximum(weight, 1e-6)
+    out = out / weight
+    out_path = tempfile.mktemp(prefix="vc_stitched_", suffix=".wav")
+    sf.write(out_path, out, fs)
+    return out_path
+
+
+def convert_voice_remote(source_wav: str, reference_wav: str, timeout: int = 1800) -> Optional[str]:
     if not VC_REMOTE_URLS:
         return None
     import requests
@@ -113,12 +189,14 @@ def convert_voice_remote(source_wav: str, reference_wav: str, timeout: int = 120
                 resp = requests.post(
                     url,
                     headers={"ngrok-skip-browser-warning": "1"},
-                    files={"source": ("source.wav", sf_, "audio/wav"),
-                           "reference": ("reference.wav", rf_, "audio/wav")},
+                    files={
+                        "source": ("source.wav", sf_, "audio/wav"),
+                        "reference": ("reference.wav", rf_, "audio/wav"),
+                    },
                     timeout=(8, timeout),
                 )
             if resp.status_code != 200 or len(resp.content) < 1000:
-                raise RuntimeError(f"HTTP {resp.status_code}")
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:200]}")
             out_path = tempfile.mktemp(prefix="vc_remote_", suffix=".wav")
             with open(out_path, "wb") as f:
                 f.write(resp.content)
@@ -130,8 +208,9 @@ def convert_voice_remote(source_wav: str, reference_wav: str, timeout: int = 120
 
 
 def convert_voice(source_wav: str, reference_wav: str) -> Optional[str]:
-    """先試本機 Seed-VC，再試遠端委託；都不行回傳 None（改用聲碼器底稿）。"""
-    out = convert_voice_local(source_wav, reference_wav)
-    if out:
-        return out
+    """本機優先；本機沒裝 Seed-VC 才委託遠端。"""
+    if is_available():
+        out = convert_voice_local(source_wav, reference_wav)
+        if out:
+            return out
     return convert_voice_remote(source_wav, reference_wav)
