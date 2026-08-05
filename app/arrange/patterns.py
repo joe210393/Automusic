@@ -137,15 +137,16 @@ def get_decoration_pattern(
     deco_type: str = "arp",
 ) -> list:
     """
-    裝飾聲部：在旋律上方的高音域補一層薄薄的織體，讓編曲不只三條線。
+    裝飾聲部：補一層織體，讓編曲不只鼓／貝斯／和聲。
 
     deco_type:
-        "arp": 8 分音符分解和弦（根-三-五-高八根 上下行），像吉他指彈/鋼琴右手
-        "pad": 整小節長音和弦鋪底（高音域、very soft）
+        "arp": 8 分音符分解和弦（吉他指彈／鋼琴右手感）
+        "pad": 整小節長音和弦鋪底
+        "sustain": 只拉長 3、5 音（適合小提琴／豎笛／長笛對位）
+        "hits": 第 1、3 拍短和弦點綴（適合銅管）
     """
     from app.arrange.chords import get_chord_notes
 
-    # 落在中音域（60-72 附近）：在旋律下方織體，太高會刺耳
     chord_notes = get_chord_notes(key, chord_degree)
     beat = bar_duration / 4.0
     events = []
@@ -158,13 +159,30 @@ def get_decoration_pattern(
                 "velocity": 30,
                 "duration": bar_duration * 0.98,
             })
+    elif deco_type == "sustain":
+        # 三音＋五音長音，音量壓低當對位，不搶主旋律
+        for note in chord_notes[1:3]:
+            events.append({
+                "time": beat * 0.5,
+                "note": min(84, note + 12),
+                "velocity": 38,
+                "duration": bar_duration * 0.7,
+            })
+    elif deco_type == "hits":
+        for i, when in enumerate((0.0, beat * 2)):
+            for note in chord_notes:
+                events.append({
+                    "time": when,
+                    "note": note,
+                    "velocity": 48 if i == 0 else 40,
+                    "duration": beat * 0.35,
+                })
     else:
         # 分解和弦：根-三-五-八 上行再下行，8 分音符
         seq = [
             chord_notes[0], chord_notes[1], chord_notes[2], chord_notes[0] + 12,
             chord_notes[2], chord_notes[1],
         ]
-        # 補滿 8 個 8 分音符
         seq = (seq + seq)[:8]
         for i, note in enumerate(seq):
             events.append({

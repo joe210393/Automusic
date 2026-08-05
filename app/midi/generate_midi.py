@@ -118,13 +118,21 @@ def generate_full_midi(
         harmony_var = rng.choice(style_cfg.get("harmony_variations") or [0])
         melody_program = rng.choice(style_cfg.get("melody_programs") or MELODY_PROGRAM_CHOICES)
         harmony_program = rng.choice(style_cfg.get("harmony_programs") or HARMONY_PROGRAM_CHOICES)
-        decoration = style_cfg.get("decoration")
+        deco_pool = style_cfg.get("decoration_choices") or (
+            [style_cfg["decoration"]] if style_cfg.get("decoration") else []
+        )
+        decoration = rng.choice(deco_pool) if deco_pool else None
+        deco2_pool = style_cfg.get("decoration2_choices") or (
+            [style_cfg["decoration2"]] if style_cfg.get("decoration2") else []
+        )
+        decoration2 = rng.choice(deco2_pool) if deco2_pool else None
     else:
-        # 自動：每次隨機挑一組「樂團編制」（吉他彈唱、鋼琴詩人、薩克斯風之夜…）
+        # 自動：每次隨機挑一組「樂團編制」（吉他彈唱、鋼琴詩人、銅管／木管…）
         ensemble = pick_ensemble(None, rng)
         melody_program = ensemble["melody_program"]
         harmony_program = ensemble["harmony_program"]
         decoration = ensemble.get("decoration")
+        decoration2 = ensemble.get("decoration2")
         drum_var = rng.randrange(NUM_DRUM_VARIATIONS) if ensemble.get("drums", True) else None
         bass_var = rng.randrange(NUM_BASS_VARIATIONS)
         harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
@@ -191,7 +199,8 @@ def generate_full_midi(
     bass_track = MidiTrack()
     harmony_track = MidiTrack()
     deco_track = MidiTrack()
-    for t in (melody_track, drums_track, bass_track, harmony_track, deco_track):
+    deco2_track = MidiTrack()
+    for t in (melody_track, drums_track, bass_track, harmony_track, deco_track, deco2_track):
         mid.tracks.append(t)
 
     tempo = mido.bpm2tempo(bpm)
@@ -202,6 +211,8 @@ def generate_full_midi(
     harmony_track.append(Message('program_change', program=harmony_program, channel=2, time=0))
     if decoration:
         deco_track.append(Message('program_change', program=decoration.get("program", 0), channel=3, time=0))
+    if decoration2:
+        deco2_track.append(Message('program_change', program=decoration2.get("program", 0), channel=4, time=0))
 
     def sec_to_ticks(sec: float) -> int:
         return int(sec * mid.ticks_per_beat * beats_per_second)
@@ -244,6 +255,7 @@ def generate_full_midi(
     bass_all = []
     harmony_all = []
     deco_all = []
+    deco2_all = []
 
     for bar in range(total_bars):
         bar_start = bar * bar_duration
@@ -293,18 +305,26 @@ def generate_full_midi(
                                                  variation=0 if is_quiet else harmony_var)
         harmony_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in harmony_events)
 
-        # 裝飾聲部（第四條線：高音域分解和弦或長音鋪底；主歌段不進，留給副歌）
+        # 裝飾聲部 1／2（小提琴、長笛、豎笛、銅管等織體；主歌段不進，留給副歌）
         if decoration and not is_quiet:
             deco_type = "pad" if is_outro else decoration.get("type", "arp")
             deco_events = get_decoration_pattern(degree, key, bar_duration, deco_type=deco_type)
             deco_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco_events)
+        if decoration2 and not is_quiet and not is_outro:
+            deco2_events = get_decoration_pattern(
+                degree, key, bar_duration, deco_type=decoration2.get("type", "sustain")
+            )
+            deco2_all.extend(
+                (bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco2_events
+            )
 
     write_track_events(drums_track, 9, drum_all)
     write_track_events(bass_track, 1, bass_all)
     write_track_events(harmony_track, 2, harmony_all)
     write_track_events(deco_track, 3, deco_all)
+    write_track_events(deco2_track, 4, deco2_all)
 
-    for track in (melody_track, drums_track, bass_track, harmony_track, deco_track):
+    for track in (melody_track, drums_track, bass_track, harmony_track, deco_track, deco2_track):
         track.append(MetaMessage('end_of_track', time=0))
 
     output_dir = "/tmp"
