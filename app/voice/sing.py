@@ -1,10 +1,11 @@
 """
-歌聲合成（步驟 6 的核心）：
-把使用者唸歌詞的錄音（步驟 5 的聲紋），逐字切成音節，
-用 WORLD 聲碼器把每個音節移調到旋律音符的音高、拉伸到音符長度，
-一顆一顆貼回歌曲時間軸，就變成「用你的聲音唱出這首歌」。
+歌聲合成（步驟 6 的核心）——「整句演唱」法：
+把使用者唸的一整句歌詞用 WORLD 聲碼器一次分析（不切碎，保留字與字的連音、
+咬字與自然的音量起伏），再沿時間軸把整句「彎」到這一句對應的一組旋律音符上：
+音高在音符邊界切換（帶滑音），長音加顫音，音符之間的空拍自動靜音。
 
-中文一個字＝一個音節，所以「唸歌詞」的錄音可以直接對應到旋律音符。
+歌詞配置跟真歌一樣：一個 4 小節的旋律段落分給該段落的 4 句歌詞
+（依字數比例分配音符），主歌段唱主歌詞、副歌段唱副歌詞。
 """
 import re
 from pathlib import Path
@@ -58,96 +59,128 @@ def trim_silence(x: np.ndarray, fs: int, threshold_ratio: float = 0.06) -> np.nd
     return x[start:end]
 
 
-def split_line_into_syllables(x: np.ndarray, fs: int, n_syllables: int) -> list:
-    """
-    把一句話的錄音切成 n 個音節。
-    中文語速相當平均，去頭尾靜音後等分即可（比 onset 偵測穩定得多）。
-    """
-    x = trim_silence(x, fs)
-    if n_syllables <= 0 or len(x) < fs // 20:
-        return []
-    seg_len = len(x) / n_syllables
-    return [
-        x[int(i * seg_len):int((i + 1) * seg_len)]
-        for i in range(n_syllables)
-    ]
-
-
 def midi_to_freq(midi: float) -> float:
     return 440.0 * (2.0 ** ((midi - 69) / 12.0))
 
 
-def synth_syllable_at_pitch(
-    syllable: np.ndarray,
-    fs: int,
-    midi_note: int,
-    duration: float,
-) -> np.ndarray:
+def sing_line(x: np.ndarray, fs: int, notes: list) -> np.ndarray:
     """
-    用 WORLD 把一個音節改成指定音高與長度：
-    1. 分解成音高軌 f0／頻譜包絡 sp／非週期性 ap（sp/ap 保留使用者的音色＝聲紋）
-    2. 時間軸線性拉伸到音符長度
-    3. f0 換成音符頻率（保留無聲子音），長音加一點顫音比較像唱歌
+    把「一整句」語音唱到一組音符上。
+
+    x：唸這句歌詞的錄音（已去頭尾靜音）
+    notes：[{"start","end","midi"}]，時間相對於這組的第一個音符起點
+
+    作法：
+    1. 整句一次 WORLD 分析（f0/頻譜包絡/非週期性）——不切碎，連音自然
+    2. 音符 j（共 K 個）對應原句的第 j/K 段：建立逐幀的「源位置」映射
+    3. f0 換成音符音高：音符間 40ms 滑音、長音顫音、無聲子音保持無聲
+    4. 一次合成整句，空拍處淡出靜音，保留整句自然的能量起伏
+    回傳長度 = 最後一個音符結束時間的波形。
     """
     import pyworld as pw
 
-    syllable = np.ascontiguousarray(syllable, dtype=np.float64)
-    if len(syllable) < int(fs * 0.02):
-        return np.zeros(int(duration * fs))
+    x = np.ascontiguousarray(x, dtype=np.float64)
+    total_dur = notes[-1]["end"]
+    n_target = max(8, int(total_dur * 1000.0 / FRAME_PERIOD_MS))
+    if len(x) < int(fs * 0.05) or not notes:
+        return np.zeros(int(total_dur * fs))
 
-    f0, t = pw.harvest(syllable, fs, frame_period=FRAME_PERIOD_MS, f0_floor=70.0, f0_ceil=800.0)
-    sp = pw.cheaptrick(syllable, f0, t, fs)
-    ap = pw.d4c(syllable, f0, t, fs)
-
+    f0, t = pw.harvest(x, fs, frame_period=FRAME_PERIOD_MS, f0_floor=70.0, f0_ceil=800.0)
+    sp = pw.cheaptrick(x, f0, t, fs)
+    ap = pw.d4c(x, f0, t, fs)
     n_src = len(f0)
-    n_target = max(4, int(duration * 1000.0 / FRAME_PERIOD_MS))
-    src_idx = np.linspace(0, n_src - 1, n_target)
+    K = len(notes)
 
-    # 頻譜與非週期性沿時間軸插值（音色不變、長度改變）
+    frame_time = np.arange(n_target) * FRAME_PERIOD_MS / 1000.0
+    src_pos = np.full(n_target, -1.0)   # 每個目標幀取原句的哪一幀（-1＝空拍）
+    f0_target = np.zeros(n_target)
+
+    prev_freq = None
+    for j, note in enumerate(notes):
+        i0 = int(note["start"] * 1000.0 / FRAME_PERIOD_MS)
+        i1 = min(n_target, int(note["end"] * 1000.0 / FRAME_PERIOD_MS))
+        if i1 <= i0:
+            continue
+        n_frames = i1 - i0
+        # 音符 j 對應原句第 j/K 段（比例映射：字數多就唱快、字數少就唱慢）
+        s0 = (n_src - 1) * j / K
+        s1 = (n_src - 1) * (j + 1) / K
+        src_pos[i0:i1] = np.linspace(s0, s1, n_frames)
+
+        freq = midi_to_freq(note["midi"])
+        seg_t = frame_time[i0:i1] - frame_time[i0]
+        freq_arr = np.full(n_frames, freq)
+        # 滑音：從上一個音高在 40ms 內滑過來，比較像人聲
+        if prev_freq is not None and prev_freq > 0:
+            glide = np.clip(1.0 - seg_t / 0.04, 0.0, 1.0)
+            freq_arr = freq * (prev_freq / freq) ** glide
+        # 顫音：只加在 0.45 秒以上的長音，0.25 秒後淡入（5.3Hz、±20 音分）
+        dur = note["end"] - note["start"]
+        if dur > 0.45:
+            ramp = np.clip((seg_t - 0.25) / 0.3, 0.0, 1.0)
+            freq_arr = freq_arr * 2.0 ** ((20.0 / 1200.0) * np.sin(2 * np.pi * 5.3 * seg_t) * ramp)
+        f0_target[i0:i1] = freq_arr
+        prev_freq = freq
+
+    in_note = src_pos >= 0
+    # 空拍處的源位置用前一個有效值補（合成時再把振幅壓到 0）
+    filled = src_pos.copy()
+    last = 0.0
+    for i in range(n_target):
+        if filled[i] < 0:
+            filled[i] = last
+        else:
+            last = filled[i]
+
     base = np.arange(n_src)
     sp_t = np.empty((n_target, sp.shape[1]))
     ap_t = np.empty((n_target, ap.shape[1]))
-    for j in range(sp.shape[1]):
-        sp_t[:, j] = np.interp(src_idx, base, sp[:, j])
-        ap_t[:, j] = np.interp(src_idx, base, ap[:, j])
+    for col in range(sp.shape[1]):
+        sp_t[:, col] = np.interp(filled, base, sp[:, col])
+        ap_t[:, col] = np.interp(filled, base, ap[:, col])
 
-    # 有聲/無聲遮罩也跟著拉伸：子音維持無聲才自然
-    voiced_mask = np.interp(src_idx, base, (f0 > 0).astype(float)) > 0.5
-    if not voiced_mask.any():
-        voiced_mask = np.ones(n_target, dtype=bool)  # 整段都偵測不到音高就全部當有聲
-
-    freq = midi_to_freq(midi_note)
-    tt = np.arange(n_target) * FRAME_PERIOD_MS / 1000.0
-    # 顫音：0.18 秒後淡入，5.3Hz、約 ±22 音分
-    vib_ramp = np.clip((tt - 0.18) / 0.25, 0.0, 1.0)
-    vibrato = 2.0 ** ((22.0 / 1200.0) * np.sin(2 * np.pi * 5.3 * tt) * vib_ramp)
-    f0_t = np.where(voiced_mask, freq * vibrato, 0.0)
+    # 有聲/無聲遮罩跟著映射：無聲子音（氣音）保持無聲才自然
+    voiced_src = (f0 > 0).astype(float)
+    if not voiced_src.any():
+        voiced_src = np.ones(n_src)
+    voiced_t = np.interp(filled, base, voiced_src) > 0.5
+    f0_final = np.where(in_note & voiced_t, f0_target, 0.0)
 
     y = pw.synthesize(
-        np.ascontiguousarray(f0_t),
+        np.ascontiguousarray(f0_final),
         np.ascontiguousarray(sp_t),
         np.ascontiguousarray(ap_t),
         fs,
         frame_period=FRAME_PERIOD_MS,
     )
 
-    # 統一響度＋頭尾 10ms 淡入淡出，避免爆音
-    rms = float(np.sqrt(np.mean(y ** 2)))
+    # 空拍靜音（逐幀 gain 展開到取樣點，邊界 15ms 平滑）
+    gain_frames = in_note.astype(float)
+    edge = max(1, int(15 / FRAME_PERIOD_MS))
+    kernel = np.ones(edge) / edge
+    gain_smooth = np.convolve(gain_frames, kernel, mode="same")
+    sample_idx = np.minimum(
+        (np.arange(len(y)) / (fs * FRAME_PERIOD_MS / 1000.0)).astype(int),
+        n_target - 1,
+    )
+    y = y * gain_smooth[sample_idx]
+
+    # 整句響度統一（不逐字正規化，保留句內自然強弱）
+    active = y[np.abs(y) > 1e-5]
+    rms = float(np.sqrt(np.mean(active ** 2))) if len(active) else 0.0
     if rms > 1e-6:
         y = y * (0.12 / rms)
     y = np.clip(y, -0.98, 0.98)
-    fade = min(len(y) // 4, int(fs * 0.01))
-    if fade > 0:
-        y[:fade] *= np.linspace(0, 1, fade)
-        y[-fade:] *= np.linspace(1, 0, fade)
-    return y
+
+    target_len = int(total_dur * fs)
+    if len(y) < target_len:
+        y = np.pad(y, (0, target_len - len(y)))
+    return y[:target_len]
 
 
-def load_syllable_bank(voiceprint_dir: Path, manifest: dict, section: str, fs: int = 44100) -> list:
-    """
-    把某個段落（verse/chorus）所有句子的錄音切成音節清單（依句序、字序排列）。
-    """
-    bank = []
+def load_section_lines(voiceprint_dir: Path, manifest: dict, section: str, fs: int = 44100) -> list:
+    """載入某段落（verse/chorus）每一句的整句錄音：[(音節數, 波形), ...]。"""
+    result = []
     lines = [l for l in manifest.get("lines", []) if l.get("section") == section]
     lines.sort(key=lambda l: l.get("index", 0))
     for line in lines:
@@ -156,11 +189,32 @@ def load_syllable_bank(voiceprint_dir: Path, manifest: dict, section: str, fs: i
         if n == 0 or not path.exists():
             continue
         try:
-            x = load_mono(str(path), fs)
+            x = trim_silence(load_mono(str(path), fs), fs)
         except Exception:
             continue
-        bank.extend(s for s in split_line_into_syllables(x, fs, n) if len(s) > 0)
-    return bank
+        if len(x) >= fs // 10:
+            result.append((n, x))
+    return result
+
+
+def allocate_notes_to_lines(notes: list, syllable_counts: list) -> list:
+    """
+    把一個旋律段落的音符分給各句歌詞（連續分組，字數多的句子分到較多音符）。
+    回傳與 syllable_counts 等長的 list，每個元素是音符子序列。
+    """
+    total_syll = sum(syllable_counts)
+    n_notes = len(notes)
+    if total_syll == 0 or n_notes == 0:
+        return [[] for _ in syllable_counts]
+    groups = []
+    cum = 0
+    prev_cut = 0
+    for s in syllable_counts:
+        cum += s
+        cut = round(n_notes * cum / total_syll)
+        groups.append(notes[prev_cut:cut])
+        prev_cut = cut
+    return groups
 
 
 def build_vocal_track(
@@ -173,22 +227,24 @@ def build_vocal_track(
     fs: int = 44100,
 ) -> Optional[np.ndarray]:
     """
-    生成整首歌的人聲軌（與 generate_full_midi 完全相同的時間軸）：
-    主歌段（quiet repeats）唱主歌歌詞、副歌段唱副歌歌詞，音節循環使用。
-    回傳 float64 波形；聲紋不足時回傳 None。
+    生成整首歌的人聲軌（與 generate_full_midi 完全相同的時間軸）。
+    每次主旋律重複唱完該段落的所有句子（主歌段唱主歌詞、副歌段唱副歌詞），
+    最後加一點殘響讓人聲融入伴奏。聲紋不足時回傳 None。
     """
     from app.audio.quantize import quantize_notes
 
-    verse_bank = load_syllable_bank(voiceprint_dir, manifest, "verse", fs)
-    chorus_bank = load_syllable_bank(voiceprint_dir, manifest, "chorus", fs)
-    if not verse_bank and not chorus_bank:
+    verse_lines = load_section_lines(voiceprint_dir, manifest, "verse", fs)
+    chorus_lines = load_section_lines(voiceprint_dir, manifest, "chorus", fs)
+    if not verse_lines and not chorus_lines:
         return None
-    if not verse_bank:
-        verse_bank = chorus_bank
-    if not chorus_bank:
-        chorus_bank = verse_bank
+    if not verse_lines:
+        verse_lines = chorus_lines
+    if not chorus_lines:
+        chorus_lines = verse_lines
 
     quantized = quantize_notes(notes, bpm, grid="1/8")
+    if not quantized:
+        return None
     bar = structure["bar_duration"]
     intro = structure["intro_bars"]
     melody_bars = structure["melody_bars"]
@@ -196,26 +252,38 @@ def build_vocal_track(
     quiet = structure.get("quiet_repeats", 0)
 
     mix = np.zeros(total_samples)
-    counters = {"verse": 0, "chorus": 0}
-    cache = {}
+    cache = {}  # 每個 section 的重複內容一樣，只需合成一次
 
     for rep in range(repeats):
         section = "verse" if rep < quiet else "chorus"
-        bank = verse_bank if section == "verse" else chorus_bank
+        lines = verse_lines if section == "verse" else chorus_lines
         offset = (intro + rep * melody_bars) * bar
-        for n in quantized:
-            idx = counters[section] % len(bank)
-            counters[section] += 1
-            duration = max(0.08, n["end"] - n["start"])
-            key = (section, idx, n["midi"], round(duration, 3))
+
+        groups = allocate_notes_to_lines(quantized, [n for n, _ in lines])
+        for line_idx, ((_, audio), group) in enumerate(zip(lines, groups)):
+            if not group:
+                continue
+            g_start = group[0]["start"]
+            rel = [
+                {"start": n["start"] - g_start, "end": n["end"] - g_start, "midi": n["midi"]}
+                for n in group
+            ]
+            key = (section, line_idx)
             if key not in cache:
-                cache[key] = synth_syllable_at_pitch(bank[idx], fs, n["midi"], duration)
+                cache[key] = sing_line(audio, fs, rel)
             y = cache[key]
-            start = int((offset + n["start"]) * fs)
+            start = int((offset + g_start) * fs)
             end = min(start + len(y), total_samples)
             if start >= total_samples:
                 continue
             mix[start:end] += y[: end - start]
+
+    # 簡單殘響（兩個延遲抽頭），讓人聲跟有殘響的伴奏融在一起
+    d1, d2 = int(0.09 * fs), int(0.17 * fs)
+    rev = mix.copy()
+    rev[d1:] += mix[:-d1] * 0.28
+    rev[d2:] += mix[:-d2] * 0.16
+    mix = rev
 
     peak = float(np.max(np.abs(mix)))
     if peak > 0.95:

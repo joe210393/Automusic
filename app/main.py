@@ -777,11 +777,11 @@ def render_audio(request: RenderRequest):
         if vocal is None:
             raise HTTPException(status_code=400, detail="聲紋錄音無法使用，請在步驟 5 重錄")
 
-        # 人聲響度對齊伴奏（人聲略突出），再疊上去
+        # 人聲響度對齊伴奏（略突出但不搶戲，太大聲會放大合成瑕疵）
         acc_rms = float(np.sqrt(np.mean(acc ** 2)))
         voc_rms = float(np.sqrt(np.mean(vocal[vocal != 0] ** 2))) if np.any(vocal != 0) else 0.0
         if voc_rms > 1e-6:
-            vocal = vocal * (acc_rms * 1.6 / voc_rms)
+            vocal = vocal * (acc_rms * 1.25 / voc_rms)
 
         mix = acc * 0.8
         mix[:, 0] += vocal
