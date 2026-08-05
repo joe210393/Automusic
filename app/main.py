@@ -1,5 +1,6 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import List, Optional
@@ -22,10 +23,14 @@ if frontend_dir.exists():
 
 # LM Studio 設定：依序嘗試多個網址（區網優先、再走 ngrok），可用環境變數覆寫
 # LM_STUDIO_URLS 用逗號分隔多個網址；LM_STUDIO_URL 單一網址（優先權最高，向下相容）
+# ngrok 免費版只有一個固定網域，指向本地 8080 的 FastAPI；
+# 雲端存取 LM Studio 走 FastAPI 的 /lm/ 代理（見 lm_proxy）。
 _default_lm_urls = [
-    "http://192.168.1.198:1234/v1/chat/completions",                       # 區網（本地電腦跑時最快）
-    "https://tactually-venerable-inez.ngrok-free.dev/v1/chat/completions", # ngrok（雲端部署走這條）
+    "http://192.168.1.198:1234/v1/chat/completions",                          # 區網（本地電腦跑時最快）
+    "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions", # ngrok → 本地 FastAPI /lm 代理 → LM Studio
 ]
+# /lm 代理的轉發目標（本地 LM Studio）
+LM_PROXY_TARGET = os.getenv("LM_PROXY_TARGET", "http://127.0.0.1:1234")
 if os.getenv("LM_STUDIO_URL"):
     LM_STUDIO_URLS = [os.getenv("LM_STUDIO_URL")]
 elif os.getenv("LM_STUDIO_URLS"):
@@ -388,6 +393,37 @@ async def voiceprint_reset():
             pass
     _save_voiceprint_manifest({"lines": []})
     return {"ok": True}
+
+
+# ---------- LM Studio 代理（一條 ngrok 通道同時服務 LM 與 Seed-VC） ----------
+
+@app.api_route("/lm/{path:path}", methods=["GET", "POST"])
+async def lm_proxy(path: str, request: Request):
+    """
+    把 /lm/* 轉發到本地 LM Studio（例如 /lm/v1/chat/completions → 127.0.0.1:1234/v1/chat/completions）。
+    ngrok 免費版只有一個固定網域，讓它指向 FastAPI，雲端就能經這裡使用 LM Studio。
+    """
+    target = f"{LM_PROXY_TARGET.rstrip('/')}/{path}"
+    body = await request.body()
+
+    def _forward():
+        return requests.request(
+            request.method,
+            target,
+            data=body if body else None,
+            headers={"Content-Type": request.headers.get("content-type", "application/json")},
+            timeout=(5, 600),  # LM 推理可能要幾分鐘
+        )
+
+    try:
+        resp = await run_in_threadpool(_forward)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"無法連線到本地 LM Studio：{e}")
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        media_type=resp.headers.get("content-type", "application/json"),
+    )
 
 
 # ---------- 神經歌聲轉換服務（給雲端部署委託本地電腦用） ----------

@@ -17,9 +17,11 @@ import soundfile as sf
 
 SEED_VC_DIR = Path(os.getenv("SEED_VC_DIR", str(Path.home() / "seed-vc")))
 
-# 雲端部署時可設定，把轉換委託給本地電腦（逗號分隔多個網址，依序嘗試）
+# 雲端部署時把轉換委託給本地電腦（逗號分隔多個網址，依序嘗試）。
+# 預設走 ngrok 固定網域（指向本地 8080 的 FastAPI，它有 /vc/convert）。
+_default_vc_urls = "https://tactually-venerable-inez.ngrok-free.dev"
 VC_REMOTE_URLS = [
-    u.strip() for u in os.getenv("VC_REMOTE_URLS", "").split(",") if u.strip()
+    u.strip() for u in os.getenv("VC_REMOTE_URLS", _default_vc_urls).split(",") if u.strip()
 ]
 
 
