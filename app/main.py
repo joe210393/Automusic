@@ -35,8 +35,16 @@ else:
 LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
 
 # 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
-RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", str(Path(__file__).parent.parent / "recordings")))
+# Zeabur 掛載持久化硬碟在 /voice：存在就用它，重新部署後錄音不會消失；
+# 本地電腦沒有 /voice，退回專案內的 recordings/。也可用環境變數 RECORDINGS_DIR 覆寫。
+_persistent_root = Path("/voice")
+_default_recordings = (
+    _persistent_root / "recordings" if _persistent_root.is_dir()
+    else Path(__file__).parent.parent / "recordings"
+)
+RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", str(_default_recordings)))
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
+print(f"[startup] 錄音儲存目錄：{RECORDINGS_DIR}")
 
 # 錄音檔名只允許安全字元，避免路徑穿越
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
