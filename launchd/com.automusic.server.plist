@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.automusic.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hung-weichen/Automusic/.venv/bin/uvicorn</string>
+        <string>app.main:app</string>
+        <string>--host</string>
+        <string>0.0.0.0</string>
+        <string>--port</string>
+        <string>8080</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/hung-weichen/Automusic</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/hung-weichen</string>
+        <key>PYTORCH_ENABLE_MPS_FALLBACK</key>
+        <string>1</string>
+        <key>DIFFSINGER_DIR</key>
+        <string>/Users/hung-weichen/diffsinger</string>
+        <key>SEED_VC_DIR</key>
+        <string>/Users/hung-weichen/seed-vc</string>
+        <key>LM_PROXY_TARGET</key>
+        <string>http://127.0.0.1:1234</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>5</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/automusic.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/automusic.err.log</string>
+</dict>
+</plist>

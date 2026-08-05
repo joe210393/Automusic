@@ -118,6 +118,17 @@ music-mvp/
 
 雲端（Zeabur）會經 ngrok 呼叫本機的 `/svs/synthesize` 與 `/vc/convert`。
 
+## 開機就能用（推薦）
+
+登入 Mac 後自動啟動 FastAPI + ngrok（掛掉會重開）：
+
+```bash
+./scripts/install-autostart.sh
+./scripts/automusic-healthcheck.sh
+```
+
+詳見 [docs/AUTOSTART.md](docs/AUTOSTART.md)。LM Studio 請在 App 內開啟「登入時啟動」。
+
 ## 本機啟動方式
 
 ### 1. 安裝依賴
@@ -133,14 +144,18 @@ pip install -r requirements.txt
 ### 2. 啟動服務
 
 ```bash
+# 一次性手動啟動（開發用 --reload）
 uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+
+# 或用 LaunchAgent（開機自動、KeepAlive）
+./scripts/install-autostart.sh
 ```
 
 服務將在 `http://localhost:8080` 啟動。
 
 ### 3. 查看 API 文件
 
-訪問 `http://localhost:8080/docs` 查看 Swagger UI。
+訪問 `http://localhost:8080/docs` 查看 Swagger UI；`http://localhost:8080/health` 看 DiffSinger／Seed-VC 是否就緒。
 
 ## 測試指令
 

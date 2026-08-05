@@ -26,8 +26,9 @@ if frontend_dir.exists():
 # ngrok 免費版只有一個固定網域，指向本地 8080 的 FastAPI；
 # 雲端存取 LM Studio 走 FastAPI 的 /lm/ 代理（見 lm_proxy）。
 _default_lm_urls = [
-    "http://192.168.1.198:1234/v1/chat/completions",                          # 區網（本地電腦跑時最快）
-    "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions", # ngrok → 本地 FastAPI /lm 代理 → LM Studio
+    "http://127.0.0.1:1234/v1/chat/completions",                              # 本機（LaunchAgent / 本機開網頁最快）
+    "http://192.168.1.198:1234/v1/chat/completions",                          # 區網（手機同 Wi‑Fi）
+    "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions", # 雲端 Zeabur → ngrok → /lm → LM Studio
 ]
 # /lm 代理的轉發目標（本地 LM Studio）
 LM_PROXY_TARGET = os.getenv("LM_PROXY_TARGET", "http://127.0.0.1:1234")
@@ -165,6 +166,7 @@ class AILyricsResponse(BaseModel):
     verse: str    # 主歌，多行以換行分隔
     chorus: str   # 副歌，多行以換行分隔
     source: str = "lm_studio"  # lm_studio（本地 AI）或 template（模板備援）
+    detail: Optional[str] = None  # 備援時說明原因（逾時／解析失敗等）
 
 
 class Note(BaseModel):
@@ -229,6 +231,30 @@ async def root():
 @app.get("/api")
 async def api_info():
     return {"message": "Music Education MVP API", "version": "1.0.0"}
+
+
+@app.get("/health")
+async def health():
+    """開機就緒檢查：DiffSinger / Seed-VC / LM Studio。"""
+    from app.voice import svs as _svs
+    from app.voice import neural_vc as _vc
+
+    lm_ok = False
+    try:
+        r = requests.get(f"{LM_PROXY_TARGET.rstrip('/')}/v1/models", timeout=1.5)
+        lm_ok = r.status_code == 200
+    except Exception:
+        pass
+
+    ready = _svs.is_available() and _vc.is_available()
+    return {
+        "ok": ready,
+        "diffsinger": _svs.is_available(),
+        "seed_vc": _vc.is_available(),
+        "lm_studio": lm_ok,
+        "recordings_dir": str(RECORDINGS_DIR),
+        "voiceprint_dir": str(VOICEPRINT_DIR),
+    }
 
 
 # ---------- 手機錄音：上傳 / 列表 / 下載 / 同步 ----------
@@ -503,16 +529,17 @@ async def generate_lyrics(request: LyricsRequest):
 def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threadpool，LM 推論不會卡住其他請求
     """
     步驟 4｜關鍵字填詞：用本地 LM Studio（gemma）依關鍵字＋風格寫出主歌與副歌。
-    LM 連不上時退回模板式歌詞，不會失敗。
+    LM 連不上／解析失敗時退回模板式歌詞，不會失敗。
     """
     keywords = [k.strip() for k in request.keywords if k and k.strip()]
     if not keywords:
         raise HTTPException(status_code=400, detail="請至少輸入一個關鍵字")
     keywords = keywords[:6]  # 太多關鍵字反而寫不好
 
-    from app.lyrics.ai_writer import build_lyrics_prompts, parse_lyrics_json
+    from app.lyrics.ai_writer import build_lyrics_prompts, parse_lyrics_from_message
 
     system_prompt, user_prompt = build_lyrics_prompts(keywords, request.style)
+    errors: list[str] = []
 
     for url in LM_STUDIO_URLS:
         try:
@@ -535,23 +562,27 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
                 timeout=(4, 300),
             )
             if resp.status_code != 200:
-                raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
+                raise RuntimeError(f"HTTP {resp.status_code}: {(resp.text or '')[:200]}")
 
             message = resp.json()["choices"][0]["message"]
-            content = message.get("content") or ""
-            if "{" not in content:
-                content = message.get("reasoning_content") or content
-
-            parsed = parse_lyrics_json(content)
+            parsed = parse_lyrics_from_message(message)
             if not parsed:
-                raise RuntimeError("無法解析 LM Studio 回傳的歌詞 JSON")
+                preview = (
+                    (message.get("content") or "")
+                    + "\n"
+                    + (message.get("reasoning_content") or "")
+                ).strip()[:300]
+                raise RuntimeError(f"無法解析歌詞 JSON；回傳預覽：{preview!r}")
             return AILyricsResponse(**parsed, source="lm_studio")
         except Exception as e:
+            msg = f"{url} → {e}"
+            errors.append(msg)
             print(f"[generate-lyrics-ai] LM Studio 網址失敗（{url}）：{e}")
             continue
 
-    # 全部連不上：退回模板式歌詞
-    print("[generate-lyrics-ai] 所有 LM Studio 網址都不可用，改用模板歌詞")
+    # 全部連不上或解析失敗：退回模板式歌詞
+    detail = "；".join(errors[-3:]) if errors else "沒有可用的 LM Studio 網址"
+    print(f"[generate-lyrics-ai] 改用模板歌詞：{detail}")
     from app.lyrics.generator import generate_lyrics as gen_lyrics
 
     style_emotion = {
@@ -565,6 +596,7 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
         verse=result["verse"],
         chorus=result["chorus"],
         source="template",
+        detail=detail,
     )
 
 
@@ -1001,33 +1033,16 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
 
         data = resp.json()
         message = data["choices"][0]["message"]
-        content = message.get("content") or ""
-        if "{" not in content:
-            # 推理模型偶爾把答案留在思考欄位：從 reasoning_content 撈 JSON
-            content = message.get("reasoning_content") or content
+        from app.lyrics.lm_json import extract_json_objects, message_text
 
-        # 嘗試從 content 中擷取 JSON
-        json_str = content.strip()
-        # 去掉可能的 code fence
-        if json_str.startswith("```"):
-            json_str = json_str.strip("`")
-            # 移除可能的語言標籤
-            json_str = "\n".join(line for line in json_str.splitlines() if not line.strip().startswith("json"))
-
-        try:
-            parsed = json.loads(json_str)
-        except Exception:
-            # 從文字中找出所有 {"chords": ...}，取最後一個能解析的（推理模型的最終答案通常在最後）
-            candidates = re.findall(r'\{[^{}]*"chords"[^{}]*\}', json_str)
-            parsed = None
-            for cand in reversed(candidates):
-                try:
-                    parsed = json.loads(cand)
-                    break
-                except Exception:
-                    continue
-            if parsed is None:
-                raise RuntimeError("無法解析 LM Studio 回傳的 JSON")
+        parsed = None
+        for obj in extract_json_objects(message_text(message)):
+            if isinstance(obj.get("chords"), list) and obj["chords"]:
+                parsed = obj
+                break
+        if parsed is None:
+            preview = message_text(message)[:300]
+            raise RuntimeError(f"無法解析 LM Studio 回傳的 JSON；預覽：{preview!r}")
 
         chords = parsed.get("chords")
         if not isinstance(chords, list) or not chords:

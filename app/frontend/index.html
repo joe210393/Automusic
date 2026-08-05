@@ -912,12 +912,17 @@
         document.getElementById('lyricsVerse').textContent = data.verse;
         document.getElementById('lyricsChorus').textContent = data.chorus;
         lyricsResult.style.display = 'block';
-        setStatus(
-          lyricsStatus,
-          data.source === 'lm_studio'
-            ? '完成！不滿意可按「🔁 換一版」。歌詞會在步驟 6 由你的聲紋唱出。'
-            : '完成（AI 暫時連不上，使用簡易模板）。可按「🔁 換一版」重試 AI。'
-        );
+        if (data.source === 'lm_studio') {
+          setStatus(lyricsStatus, '完成！不滿意可按「🔁 換一版」。歌詞會在步驟 6 由你的聲紋唱出。');
+        } else {
+          const why = data.detail
+            ? `原因：${String(data.detail).slice(0, 180)}`
+            : '可能是逾時、解析失敗，或 AI 還在忙。';
+          setStatus(
+            lyricsStatus,
+            `完成（AI 回傳無法使用，已改簡易模板）。${why} 可按「🔁 換一版」重試。`
+          );
+        }
       } catch (err) {
         console.error(err);
         setStatus(lyricsStatus, '產生歌詞失敗：' + err.message);
