@@ -261,8 +261,8 @@
     <div class="card">
       <div class="section-title">步驟 5｜錄聲紋（唸出指定話語）</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        請一句一句<b>清楚地唸出</b>步驟 4 產生的歌詞（不用唱，用平常說話的方式唸就好）。
-        系統會收集你的聲紋，在步驟 6 把每個字變成歌聲。
+        請一句一句<b>清楚地唸出</b>步驟 4 的歌詞（用說話方式即可）。
+        每一句都錄完效果最好；跳過的句子合成時會用其他字補上，歌詞仍會出現但咬字較糊。
       </p>
       <div id="vpSetup">
         <button id="vpStartBtn" class="secondary">🎙 開始錄聲紋</button>
@@ -272,7 +272,7 @@
         <div id="vpLineText" style="font-size:20px;font-weight:700;line-height:1.7;margin:8px 0 12px;padding:14px 18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;"></div>
         <div class="row">
           <button id="vpRecordBtn">🎙 開始唸這句</button>
-          <button id="vpSkipBtn" class="secondary">跳過這句</button>
+          <button id="vpSkipBtn" class="secondary">這句稍後用其他聲紋補</button>
           <button id="vpResetBtn" class="secondary">🗑 全部重錄</button>
         </div>
       </div>
@@ -1043,6 +1043,7 @@
     });
 
     vpSkipBtn.addEventListener('click', () => {
+      setStatus(vpStatus, '已跳過這句——合成時會用你錄過的其他字補上，歌詞仍會唱出來（咬字可能較模糊）。');
       vpCurrent += 1;
       showVpLine();
     });

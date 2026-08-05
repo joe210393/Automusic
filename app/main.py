@@ -847,6 +847,7 @@ def render_audio(request: RenderRequest):
             voiceprint_dir=VOICEPRINT_DIR,
             manifest=manifest,
             total_samples=len(acc),
+            lyrics=request.lyrics.dict() if request.lyrics else None,
         )
         if vocal is None:
             raise HTTPException(status_code=400, detail="聲紋錄音無法使用，請在步驟 5 重錄")
