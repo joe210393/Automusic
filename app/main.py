@@ -46,6 +46,31 @@ RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", str(_default_recordings)))
 RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 print(f"[startup] 錄音儲存目錄：{RECORDINGS_DIR}")
 
+# 聲紋目錄（步驟 5：使用者逐句唸歌詞的錄音＋manifest.json）
+_default_voiceprint = (
+    _persistent_root / "voiceprint" if _persistent_root.is_dir()
+    else Path(__file__).parent.parent / "voiceprint"
+)
+VOICEPRINT_DIR = Path(os.getenv("VOICEPRINT_DIR", str(_default_voiceprint)))
+VOICEPRINT_DIR.mkdir(parents=True, exist_ok=True)
+VOICEPRINT_MANIFEST = VOICEPRINT_DIR / "manifest.json"
+
+
+def _load_voiceprint_manifest() -> dict:
+    if VOICEPRINT_MANIFEST.exists():
+        try:
+            return json.loads(VOICEPRINT_MANIFEST.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"lines": []}
+
+
+def _save_voiceprint_manifest(manifest: dict):
+    VOICEPRINT_DIR.mkdir(parents=True, exist_ok=True)
+    VOICEPRINT_MANIFEST.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
 # 錄音檔名只允許安全字元，避免路徑穿越
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
 
@@ -160,6 +185,7 @@ class RenderRequest(BaseModel):
     include_recording_filename: Optional[str] = None  # 混入 recordings/ 內的原始錄音（僅 /render-audio）
     style: Optional[str] = None  # 風格（pop/ballad/folk/rock/jazz/lullaby），影響鼓/貝斯/樂器音色
     duration_seconds: int = 30  # 歌曲長度：30（副歌）/ 60 / 90（完整：主歌→副歌）
+    use_voiceprint: bool = False  # 步驟 6：用聲紋（步驟 5 的逐句錄音）合成人聲並混入（僅 /render-audio）
 
 
 class AIComposeRequest(BaseModel):
@@ -299,6 +325,69 @@ def sync_recordings(request: SyncRequest):  # 同步函式：跑在 threadpool�
             continue
 
     return {"downloaded": downloaded, "skipped": skipped, "total_remote": len(remote_list)}
+
+
+# ---------- 步驟 5：聲紋收集（逐句唸歌詞） ----------
+
+@app.post("/voiceprint/upload")
+async def upload_voiceprint_line(
+    file: UploadFile = File(...),
+    section: str = Form(...),   # verse / chorus
+    index: int = Form(...),     # 句序（該段落內從 0 起算）
+    text: str = Form(...),      # 這句歌詞的文字（用來算音節數）
+):
+    """步驟 5：上傳使用者唸某一句歌詞的錄音。同一句重錄會直接覆蓋。"""
+    if section not in ("verse", "chorus"):
+        raise HTTPException(status_code=400, detail="section 必須是 verse 或 chorus")
+    if not (0 <= index < 20):
+        raise HTTPException(status_code=400, detail="index 超出範圍")
+    content = await file.read()
+    if len(content) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="錄音檔太大（上限 20MB）")
+    if len(content) < 2000:
+        raise HTTPException(status_code=400, detail="錄音太短，請重錄")
+
+    VOICEPRINT_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{section}-{index:02d}.wav"
+    (VOICEPRINT_DIR / filename).write_bytes(content)
+
+    manifest = _load_voiceprint_manifest()
+    manifest["lines"] = [
+        l for l in manifest.get("lines", [])
+        if not (l.get("section") == section and l.get("index") == index)
+    ]
+    manifest["lines"].append({
+        "section": section,
+        "index": index,
+        "text": text.strip(),
+        "filename": filename,
+    })
+    _save_voiceprint_manifest(manifest)
+    return {"filename": filename, "recorded": len(manifest["lines"])}
+
+
+@app.get("/voiceprint/status")
+async def voiceprint_status():
+    """查詢已錄好的聲紋句子。"""
+    manifest = _load_voiceprint_manifest()
+    lines = sorted(
+        manifest.get("lines", []),
+        key=lambda l: (0 if l.get("section") == "verse" else 1, l.get("index", 0)),
+    )
+    return {"count": len(lines), "lines": lines}
+
+
+@app.post("/voiceprint/reset")
+async def voiceprint_reset():
+    """清空聲紋（重新開始錄）。"""
+    manifest = _load_voiceprint_manifest()
+    for l in manifest.get("lines", []):
+        try:
+            (VOICEPRINT_DIR / l.get("filename", "")).unlink(missing_ok=True)
+        except Exception:
+            pass
+    _save_voiceprint_manifest({"lines": []})
+    return {"ok": True}
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)
@@ -590,7 +679,8 @@ def render_audio(request: RenderRequest):
         lyrics=request.lyrics.dict(),
         chord_overrides=request.chord_overrides,
         seed=request.seed,
-        melody_gain=0.4 if voice_path else 1.0,  # 有人聲時 MIDI 旋律退居小聲跟奏
+        # 有人聲（原始錄音混入或聲紋演唱）時，MIDI 旋律退居小聲跟奏
+        melody_gain=0.4 if voice_path else (0.5 if request.use_voiceprint else 1.0),
         style=request.style,
         duration_seconds=request.duration_seconds,
     )
@@ -660,6 +750,52 @@ def render_audio(request: RenderRequest):
         if mp3:
             return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
         return FileResponse(mixed_path, media_type="audio/wav", filename="song.wav")
+
+    # ---- 步驟 6：聲紋演唱（把使用者唸歌詞的聲音移調成歌聲，混入伴奏）----
+    if request.use_voiceprint:
+        import numpy as np
+        import soundfile as sf
+        from app.voice.sing import build_vocal_track
+
+        manifest = _load_voiceprint_manifest()
+        if not manifest.get("lines"):
+            raise HTTPException(status_code=400, detail="還沒有聲紋，請先在步驟 5 逐句錄音")
+
+        acc, _ = sf.read(wav_path)
+        if acc.ndim == 1:
+            acc = np.stack([acc, acc], axis=1)
+
+        structure = compute_song_structure(notes_list, request.bpm, target_seconds=request.duration_seconds)
+        vocal = build_vocal_track(
+            notes=notes_list,
+            bpm=request.bpm,
+            structure=structure,
+            voiceprint_dir=VOICEPRINT_DIR,
+            manifest=manifest,
+            total_samples=len(acc),
+        )
+        if vocal is None:
+            raise HTTPException(status_code=400, detail="聲紋錄音無法使用，請在步驟 5 重錄")
+
+        # 人聲響度對齊伴奏（人聲略突出），再疊上去
+        acc_rms = float(np.sqrt(np.mean(acc ** 2)))
+        voc_rms = float(np.sqrt(np.mean(vocal[vocal != 0] ** 2))) if np.any(vocal != 0) else 0.0
+        if voc_rms > 1e-6:
+            vocal = vocal * (acc_rms * 1.6 / voc_rms)
+
+        mix = acc * 0.8
+        mix[:, 0] += vocal
+        mix[:, 1] += vocal
+        m = float(np.max(np.abs(mix)))
+        if m > 0.99:
+            mix = mix * (0.99 / m)
+
+        sung_path = "/tmp/full_render_sung.wav"
+        sf.write(sung_path, mix, 44100)
+        mp3 = compress_to_mp3(sung_path)
+        if mp3:
+            return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
+        return FileResponse(sung_path, media_type="audio/wav", filename="song.wav")
 
     mp3 = compress_to_mp3(wav_path)
     if mp3:

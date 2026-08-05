@@ -122,7 +122,7 @@
     </p>
     <p style="font-size:12px;color:#6b7280;max-width:720px;line-height:1.8;">
       <b>1</b> 收集素材 → <b>2</b> 素材轉旋律 → <b>3</b> 素材轉歌曲 → <b>4</b> 關鍵字產生歌詞
-      → <span style="opacity:.55;"><b>5</b> 人聲錄音（開發中）→ <b>6</b> 用你的聲紋唱出歌詞、合成完整歌曲（開發中）</span>
+      → <b>5</b> 錄聲紋 → <b>6</b> 用你的聲紋唱出歌詞、合成完整歌曲
     </p>
 
     <!-- 步驟 1：收集聲音素材 -->
@@ -255,6 +255,42 @@
         <div style="font-size:12px;color:#9ca3af;margin-bottom:2px;">副歌</div>
         <div id="lyricsChorus" style="font-size:14px;line-height:1.9;white-space:pre-line;font-weight:600;"></div>
       </div>
+    </div>
+
+    <!-- 步驟 5：錄聲紋（逐句唸歌詞） -->
+    <div class="card">
+      <div class="section-title">步驟 5｜錄聲紋（唸出指定話語）</div>
+      <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
+        請一句一句<b>清楚地唸出</b>步驟 4 產生的歌詞（不用唱，用平常說話的方式唸就好）。
+        系統會收集你的聲紋，在步驟 6 把每個字變成歌聲。
+      </p>
+      <div id="vpSetup">
+        <button id="vpStartBtn" class="secondary">🎙 開始錄聲紋</button>
+      </div>
+      <div id="vpRecorder" style="display:none;">
+        <div style="font-size:13px;color:#6b7280;" id="vpLineCounter"></div>
+        <div id="vpLineText" style="font-size:20px;font-weight:700;line-height:1.7;margin:8px 0 12px;padding:14px 18px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;"></div>
+        <div class="row">
+          <button id="vpRecordBtn">🎙 開始唸這句</button>
+          <button id="vpSkipBtn" class="secondary">跳過這句</button>
+          <button id="vpResetBtn" class="secondary">🗑 全部重錄</button>
+        </div>
+      </div>
+      <div id="vpStatus" class="status"></div>
+    </div>
+
+    <!-- 步驟 6：聲紋＋歌詞＋歌曲合成 -->
+    <div class="card">
+      <div class="section-title">步驟 6｜用你的聲紋唱出這首歌</div>
+      <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
+        把步驟 5 收集的聲紋，逐字對到旋律的音高與節奏「唱」出來（主歌段唱主歌詞、副歌段唱副歌詞），再混入完整編曲。
+      </p>
+      <div class="row" style="margin-top:6px;">
+        <button id="vpSingBtn" disabled>🎤 用我的聲紋合成完整歌曲</button>
+      </div>
+      <div id="vpSingStatus" class="status"></div>
+      <audio id="vpSongAudio" controls style="display:none;margin-top:10px;"></audio>
+      <a id="vpSongDownload" href="#" download="song-sung.mp3" style="display:none;font-size:13px;">下載成品</a>
     </div>
 
     <!-- 進階：免錄音直接生成旋律 -->
@@ -891,6 +927,224 @@
 
     genLyricsBtn.addEventListener('click', generateLyricsAI);
     regenLyricsBtn.addEventListener('click', generateLyricsAI);
+
+    // --- 步驟 5：錄聲紋（逐句唸歌詞） ---
+    const vpStartBtn = document.getElementById('vpStartBtn');
+    const vpRecorder = document.getElementById('vpRecorder');
+    const vpLineCounter = document.getElementById('vpLineCounter');
+    const vpLineText = document.getElementById('vpLineText');
+    const vpRecordBtn = document.getElementById('vpRecordBtn');
+    const vpSkipBtn = document.getElementById('vpSkipBtn');
+    const vpResetBtn = document.getElementById('vpResetBtn');
+    const vpStatus = document.getElementById('vpStatus');
+    const vpSingBtn = document.getElementById('vpSingBtn');
+    const vpSingStatus = document.getElementById('vpSingStatus');
+
+    let vpLines = [];        // [{section:'verse'|'chorus', index, text, done}]
+    let vpCurrent = 0;
+    let vpCtx = null, vpStream = null, vpScript = null, vpBuffers = [], vpSampleRate = 44100;
+
+    function buildVpLines() {
+      if (!lastLyrics) return null;
+      const lines = [];
+      lastLyrics.verse.split('\n').map((t) => t.trim()).filter(Boolean)
+        .forEach((text, i) => lines.push({ section: 'verse', index: i, text, done: false }));
+      lastLyrics.chorus.split('\n').map((t) => t.trim()).filter(Boolean)
+        .forEach((text, i) => lines.push({ section: 'chorus', index: i, text, done: false }));
+      return lines;
+    }
+
+    function showVpLine() {
+      if (vpCurrent >= vpLines.length) {
+        vpLineCounter.textContent = '';
+        vpLineText.textContent = '🎉 全部錄完了！';
+        vpRecordBtn.disabled = true;
+        vpSkipBtn.disabled = true;
+        const done = vpLines.filter((l) => l.done).length;
+        setStatus(vpStatus, `聲紋收集完成（${done}/${vpLines.length} 句）。到步驟 6 合成你的歌！`);
+        vpSingBtn.disabled = false;
+        return;
+      }
+      const line = vpLines[vpCurrent];
+      const sectionName = line.section === 'verse' ? '主歌' : '副歌';
+      vpLineCounter.textContent = `第 ${vpCurrent + 1} / ${vpLines.length} 句（${sectionName}）`;
+      vpLineText.textContent = '「' + line.text + '」';
+      vpRecordBtn.disabled = false;
+      vpSkipBtn.disabled = false;
+    }
+
+    vpStartBtn.addEventListener('click', () => {
+      const lines = buildVpLines();
+      if (!lines || !lines.length) {
+        setStatus(vpStatus, '請先在步驟 4 產生歌詞，聲紋要唸的就是那些句子。');
+        return;
+      }
+      vpLines = lines;
+      vpCurrent = 0;
+      vpRecorder.style.display = 'block';
+      vpRecordBtn.textContent = '🎙 開始唸這句';
+      setStatus(vpStatus, '用平常說話的速度、清楚地唸就好。安靜的環境效果最好。');
+      showVpLine();
+    });
+
+    async function vpStartRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      vpCtx = new (window.AudioContext || window.webkitAudioContext)();
+      vpSampleRate = vpCtx.sampleRate;
+      vpStream = vpCtx.createMediaStreamSource(stream);
+      vpScript = vpCtx.createScriptProcessor(4096, 1, 1);
+      vpBuffers = [];
+      vpScript.onaudioprocess = (e) => vpBuffers.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      vpStream.connect(vpScript);
+      vpScript.connect(vpCtx.destination);
+      vpRecordBtn.textContent = '⏹ 唸完了（停止並上傳）';
+      setStatus(vpStatus, '錄音中… 請唸出畫面上的句子。');
+    }
+
+    async function vpStopAndUpload() {
+      if (vpScript) { vpScript.disconnect(); vpScript.onaudioprocess = null; vpScript = null; }
+      if (vpStream) { vpStream.disconnect(); vpStream = null; }
+      if (vpCtx) { await vpCtx.close(); vpCtx = null; }
+      const blob = encodeWAV(vpBuffers, vpSampleRate);
+      vpBuffers = [];
+      vpRecordBtn.textContent = '🎙 開始唸這句';
+
+      const line = vpLines[vpCurrent];
+      const fd = new FormData();
+      fd.append('file', blob, 'line.wav');
+      fd.append('section', line.section);
+      fd.append('index', String(line.index));
+      fd.append('text', line.text);
+      setStatus(vpStatus, '上傳中…');
+      try {
+        const res = await fetch('/voiceprint/upload', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        line.done = true;
+        vpCurrent += 1;
+        setStatus(vpStatus, `✓ 已收錄 ${vpLines.filter((l) => l.done).length} / ${vpLines.length} 句`);
+        showVpLine();
+      } catch (err) {
+        console.error(err);
+        setStatus(vpStatus, '上傳失敗，請再唸一次這句：' + err.message);
+      }
+    }
+
+    vpRecordBtn.addEventListener('click', async () => {
+      try {
+        if (!vpCtx) await vpStartRecording();
+        else await vpStopAndUpload();
+      } catch (err) {
+        console.error(err);
+        setStatus(vpStatus, '麥克風錯誤：' + err.message);
+      }
+    });
+
+    vpSkipBtn.addEventListener('click', () => {
+      vpCurrent += 1;
+      showVpLine();
+    });
+
+    vpResetBtn.addEventListener('click', async () => {
+      try {
+        await fetch('/voiceprint/reset', { method: 'POST' });
+      } catch (_) {}
+      vpLines.forEach((l) => { l.done = false; });
+      vpCurrent = 0;
+      vpSingBtn.disabled = true;
+      setStatus(vpStatus, '已清空，從第一句重新開始。');
+      showVpLine();
+    });
+
+    // 頁面載入時檢查伺服器上是否已有聲紋（例如重新整理後）
+    (async () => {
+      try {
+        const res = await fetch('/voiceprint/status');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.count > 0) {
+          vpSingBtn.disabled = false;
+          setStatus(vpStatus, `伺服器上已有 ${data.count} 句聲紋，可直接到步驟 6 合成，或按「開始錄聲紋」重錄。`);
+        }
+      } catch (_) {}
+    })();
+
+    // --- 步驟 6：聲紋＋歌詞＋歌曲合成 ---
+    let vpSingCtrl = null;
+    vpSingBtn.addEventListener('click', async () => {
+      if (!lastAnalyzeResult) {
+        setStatus(vpSingStatus, '請先完成步驟 2（生成旋律）。');
+        return;
+      }
+      if (vpSingCtrl) { vpSingCtrl.superseded = true; vpSingCtrl.abort(); }
+      const ctrl = new AbortController();
+      vpSingCtrl = ctrl;
+      vpSingBtn.disabled = true;
+      setStatus(vpSingStatus, '🎤 正在用你的聲紋逐字合成歌聲並混音… 需要一到數分鐘，請稍候。');
+
+      let stallTimer = null;
+      try {
+        const body = buildRenderBody();
+        body.use_voiceprint = true;
+        const res = await fetch('/render-audio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: ctrl.signal,
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(`HTTP ${res.status}: ${errText}`);
+        }
+        const contentType = res.headers.get('Content-Type') || 'audio/wav';
+        const total = Number(res.headers.get('Content-Length')) || 0;
+        const reader = res.body.getReader();
+        const chunks = [];
+        let received = 0;
+        let lastActivity = Date.now();
+        stallTimer = setInterval(() => {
+          if (Date.now() - lastActivity > 120000) ctrl.abort();
+        }, 5000);
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          lastActivity = Date.now();
+          const mb = (received / 1048576).toFixed(1);
+          setStatus(vpSingStatus, total
+            ? `下載成品中… ${mb} MB（${Math.round((received / total) * 100)}%）`
+            : `下載成品中… ${mb} MB`);
+        }
+        const blob = new Blob(chunks, { type: contentType });
+        const url = URL.createObjectURL(blob);
+        const audio = document.getElementById('vpSongAudio');
+        const dl = document.getElementById('vpSongDownload');
+        audio.src = url;
+        audio.style.display = 'block';
+        dl.href = url;
+        dl.download = contentType.includes('mpeg') ? 'song-sung.mp3' : 'song-sung.wav';
+        dl.style.display = 'inline-block';
+        setStatus(vpSingStatus, '完成！這是用你的聲紋唱出的歌。');
+        audio.play().catch(() => {});
+      } catch (err) {
+        if (ctrl.superseded) return;
+        console.error(err);
+        if (err.name === 'AbortError') {
+          setStatus(vpSingStatus, '連線停滯（120 秒沒有收到資料），請再試一次。');
+        } else {
+          setStatus(vpSingStatus, '合成失敗：' + err.message);
+        }
+      } finally {
+        if (stallTimer) clearInterval(stallTimer);
+        if (vpSingCtrl === ctrl) {
+          vpSingCtrl = null;
+          vpSingBtn.disabled = false;
+        }
+      }
+    });
 
     // 編曲 seed：同一個 seed 產生相同的伴奏與音色，「重新製作」時換新 seed
     let currentRenderSeed = Math.floor(Math.random() * 1e9);

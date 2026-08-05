@@ -2,13 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 安裝系統依賴（aubio、soundfile、FluidSynth 高音質轉檔、ffmpeg 壓 MP3）
+# 安裝系統依賴（aubio、soundfile、FluidSynth 高音質轉檔、ffmpeg 壓 MP3、
+# build-essential 給 pyworld 聲碼器編譯用）
 RUN apt-get update && apt-get install -y \
     libaubio-dev \
     libsndfile1 \
     fluidsynth \
     fluid-soundfont-gm \
     ffmpeg \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # FluidSynth 用的 GM 音色庫路徑
