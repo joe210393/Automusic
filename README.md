@@ -105,6 +105,19 @@ music-mvp/
 
 **回應**: 下載 `full.mid` 檔案（application/octet-stream）
 
+## 步驟 6：系統代唱（DiffSinger）＋ 聲紋轉換（Seed-VC）
+
+步驟 6 的流程是：
+
+1. **DiffSinger** 依旋律＋歌詞唱出乾聲（使用者不必會唱）
+2. **Seed-VC** 用步驟 5 的聲紋換成你的音色
+3. 混進步驟 3 的伴奏
+
+本機需另外安裝 DiffSinger 與 Seed-VC（皆佔用數 GB）。詳見 [docs/DIFFSINGER.md](docs/DIFFSINGER.md)。
+安裝完成後，把 [`scripts/diffsinger_infer_cli.py`](scripts/diffsinger_infer_cli.py) 複製為 `~/diffsinger/infer_cli.py`。
+
+雲端（Zeabur）會經 ngrok 呼叫本機的 `/svs/synthesize` 與 `/vc/convert`。
+
 ## 本機啟動方式
 
 ### 1. 安裝依賴

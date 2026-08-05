@@ -261,8 +261,9 @@
     <div class="card">
       <div class="section-title">步驟 5｜錄聲紋（唸出指定話語）</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        請一句一句<b>清楚地唸出</b>步驟 4 的歌詞（用說話方式即可）。
-        每一句都錄完效果最好；跳過的句子合成時會用其他字補上，歌詞仍會出現但咬字較糊。
+        請一句一句<b>清楚地唸出</b>步驟 4 的歌詞（用平常說話即可，不必唱）。
+        這裡收集的是你的<b>音色／聲紋</b>；真正的「唱歌」由系統虛擬歌手代唱，再換成你的聲音。
+        建議全部錄完（約 10～20 秒總長），安靜環境效果最好。
       </p>
       <div id="vpSetup">
         <button id="vpStartBtn" class="secondary">🎙 開始錄聲紋</button>
@@ -281,9 +282,10 @@
 
     <!-- 步驟 6：聲紋＋歌詞＋歌曲合成 -->
     <div class="card">
-      <div class="section-title">步驟 6｜用你的聲紋唱出這首歌</div>
+      <div class="section-title">步驟 6｜系統代唱，再換成你的聲音</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        把步驟 5 收集的聲紋，逐字對到旋律的音高與節奏「唱」出來（主歌段唱主歌詞、副歌段唱副歌詞），再混入完整編曲。
+        系統先依旋律＋歌詞用虛擬歌手唱出乾聲，再用步驟 5 的聲紋換成你的音色，最後混進伴奏。
+        （需本機 DiffSinger＋Seed-VC；雲端會經 ngrok 打回你的電腦。）
       </p>
       <div class="row" style="margin-top:6px;">
         <button id="vpSingBtn" disabled>🎤 用我的聲紋合成完整歌曲</button>
@@ -1083,7 +1085,7 @@
       const ctrl = new AbortController();
       vpSingCtrl = ctrl;
       vpSingBtn.disabled = true;
-      setStatus(vpSingStatus, '🎤 正在依你的音域合成歌聲，再用 AI 轉換音色… 90 秒歌曲約需 3-8 分鐘，請耐心等候。');
+      setStatus(vpSingStatus, '🎤 系統代唱中，再換成你的聲紋… 依歌曲長度約需數分鐘，請耐心等候。');
 
       let stallTimer = null;
       try {
@@ -1129,12 +1131,17 @@
         dl.href = url;
         dl.download = contentType.includes('mpeg') ? 'song-sung.mp3' : 'song-sung.wav';
         dl.style.display = 'inline-block';
-        setStatus(
-          vpSingStatus,
-          vocalEngine === 'seed-vc'
-            ? '完成！人聲由 AI 聲音轉換模型（Seed-VC）生成，這是用你的聲紋唱出的歌。'
-            : '完成！（此伺服器未啟用 AI 聲音轉換，人聲為合成器版本。）'
-        );
+        let doneMsg = '完成！';
+        if (vocalEngine.includes('diffsinger') && vocalEngine.includes('seed-vc')) {
+          doneMsg = '完成！虛擬歌手代唱後，已用你的聲紋（Seed-VC）換上音色。';
+        } else if (vocalEngine.includes('diffsinger')) {
+          doneMsg = '完成！人聲為 DiffSinger 代唱（Seed-VC 未啟用，尚未換成你的音色）。';
+        } else if (vocalEngine.includes('seed-vc')) {
+          doneMsg = '完成！（代唱引擎未啟用，使用備援底稿＋Seed-VC。）';
+        } else {
+          doneMsg = '完成！（代唱／Seed-VC 未完全啟用，人聲為備援版本。）';
+        }
+        setStatus(vpSingStatus, doneMsg);
         audio.play().catch(() => {});
       } catch (err) {
         if (ctrl.superseded) return;

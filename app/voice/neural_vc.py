@@ -102,7 +102,7 @@ def _run_seedvc_once(source_wav: str, reference_wav: str, out_dir: str,
     return str(wavs[0]) if wavs else None
 
 
-def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: int = 40,
+def convert_voice_local(source_wav: str, reference_wav: str, diffusion_steps: int = 50,
                         timeout: int = 1800) -> Optional[str]:
     """本機 Seed-VC；長音檔自動切片轉換。"""
     if not is_available():

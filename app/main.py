@@ -440,7 +440,7 @@ async def lm_proxy_v1(path: str, request: Request):
 @app.post("/vc/convert")
 def vc_convert(source: UploadFile = File(...), reference: UploadFile = File(...)):
     """
-    用本機的 Seed-VC 做歌聲轉換：source 是聲碼器人聲底稿，reference 是音色參考。
+    用本機的 Seed-VC 做歌聲轉換：source 是代唱乾聲，reference 是音色參考。
     雲端（Zeabur）沒有 GPU/模型時，可透過這個端點把轉換交給本地電腦跑。
     """
     from app.voice import neural_vc
@@ -460,6 +460,31 @@ def vc_convert(source: UploadFile = File(...), reference: UploadFile = File(...)
     if not out:
         raise HTTPException(status_code=500, detail="Seed-VC 轉換失敗")
     return FileResponse(out, media_type="audio/wav", filename="converted.wav")
+
+
+class SVSJobRequest(BaseModel):
+    text: str
+    notes: str
+    notes_duration: str
+    input_type: str = "word"
+
+
+@app.post("/svs/synthesize")
+def svs_synthesize(job: SVSJobRequest):
+    """
+    用本機 DiffSinger 代唱：word-level job → 乾聲 WAV。
+    給雲端部署委託本地 Mac 用。
+    """
+    from app.voice import svs
+
+    if not svs.is_available():
+        raise HTTPException(status_code=501, detail="此伺服器未安裝 DiffSinger")
+
+    payload = job.model_dump() if hasattr(job, "model_dump") else job.dict()
+    out = svs.synthesize_job_to_wav(payload)
+    if not out:
+        raise HTTPException(status_code=500, detail="DiffSinger 代唱失敗")
+    return FileResponse(out, media_type="audio/wav", filename="svs.wav")
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)
@@ -824,12 +849,12 @@ def render_audio(request: RenderRequest):
             return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
         return FileResponse(mixed_path, media_type="audio/wav", filename="song.wav")
 
-    # ---- 步驟 6：聲紋演唱（把使用者唸歌詞的聲音移調成歌聲，混入伴奏）----
+    # ---- 步驟 6：系統代唱（DiffSinger）→ Seed-VC 換成使用者聲紋 → 混進伴奏 ----
     if request.use_voiceprint:
         import numpy as np
         import soundfile as sf
         from app.voice.sing import build_vocal_track, apply_reverb, load_mono
-        from app.voice import neural_vc
+        from app.voice import neural_vc, svs
 
         manifest = _load_voiceprint_manifest()
         if not manifest.get("lines"):
@@ -840,21 +865,38 @@ def render_audio(request: RenderRequest):
             acc = np.stack([acc, acc], axis=1)
 
         structure = compute_song_structure(notes_list, request.bpm, target_seconds=request.duration_seconds)
-        vocal = build_vocal_track(
-            notes=notes_list,
-            bpm=request.bpm,
-            structure=structure,
-            voiceprint_dir=VOICEPRINT_DIR,
-            manifest=manifest,
-            total_samples=len(acc),
-            lyrics=request.lyrics.dict() if request.lyrics else None,
-        )
-        if vocal is None:
-            raise HTTPException(status_code=400, detail="聲紋錄音無法使用，請在步驟 5 重錄")
+        lyrics_dict = request.lyrics.dict() if request.lyrics else None
 
-        # 神經歌聲轉換（Seed-VC）：把聲碼器底稿重新生成成自然人聲。
-        # 沒裝模型（例如雲端容器）就用底稿，不會失敗。
-        vocal_engine = "vocoder"
+        # 1) 優先：DiffSinger 代唱乾聲（真正的歌聲合成）
+        vocal_engine = "fallback-speech"
+        vocal = None
+        if svs.is_available() or svs.SVS_REMOTE_URLS:
+            vocal = svs.build_svs_vocal_track(
+                notes=notes_list,
+                bpm=request.bpm,
+                structure=structure,
+                lyrics=lyrics_dict,
+                total_samples=len(acc),
+            )
+            if vocal is not None:
+                vocal_engine = "diffsinger"
+
+        # 2) 代唱失敗才退回舊的「說話拉伸」底稿
+        if vocal is None:
+            print("[render-audio] DiffSinger 不可用，退回說話拉伸底稿")
+            vocal = build_vocal_track(
+                notes=notes_list,
+                bpm=request.bpm,
+                structure=structure,
+                voiceprint_dir=VOICEPRINT_DIR,
+                manifest=manifest,
+                total_samples=len(acc),
+                lyrics=lyrics_dict,
+            )
+        if vocal is None:
+            raise HTTPException(status_code=400, detail="無法生成人聲底稿，請確認步驟 4 歌詞與步驟 5 聲紋")
+
+        # 3) Seed-VC：把乾聲換成使用者音色
         ref_path = neural_vc.build_reference_wav(VOICEPRINT_DIR, manifest)
         if ref_path and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
             src_path = "/tmp/vocal_draft.wav"
@@ -862,13 +904,12 @@ def render_audio(request: RenderRequest):
             converted = neural_vc.convert_voice(src_path, ref_path)
             if converted:
                 v = load_mono(converted, 44100)
-                # 對齊長度（模型輸出可能差幾個 frame）
                 if len(v) < len(vocal):
                     v = np.pad(v, (0, len(vocal) - len(v)))
                 vocal = v[: len(vocal)]
-                vocal_engine = "seed-vc"
+                vocal_engine = vocal_engine + "+seed-vc"
             else:
-                print("[render-audio] 神經轉換不可用，改用聲碼器底稿")
+                print("[render-audio] Seed-VC 不可用，使用代唱原音色")
 
         vocal = apply_reverb(vocal)
 
