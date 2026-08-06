@@ -110,24 +110,37 @@ def generate_full_midi(
 
     rng = random.Random(seed)
     style_cfg = get_style(style)
+    decoration2 = None
     if style_cfg:
-        # 指定風格：樂器與鼓由風格定義
+        # 指定風格：優先從該風格標籤的編制池抽一組（樂器更多變），
+        # 若無標籤編制再退回風格內建的 program 清單。
+        mood = rng.choice(style_cfg.get("moods") or ["bright"])
+        ensemble = pick_ensemble(mood, rng, style=style)
+        if style in (ensemble.get("styles") or []):
+            melody_program = ensemble["melody_program"]
+            harmony_program = ensemble["harmony_program"]
+            decoration = ensemble.get("decoration")
+            decoration2 = ensemble.get("decoration2")
+        else:
+            melody_program = rng.choice(style_cfg.get("melody_programs") or MELODY_PROGRAM_CHOICES)
+            harmony_program = rng.choice(style_cfg.get("harmony_programs") or HARMONY_PROGRAM_CHOICES)
+            deco_pool = style_cfg.get("decoration_choices") or (
+                [style_cfg["decoration"]] if style_cfg.get("decoration") else []
+            )
+            decoration = rng.choice(deco_pool) if deco_pool else None
+            deco2_pool = style_cfg.get("decoration2_choices") or (
+                [style_cfg["decoration2"]] if style_cfg.get("decoration2") else []
+            )
+            decoration2 = rng.choice(deco2_pool) if deco2_pool else None
         drum_choices = style_cfg.get("drum_variations", [])
-        drum_var = rng.choice(drum_choices) if drum_choices else None  # None = 這個風格不用鼓
+        drum_var = rng.choice(drum_choices) if drum_choices else None
         bass_var = rng.choice(style_cfg.get("bass_variations") or [0])
         harmony_var = rng.choice(style_cfg.get("harmony_variations") or [0])
-        melody_program = rng.choice(style_cfg.get("melody_programs") or MELODY_PROGRAM_CHOICES)
-        harmony_program = rng.choice(style_cfg.get("harmony_programs") or HARMONY_PROGRAM_CHOICES)
-        deco_pool = style_cfg.get("decoration_choices") or (
-            [style_cfg["decoration"]] if style_cfg.get("decoration") else []
-        )
-        decoration = rng.choice(deco_pool) if deco_pool else None
-        deco2_pool = style_cfg.get("decoration2_choices") or (
-            [style_cfg["decoration2"]] if style_cfg.get("decoration2") else []
-        )
-        decoration2 = rng.choice(deco2_pool) if deco2_pool else None
+        # 若風格禁用鼓，強制關閉（即使抽到有鼓的編制）
+        if not drum_choices:
+            drum_var = None
     else:
-        # 自動：每次隨機挑一組「樂團編制」（吉他彈唱、鋼琴詩人、銅管／木管…）
+        # 自動：每次隨機挑一組「樂團編制」
         ensemble = pick_ensemble(None, rng)
         melody_program = ensemble["melody_program"]
         harmony_program = ensemble["harmony_program"]

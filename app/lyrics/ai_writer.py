@@ -6,7 +6,7 @@ from typing import Optional
 
 from app.lyrics.lm_json import extract_json_objects, message_text
 
-# 各風格的作詞語氣指引（與 theory_db.json 的 styles 對應）
+# 各風格的作詞語氣指引（與 theory_db.json 的 styles 對應；未列者走預設）
 STYLE_FLAVORS = {
     "pop": "明亮直接、有記憶點，副歌要朗朗上口、適合重複哼唱",
     "ballad": "抒情細膩、慢板，帶一點想念或感動的情緒，用字溫柔",
@@ -14,6 +14,20 @@ STYLE_FLAVORS = {
     "rock": "有力量、有吶喊感，句子短促有衝勁，帶一點不服輸",
     "jazz": "慵懶搖擺、都會感，帶一點俏皮與慵懶的浪漫",
     "lullaby": "溫柔安眠，多用疊字與柔軟的意象（星星、月亮、懷抱），節奏緩慢",
+    "reggae": "慵懶陽光、島嶼節奏感，用字輕鬆有一點俏皮",
+    "symphony": "莊重優美、有畫面感，像電影或音樂會的開場",
+    "edm": "節奏鮮明、夜色霓虹，句子短、有反覆 hook",
+    "hiphop": "口語節奏感、自信直接，可有一點街頭感但不粗俗",
+    "rnb": "甜蜜柔軟、情感細膩，像深夜電台情歌",
+    "country": "公路與家鄉感，樸實敘事、溫暖收尾",
+    "latin": "熱情節奏、陽光色彩，句子有擺動感",
+    "blues": "帶一點滄桑與釋放，情緒真實、用字簡單有力",
+    "funk": "俏皮律動、身體感，短句、重節奏感",
+    "disco": "華麗舞池、歡快閃亮，副歌要好喊",
+    "ambient": "空靈緩慢、意象多於敘事，像風景與呼吸",
+    "cinematic": "史詩或柔情的電影感，畫面強烈",
+    "bossa": "慵懶咖啡廳、輕柔搖擺，浪漫但不造作",
+    "gospel": "希望與力量、溫暖群唱感，正向收束",
 }
 
 STYLE_LABELS = {
@@ -23,6 +37,20 @@ STYLE_LABELS = {
     "rock": "搖滾 Rock",
     "jazz": "爵士 Jazz",
     "lullaby": "搖籃曲",
+    "reggae": "雷鬼 Reggae",
+    "symphony": "交響樂／古典",
+    "edm": "電子 EDM",
+    "hiphop": "嘻哈 Hip-Hop",
+    "rnb": "R&B／靈魂",
+    "country": "鄉村 Country",
+    "latin": "拉丁 Latin",
+    "blues": "藍調 Blues",
+    "funk": "放克 Funk",
+    "disco": "迪斯可 Disco",
+    "ambient": "氛圍 Ambient",
+    "cinematic": "電影配樂",
+    "bossa": "巴薩諾瓦 Bossa",
+    "gospel": "福音 Gospel",
 }
 
 

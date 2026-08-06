@@ -96,15 +96,9 @@ def generate_melody_from_material(
     """
     分析素材聲音，生成帶有素材元素與感覺的 4 小節旋律。
 
-    style 指定風格（pop / ballad / folk / rock / jazz / lullaby）時，
-    BPM、節奏密度、和弦進行會依樂理資料庫的風格定義決定；
-    不指定（auto）則完全由素材的感覺推導。
-
-    Returns:
-        {
-          "notes": [...], "bpm": float, "key": str, "chords": [...],
-          "material": {...特徵摘要，給前端顯示...}
-        }
+    style 指定時依樂理資料庫；不指定（auto）則依素材 mood 隨機挑相容風格，
+    讓每次生成都不同，且該風格會影響步驟 3 樂器。
+    seed 省略時自動隨機。
     """
     from app.audio.extract_notes import extract_notes_from_audio
 
@@ -114,27 +108,50 @@ def generate_melody_from_material(
         raise ValueError("素材中偵測不到任何聲音事件")
 
     feat = _extract_features(mat_notes)
+    if seed is None:
+        seed = random.randrange(1 << 30)
     rng = random.Random(seed)
 
-    # --- 感覺 → 參數 ---
-    scale_type = "minor_pentatonic" if feat["is_minor"] else "major_pentatonic"
-    intervals = SCALE_INTERVALS[scale_type]
+    # --- 感覺 → 參數（音階偶爾換型，避免每次都同一套五聲音階）---
+    if feat["is_minor"]:
+        scale_type = rng.choice(["minor_pentatonic", "minor_pentatonic", "minor"])
+    else:
+        scale_type = rng.choice(["major_pentatonic", "major_pentatonic", "major"])
+    intervals = SCALE_INTERVALS.get(scale_type) or SCALE_INTERVALS["major_pentatonic"]
 
-    # --- 讀樂理資料庫：風格與感覺決定 BPM、節奏密度、和弦進行 ---
-    from app.theory.knowledge import pick_progression_for_mood, melody_rules, get_style
+    from app.theory.knowledge import (
+        pick_progression_for_mood,
+        melody_rules,
+        get_style,
+        pick_style_for_mood,
+    )
     from app.arrange.chords import get_chord_pitch_classes
 
-    style_cfg = get_style(style)
     rhythm_table = {"low": RHYTHMS_LOW, "mid": RHYTHMS_MID, "high": RHYTHMS_HIGH}
 
+    if feat["is_minor"]:
+        base_mood = "sad" if feat["density"] < 2.0 else "emotional"
+    elif feat["density"] >= 3.5:
+        base_mood = "energetic"
+    elif feat["density"] < 1.0:
+        base_mood = "calm"
+    else:
+        base_mood = "bright"
+
+    resolved_style = style if style and style != "auto" else None
+    auto_picked = False
+    if not resolved_style:
+        resolved_style = pick_style_for_mood(base_mood, rng)
+        auto_picked = True
+
+    style_cfg = get_style(resolved_style)
     if style_cfg:
-        # 指定風格：BPM 與節奏由風格定義，感覺從風格的 mood 清單挑
         lo, hi = style_cfg["bpm_range"]
-        bpm = float(rng.randint(lo, hi))
+        bpm = float(rng.randint(lo, hi) + rng.randint(-3, 3))
+        bpm = float(max(50, min(180, bpm)))
         rhythms = rhythm_table[style_cfg.get("rhythm_energy", "mid")]
         mood = rng.choice(style_cfg["moods"])
     else:
-        # 自動：由素材的能量與明暗推導
         if feat["density"] < 1.0:
             bpm, rhythms = 75.0, RHYTHMS_LOW
         elif feat["density"] < 2.0:
@@ -143,15 +160,8 @@ def generate_melody_from_material(
             bpm, rhythms = 105.0, RHYTHMS_MID
         else:
             bpm, rhythms = 120.0, RHYTHMS_HIGH
-
-        if feat["is_minor"]:
-            mood = "sad" if feat["density"] < 2.0 else "emotional"
-        elif feat["density"] >= 3.5:
-            mood = "energetic"
-        elif feat["density"] < 1.0:
-            mood = "calm"
-        else:
-            mood = "bright"
+        bpm = float(bpm + rng.randint(-5, 5))
+        mood = base_mood
 
     rules = melody_rules()
     chord_tone_prob = rules.get("strong_beat_chord_tone_prob", 0.85)
@@ -201,9 +211,8 @@ def generate_melody_from_material(
     idx = scale_pitches.index(motif_scale[0])
     prev_step = 0  # 上一次的移動量（音階步數），用於跳進解決
 
-    # 動機變形：第 3 小節的動機隨機選一種變化（原樣重現 / 逆行 / 移高一級），
-    # 讓「動機再現」不是死板複製
-    transform = rng.choice(["original", "reversed", "shifted"])
+    # 動機變形：第 1／3 小節都可能變形，避免每次都「同一動機原樣複製」
+    transform = rng.choice(["original", "reversed", "shifted", "dropped", "thinned"])
     if transform == "reversed":
         motif_bar2 = list(reversed(motif_scale))
     elif transform == "shifted":
@@ -211,9 +220,18 @@ def generate_melody_from_material(
             scale_pitches[min(len(scale_pitches) - 1, scale_pitches.index(p) + 1)]
             for p in motif_scale
         ]
+    elif transform == "dropped":
+        motif_bar2 = [
+            scale_pitches[max(0, scale_pitches.index(p) - 1)]
+            for p in motif_scale
+        ]
+    elif transform == "thinned":
+        motif_bar2 = motif_scale[::2] or motif_scale
     else:
         motif_bar2 = motif_scale
-    motif_by_bar = {0: motif_scale, 2: motif_bar2}
+    # 第 1 小節也有機會用變形動機，增加版本差
+    motif_bar0 = motif_scale if rng.random() < 0.55 else motif_bar2
+    motif_by_bar = {0: motif_bar0, 2: motif_bar2}
 
     def snap_to_chord_tone(cur_idx: int, chord_pcs: set) -> int:
         """把音就近吸附到當小節和弦的內音（在音階內找最近的和弦音）。"""
@@ -291,6 +309,13 @@ def generate_melody_from_material(
             "contour": {1: "上行", -1: "下行", 0: "平穩"}[feat["contour"]],
             "num_material_notes": len(mat_notes),
             "progression": progression["name"],
-            "style": style_cfg["label"] if style_cfg else "自動（依素材感覺）",
+            "style": (
+                (style_cfg["label"] if style_cfg else resolved_style or "自動")
+                + ("（自動挑選）" if auto_picked else "")
+            ),
+            "style_id": resolved_style,
+            "seed": seed,
+            "scale_type": scale_type,
+            "transform": transform,
         },
     }

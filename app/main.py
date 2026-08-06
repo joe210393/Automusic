@@ -634,12 +634,16 @@ async def generate_melody_endpoint(request: MelodyRequest):
 
 
 @app.post("/compose-from-audio")
-async def compose_from_audio(file: UploadFile = File(...), style: Optional[str] = Form(None)):
+async def compose_from_audio(
+    file: UploadFile = File(...),
+    style: Optional[str] = Form(None),
+    seed: Optional[int] = Form(None),
+):
     """
     從素材聲音生成旋律：素材不會直接變成旋律，而是萃取它的
     「元素（動機、音域）與感覺（明暗、能量、走向）」來創作一段新旋律。
-    style 可指定風格（pop/ballad/folk/rock/jazz/lullaby），省略則依素材感覺自動決定。
-    回傳格式與 /analyze-audio 相容，可直接接編曲流程。
+    style 可指定風格；省略則自動依素材感覺隨機挑相容風格。
+    seed 可重現同一版；省略則每次隨機。
     """
     if not file.filename.lower().endswith(".wav"):
         raise HTTPException(status_code=400, detail="只支援 WAV 格式")
@@ -652,7 +656,7 @@ async def compose_from_audio(file: UploadFile = File(...), style: Optional[str] 
         tmp_path = tmp_file.name
 
     try:
-        result = generate_melody_from_material(tmp_path, style=style)
+        result = generate_melody_from_material(tmp_path, style=style, seed=seed)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     finally:

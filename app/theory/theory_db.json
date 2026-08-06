@@ -194,133 +194,1477 @@
   ],
   "ensembles": [
     {
-      "name": "木吉他彈唱（民謠歌手）",
+      "name": "木吉他彈唱",
       "melody_program": 25,
       "harmony_program": 24,
-      "decoration": { "type": "arp", "program": 24 },
       "drums": true,
-      "moods": ["bright", "warm", "simple", "energetic"]
+      "moods": [
+        "bright",
+        "warm",
+        "simple",
+        "energetic"
+      ],
+      "styles": [
+        "folk",
+        "country",
+        "pop"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      }
+    },
+    {
+      "name": "尼龍吉他指彈",
+      "melody_program": 24,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "folk",
+        "ballad",
+        "bossa"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
+    },
+    {
+      "name": "鋼弦民謠",
+      "melody_program": 25,
+      "harmony_program": 25,
+      "drums": true,
+      "moods": [
+        "bright",
+        "simple",
+        "warm"
+      ],
+      "styles": [
+        "folk",
+        "country"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 45
+      }
+    },
+    {
+      "name": "Banjo 鄉村",
+      "melody_program": 105,
+      "harmony_program": 24,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "simple"
+      ],
+      "styles": [
+        "country",
+        "folk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 25
+      }
     },
     {
       "name": "鋼琴詩人",
       "melody_program": 0,
       "harmony_program": 48,
-      "decoration": { "type": "arp", "program": 0 },
-      "decoration2": { "type": "sustain", "program": 40 },
       "drums": false,
-      "moods": ["emotional", "calm", "sad", "warm"]
+      "moods": [
+        "emotional",
+        "calm",
+        "sad",
+        "warm"
+      ],
+      "styles": [
+        "ballad",
+        "symphony",
+        "cinematic"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 0
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 40
+      }
     },
     {
-      "name": "薩克斯風之夜",
-      "melody_program": 64,
-      "harmony_program": 4,
-      "decoration": { "type": "pad", "program": 48 },
+      "name": "明亮鋼琴",
+      "melody_program": 1,
+      "harmony_program": 48,
       "drums": true,
-      "moods": ["jazzy", "warm", "calm"]
-    },
-    {
-      "name": "弦樂室內樂",
-      "melody_program": 40,
-      "harmony_program": 48,
-      "decoration": { "type": "arp", "program": 45 },
-      "decoration2": { "type": "sustain", "program": 42 },
-      "drums": false,
-      "moods": ["emotional", "calm", "sad"]
-    },
-    {
-      "name": "小提琴主奏",
-      "melody_program": 40,
-      "harmony_program": 48,
-      "decoration": { "type": "sustain", "program": 41 },
-      "decoration2": { "type": "pad", "program": 46 },
-      "drums": false,
-      "moods": ["emotional", "warm", "calm", "sad"]
-    },
-    {
-      "name": "電吉他樂團",
-      "melody_program": 29,
-      "harmony_program": 27,
-      "decoration": { "type": "pad", "program": 30 },
-      "drums": true,
-      "moods": ["rock", "energetic", "bright"]
-    },
-    {
-      "name": "音樂盒夢境",
-      "melody_program": 10,
-      "harmony_program": 48,
-      "decoration": { "type": "arp", "program": 8 },
-      "drums": false,
-      "moods": ["lullaby", "calm"]
-    },
-    {
-      "name": "長笛田園",
-      "melody_program": 73,
-      "harmony_program": 24,
-      "decoration": { "type": "arp", "program": 46 },
-      "decoration2": { "type": "sustain", "program": 71 },
-      "drums": false,
-      "moods": ["bright", "calm", "simple"]
-    },
-    {
-      "name": "豎笛木管",
-      "melody_program": 71,
-      "harmony_program": 48,
-      "decoration": { "type": "sustain", "program": 73 },
-      "decoration2": { "type": "pad", "program": 68 },
-      "drums": false,
-      "moods": ["warm", "calm", "simple", "jazzy"]
-    },
-    {
-      "name": "雙簧管古典",
-      "melody_program": 68,
-      "harmony_program": 48,
-      "decoration": { "type": "sustain", "program": 71 },
-      "decoration2": { "type": "arp", "program": 46 },
-      "drums": false,
-      "moods": ["calm", "emotional", "warm"]
-    },
-    {
-      "name": "銅管合奏",
-      "melody_program": 56,
-      "harmony_program": 61,
-      "decoration": { "type": "hits", "program": 57 },
-      "decoration2": { "type": "pad", "program": 60 },
-      "drums": true,
-      "moods": ["bright", "energetic", "warm"]
-    },
-    {
-      "name": "法國號田園",
-      "melody_program": 60,
-      "harmony_program": 48,
-      "decoration": { "type": "sustain", "program": 73 },
-      "decoration2": { "type": "pad", "program": 42 },
-      "drums": false,
-      "moods": ["warm", "calm", "emotional"]
-    },
-    {
-      "name": "小號雅緻",
-      "melody_program": 56,
-      "harmony_program": 48,
-      "decoration": { "type": "hits", "program": 61 },
-      "decoration2": { "type": "pad", "program": 48 },
-      "drums": true,
-      "moods": ["bright", "energetic", "warm"]
+      "moods": [
+        "bright",
+        "warm",
+        "energetic"
+      ],
+      "styles": [
+        "pop",
+        "disco"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 0
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 49
+      }
     },
     {
       "name": "復古電鋼琴",
       "melody_program": 4,
       "harmony_program": 4,
-      "decoration": { "type": "pad", "program": 50 },
       "drums": true,
-      "moods": ["warm", "jazzy", "bright"]
+      "moods": [
+        "warm",
+        "jazzy",
+        "bright"
+      ],
+      "styles": [
+        "rnb",
+        "jazz",
+        "pop"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 50
+      }
+    },
+    {
+      "name": "溫暖電鋼",
+      "melody_program": 5,
+      "harmony_program": 48,
+      "drums": true,
+      "moods": [
+        "warm",
+        "emotional",
+        "calm"
+      ],
+      "styles": [
+        "rnb",
+        "ballad",
+        "ambient"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 89
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 71
+      }
+    },
+    {
+      "name": "大鍵琴巴洛克",
+      "melody_program": 6,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "bright",
+        "simple"
+      ],
+      "styles": [
+        "symphony",
+        "folk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 6
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 68
+      }
+    },
+    {
+      "name": "鋼片琴閃爍",
+      "melody_program": 8,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "lullaby",
+        "calm",
+        "bright"
+      ],
+      "styles": [
+        "lullaby",
+        "ambient"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 10
+      }
+    },
+    {
+      "name": "音樂盒夢境",
+      "melody_program": 10,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "styles": [
+        "lullaby"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 8
+      }
+    },
+    {
+      "name": "顫音琴爵士",
+      "melody_program": 11,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "jazzy",
+        "warm",
+        "calm"
+      ],
+      "styles": [
+        "jazz",
+        "bossa",
+        "lounge"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 56
+      }
+    },
+    {
+      "name": "木琴俏皮",
+      "melody_program": 12,
+      "harmony_program": 24,
+      "drums": true,
+      "moods": [
+        "bright",
+        "simple",
+        "energetic"
+      ],
+      "styles": [
+        "folk",
+        "pop",
+        "chiptune"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 13
+      }
+    },
+    {
+      "name": "管風琴聖詩",
+      "melody_program": 19,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "warm",
+        "calm",
+        "emotional"
+      ],
+      "styles": [
+        "gospel",
+        "symphony"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 52
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 60
+      }
+    },
+    {
+      "name": "搖滾風琴",
+      "melody_program": 18,
+      "harmony_program": 27,
+      "drums": true,
+      "moods": [
+        "rock",
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "rock",
+        "funk"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      }
+    },
+    {
+      "name": "手風琴歐風",
+      "melody_program": 21,
+      "harmony_program": 24,
+      "drums": true,
+      "moods": [
+        "warm",
+        "simple",
+        "bright"
+      ],
+      "styles": [
+        "folk",
+        "latin",
+        "country"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      }
+    },
+    {
+      "name": "口琴藍調",
+      "melody_program": 22,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues",
+        "folk",
+        "country"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 71
+      }
+    },
+    {
+      "name": "爵士吉他",
+      "melody_program": 26,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "jazzy",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "jazz",
+        "bossa",
+        "rnb"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      }
+    },
+    {
+      "name": "清音電吉他",
+      "melody_program": 27,
+      "harmony_program": 27,
+      "drums": true,
+      "moods": [
+        "bright",
+        "warm",
+        "energetic"
+      ],
+      "styles": [
+        "pop",
+        "country",
+        "funk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 27
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 50
+      }
+    },
+    {
+      "name": "電吉他樂團",
+      "melody_program": 29,
+      "harmony_program": 27,
+      "drums": true,
+      "moods": [
+        "rock",
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "rock",
+        "metal"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      }
+    },
+    {
+      "name": "過載吉他",
+      "melody_program": 29,
+      "harmony_program": 30,
+      "drums": true,
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock",
+        "metal"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 61
+      }
+    },
+    {
+      "name": "失真金屬",
+      "melody_program": 30,
+      "harmony_program": 30,
+      "drums": true,
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "metal",
+        "rock"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 30
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 61
+      }
+    },
+    {
+      "name": "合成貝斯電音",
+      "melody_program": 38,
+      "harmony_program": 81,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm",
+        "hiphop",
+        "disco"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 88
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 80
+      }
+    },
+    {
+      "name": "小提琴主奏",
+      "melody_program": 40,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "emotional",
+        "warm",
+        "calm",
+        "sad"
+      ],
+      "styles": [
+        "symphony",
+        "ballad",
+        "cinematic"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 41
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 46
+      }
+    },
+    {
+      "name": "中提琴溫柔",
+      "melody_program": 41,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "emotional",
+        "warm"
+      ],
+      "styles": [
+        "symphony",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 40
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 49
+      }
+    },
+    {
+      "name": "大提琴深情",
+      "melody_program": 42,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "sad",
+        "emotional",
+        "calm"
+      ],
+      "styles": [
+        "symphony",
+        "cinematic",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 40
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 46
+      }
+    },
+    {
+      "name": "弦樂室內樂",
+      "melody_program": 40,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "emotional",
+        "calm",
+        "sad"
+      ],
+      "styles": [
+        "symphony",
+        "cinematic"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 45
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 42
+      }
+    },
+    {
+      "name": "顫音弦樂",
+      "melody_program": 44,
+      "harmony_program": 49,
+      "drums": false,
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic",
+        "symphony"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 40
+      }
+    },
+    {
+      "name": "撥弦趣味",
+      "melody_program": 45,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "bright",
+        "simple",
+        "calm"
+      ],
+      "styles": [
+        "folk",
+        "symphony",
+        "bossa"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 45
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
+    },
+    {
+      "name": "豎琴仙境",
+      "melody_program": 46,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "bright",
+        "lullaby"
+      ],
+      "styles": [
+        "ambient",
+        "lullaby",
+        "cinematic"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 46
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
+    },
+    {
+      "name": "弦樂合奏鋪底",
+      "melody_program": 48,
+      "harmony_program": 49,
+      "drums": false,
+      "moods": [
+        "emotional",
+        "warm",
+        "calm"
+      ],
+      "styles": [
+        "symphony",
+        "cinematic",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 50
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 40
+      }
+    },
+    {
+      "name": "人聲合唱墊",
+      "melody_program": 52,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "warm",
+        "emotional",
+        "calm"
+      ],
+      "styles": [
+        "gospel",
+        "cinematic",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 53
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 40
+      }
+    },
+    {
+      "name": "小號雅緻",
+      "melody_program": 56,
+      "harmony_program": 48,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "jazz",
+        "symphony",
+        "pop"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 61
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 48
+      }
+    },
+    {
+      "name": "長號華麗",
+      "melody_program": 57,
+      "harmony_program": 61,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "symphony",
+        "jazz",
+        "disco"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 56
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 60
+      }
+    },
+    {
+      "name": "銅管合奏",
+      "melody_program": 56,
+      "harmony_program": 61,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "symphony",
+        "funk",
+        "disco"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 57
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 60
+      }
+    },
+    {
+      "name": "法國號田園",
+      "melody_program": 60,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "warm",
+        "calm",
+        "emotional"
+      ],
+      "styles": [
+        "symphony",
+        "cinematic",
+        "folk"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 73
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 42
+      }
+    },
+    {
+      "name": "薩克斯風之夜",
+      "melody_program": 65,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "jazzy",
+        "warm",
+        "calm"
+      ],
+      "styles": [
+        "jazz",
+        "rnb",
+        "bossa"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 48
+      }
+    },
+    {
+      "name": "次中音薩克斯",
+      "melody_program": 66,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "jazzy",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "jazz",
+        "blues",
+        "rnb"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 89
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 71
+      }
+    },
+    {
+      "name": "雙簧管古典",
+      "melody_program": 68,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "emotional",
+        "warm"
+      ],
+      "styles": [
+        "symphony",
+        "folk"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 71
+      },
+      "decoration2": {
+        "type": "arp",
+        "program": 46
+      }
+    },
+    {
+      "name": "英國管敘事",
+      "melody_program": 69,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "sad",
+        "emotional",
+        "calm"
+      ],
+      "styles": [
+        "symphony",
+        "cinematic"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 68
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 49
+      }
+    },
+    {
+      "name": "低音管莊重",
+      "melody_program": 70,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 49
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 42
+      }
+    },
+    {
+      "name": "豎笛木管",
+      "melody_program": 71,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "warm",
+        "calm",
+        "simple",
+        "jazzy"
+      ],
+      "styles": [
+        "jazz",
+        "folk",
+        "symphony",
+        "bossa"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 73
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 68
+      }
+    },
+    {
+      "name": "短笛明亮",
+      "melody_program": 72,
+      "harmony_program": 48,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "simple"
+      ],
+      "styles": [
+        "symphony",
+        "folk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 73
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 56
+      }
+    },
+    {
+      "name": "長笛田園",
+      "melody_program": 73,
+      "harmony_program": 24,
+      "drums": false,
+      "moods": [
+        "bright",
+        "calm",
+        "simple"
+      ],
+      "styles": [
+        "folk",
+        "symphony",
+        "ambient"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 46
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 71
+      }
+    },
+    {
+      "name": "直笛童趣",
+      "melody_program": 74,
+      "harmony_program": 24,
+      "drums": false,
+      "moods": [
+        "simple",
+        "bright",
+        "calm"
+      ],
+      "styles": [
+        "folk",
+        "lullaby"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      }
+    },
+    {
+      "name": "排笛異國",
+      "melody_program": 75,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "ambient",
+        "folk",
+        "world"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 88
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
     },
     {
       "name": "溫柔口哨",
       "melody_program": 78,
       "harmony_program": 24,
-      "decoration": { "type": "arp", "program": 25 },
       "drums": true,
-      "moods": ["simple", "bright", "calm"]
+      "moods": [
+        "simple",
+        "bright",
+        "calm"
+      ],
+      "styles": [
+        "folk",
+        "pop"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 25
+      }
+    },
+    {
+      "name": "陶笛幻想",
+      "melody_program": 79,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "lullaby",
+        "simple"
+      ],
+      "styles": [
+        "ambient",
+        "lullaby",
+        "folk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 46
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 88
+      }
+    },
+    {
+      "name": "方波電子",
+      "melody_program": 80,
+      "harmony_program": 81,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm",
+        "disco"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 88
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 80
+      }
+    },
+    {
+      "name": "鋸齒主奏",
+      "melody_program": 81,
+      "harmony_program": 90,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "bright",
+        "rock"
+      ],
+      "styles": [
+        "edm",
+        "disco",
+        "pop"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 89
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 61
+      }
+    },
+    {
+      "name": "氛圍 Pad",
+      "melody_program": 88,
+      "harmony_program": 89,
+      "drums": false,
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient",
+        "cinematic",
+        "edm"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 90
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
+    },
+    {
+      "name": "溫暖 Pad",
+      "melody_program": 89,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "warm",
+        "calm",
+        "emotional"
+      ],
+      "styles": [
+        "ambient",
+        "rnb",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 88
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 40
+      }
+    },
+    {
+      "name": "Sitar 異域",
+      "melody_program": 104,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "world",
+        "ambient",
+        "folk"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 45
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 88
+      }
+    },
+    {
+      "name": "Kalimba 指琴",
+      "melody_program": 108,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "calm",
+        "simple",
+        "bright",
+        "lullaby"
+      ],
+      "styles": [
+        "folk",
+        "ambient",
+        "lullaby"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 10
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 73
+      }
+    },
+    {
+      "name": "風笛凱爾特",
+      "melody_program": 109,
+      "harmony_program": 48,
+      "drums": false,
+      "moods": [
+        "bright",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "folk",
+        "world"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 73
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 49
+      }
+    },
+    {
+      "name": "鋼鼓加勒比",
+      "melody_program": 114,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "reggae",
+        "latin",
+        "pop"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 114
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 56
+      }
+    },
+    {
+      "name": "雷鬼風琴",
+      "melody_program": 16,
+      "harmony_program": 114,
+      "drums": true,
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 25
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 4
+      }
+    },
+    {
+      "name": "Funk 銅管",
+      "melody_program": 61,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk",
+        "disco",
+        "rnb"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 56
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 27
+      }
+    },
+    {
+      "name": "Bossa 尼龍",
+      "melody_program": 24,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa",
+        "jazz",
+        "latin"
+      ],
+      "decoration": {
+        "type": "arp",
+        "program": 24
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 71
+      }
+    },
+    {
+      "name": "拉丁打擊感吉他",
+      "melody_program": 25,
+      "harmony_program": 27,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "latin",
+        "pop"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 56
+      },
+      "decoration2": {
+        "type": "arp",
+        "program": 24
+      }
+    },
+    {
+      "name": "Gospel 風琴",
+      "melody_program": 16,
+      "harmony_program": 52,
+      "drums": true,
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel",
+        "rnb"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 52
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 61
+      }
+    },
+    {
+      "name": "Blues 電吉他",
+      "melody_program": 27,
+      "harmony_program": 4,
+      "drums": true,
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues",
+        "rock"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 22
+      },
+      "decoration2": {
+        "type": "sustain",
+        "program": 66
+      }
+    },
+    {
+      "name": "Hip-hop 電鋼",
+      "melody_program": 4,
+      "harmony_program": 38,
+      "drums": true,
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "hiphop",
+        "rnb"
+      ],
+      "decoration": {
+        "type": "pad",
+        "program": 89
+      },
+      "decoration2": {
+        "type": "hits",
+        "program": 80
+      }
+    },
+    {
+      "name": "電影史詩銅管",
+      "melody_program": 61,
+      "harmony_program": 48,
+      "drums": true,
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic",
+        "symphony"
+      ],
+      "decoration": {
+        "type": "hits",
+        "program": 56
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 49
+      }
+    },
+    {
+      "name": "電影柔情弦樂",
+      "melody_program": 48,
+      "harmony_program": 49,
+      "drums": false,
+      "moods": [
+        "emotional",
+        "sad",
+        "calm"
+      ],
+      "styles": [
+        "cinematic",
+        "ballad"
+      ],
+      "decoration": {
+        "type": "sustain",
+        "program": 40
+      },
+      "decoration2": {
+        "type": "pad",
+        "program": 46
+      }
     }
   ],
   "styles": {
@@ -348,17 +1692,42 @@
         2,
         1
       ],
-      "melody_programs": [0, 4, 73, 71],
-      "harmony_programs": [4, 0, 48],
-      "note": "流行：鋼琴／電鋼琴／長笛／豎笛主奏，可加弦樂鋪底",
+      "melody_programs": [
+        0,
+        4,
+        73,
+        71,
+        27
+      ],
+      "harmony_programs": [
+        4,
+        0,
+        48
+      ],
+      "note": "流行：鋼琴／電鋼／長笛／清音吉他",
       "decoration_choices": [
-        { "type": "arp", "program": 0 },
-        { "type": "sustain", "program": 73 },
-        { "type": "hits", "program": 56 }
+        {
+          "type": "arp",
+          "program": 0
+        },
+        {
+          "type": "sustain",
+          "program": 73
+        },
+        {
+          "type": "hits",
+          "program": 56
+        }
       ],
       "decoration2_choices": [
-        { "type": "pad", "program": 48 },
-        { "type": "sustain", "program": 40 }
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
       ]
     },
     "ballad": {
@@ -383,17 +1752,36 @@
         1,
         0
       ],
-      "melody_programs": [0, 11, 40, 71],
-      "harmony_programs": [48, 0],
-      "note": "慢板：鋼琴／小提琴／豎笛，弦樂鋪底與對位",
+      "melody_programs": [
+        0,
+        11,
+        40,
+        71
+      ],
+      "harmony_programs": [
+        48,
+        0
+      ],
+      "note": "慢板：鋼琴／小提琴／豎笛",
       "decoration_choices": [
-        { "type": "arp", "program": 0 },
-        { "type": "sustain", "program": 40 },
-        { "type": "sustain", "program": 71 }
+        {
+          "type": "arp",
+          "program": 0
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
       ],
       "decoration2_choices": [
-        { "type": "pad", "program": 48 },
-        { "type": "sustain", "program": 42 }
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 42
+        }
       ]
     },
     "folk": {
@@ -419,17 +1807,38 @@
         2,
         0
       ],
-      "melody_programs": [24, 0, 73, 74],
-      "harmony_programs": [24, 4, 48],
-      "note": "吉他／鋼琴／長笛／直笛，樸實好唱",
+      "melody_programs": [
+        24,
+        25,
+        73,
+        74,
+        105
+      ],
+      "harmony_programs": [
+        24,
+        4,
+        48
+      ],
+      "note": "吉他／Banjo／長笛／直笛",
       "decoration_choices": [
-        { "type": "arp", "program": 24 },
-        { "type": "sustain", "program": 73 },
-        { "type": "sustain", "program": 71 }
+        {
+          "type": "arp",
+          "program": 24
+        },
+        {
+          "type": "sustain",
+          "program": 73
+        }
       ],
       "decoration2_choices": [
-        { "type": "pad", "program": 46 },
-        { "type": "arp", "program": 45 }
+        {
+          "type": "pad",
+          "program": 46
+        },
+        {
+          "type": "arp",
+          "program": 45
+        }
       ]
     },
     "rock": {
@@ -453,9 +1862,16 @@
       "harmony_variations": [
         2
       ],
-      "melody_programs": [29, 27],
-      "harmony_programs": [29, 27],
-      "note": "過載/清音電吉他、八度行進貝斯、切分大鼓",
+      "melody_programs": [
+        29,
+        27,
+        30
+      ],
+      "harmony_programs": [
+        29,
+        27
+      ],
+      "note": "電吉他、切分鼓",
       "decoration": {
         "type": "pad",
         "program": 30
@@ -473,7 +1889,7 @@
       ],
       "bpm_range": [
         85,
-        100
+        110
       ],
       "rhythm_energy": "mid",
       "drum_variations": [
@@ -486,17 +1902,38 @@
         0,
         1
       ],
-      "melody_programs": [11, 26, 71, 64],
-      "harmony_programs": [4, 26, 48],
-      "note": "顫音琴／爵士吉他／豎笛／薩克斯風",
+      "melody_programs": [
+        11,
+        26,
+        71,
+        65,
+        66
+      ],
+      "harmony_programs": [
+        4,
+        26,
+        48
+      ],
+      "note": "顫音琴／豎笛／薩克斯風",
       "decoration_choices": [
-        { "type": "pad", "program": 48 },
-        { "type": "sustain", "program": 71 },
-        { "type": "hits", "program": 56 }
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 71
+        }
       ],
       "decoration2_choices": [
-        { "type": "sustain", "program": 60 },
-        { "type": "pad", "program": 4 }
+        {
+          "type": "sustain",
+          "program": 60
+        },
+        {
+          "type": "pad",
+          "program": 4
+        }
       ]
     },
     "lullaby": {
@@ -517,16 +1954,821 @@
       "harmony_variations": [
         1
       ],
-      "melody_programs": [10, 8, 73],
-      "harmony_programs": [48],
-      "note": "音樂盒／鋼片琴／長笛，無鼓、弦樂鋪底",
+      "melody_programs": [
+        10,
+        8,
+        73,
+        79
+      ],
+      "harmony_programs": [
+        48
+      ],
+      "note": "音樂盒／長笛／陶笛，無鼓",
       "decoration_choices": [
-        { "type": "arp", "program": 8 },
-        { "type": "sustain", "program": 73 }
+        {
+          "type": "arp",
+          "program": 8
+        },
+        {
+          "type": "sustain",
+          "program": 73
+        }
       ],
       "decoration2_choices": [
-        { "type": "pad", "program": 48 },
-        { "type": "sustain", "program": 40 }
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
+      ]
+    },
+    "reggae": {
+      "label": "雷鬼 Reggae",
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "bpm_range": [
+        70,
+        90
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        0,
+        2
+      ],
+      "bass_variations": [
+        0,
+        1
+      ],
+      "harmony_variations": [
+        2,
+        0
+      ],
+      "melody_programs": [
+        16,
+        114,
+        25,
+        4
+      ],
+      "harmony_programs": [
+        114,
+        4,
+        24
+      ],
+      "note": "鋼鼓／風琴／吉他，慵懶律動",
+      "decoration_choices": [
+        {
+          "type": "hits",
+          "program": 25
+        },
+        {
+          "type": "arp",
+          "program": 114
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 4
+        },
+        {
+          "type": "sustain",
+          "program": 71
+        }
+      ]
+    },
+    "symphony": {
+      "label": "交響樂／古典",
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "bpm_range": [
+        72,
+        100
+      ],
+      "rhythm_energy": "low",
+      "drum_variations": [],
+      "bass_variations": [
+        1
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        40,
+        68,
+        73,
+        56,
+        0
+      ],
+      "harmony_programs": [
+        48,
+        49
+      ],
+      "note": "弦樂／木管／銅管／鋼琴，多無鼓",
+      "decoration_choices": [
+        {
+          "type": "sustain",
+          "program": 40
+        },
+        {
+          "type": "sustain",
+          "program": 71
+        },
+        {
+          "type": "hits",
+          "program": 56
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "arp",
+          "program": 46
+        }
+      ]
+    },
+    "edm": {
+      "label": "電子 EDM",
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "bpm_range": [
+        120,
+        140
+      ],
+      "rhythm_energy": "high",
+      "drum_variations": [
+        0,
+        1
+      ],
+      "bass_variations": [
+        2
+      ],
+      "harmony_variations": [
+        2
+      ],
+      "melody_programs": [
+        80,
+        81,
+        38
+      ],
+      "harmony_programs": [
+        90,
+        88,
+        81
+      ],
+      "note": "合成主奏與 Pad",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 88
+        },
+        {
+          "type": "hits",
+          "program": 80
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 89
+        },
+        {
+          "type": "hits",
+          "program": 61
+        }
+      ]
+    },
+    "hiphop": {
+      "label": "嘻哈 Hip-Hop",
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "bpm_range": [
+        80,
+        100
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        1,
+        2
+      ],
+      "bass_variations": [
+        2,
+        0
+      ],
+      "harmony_variations": [
+        2,
+        0
+      ],
+      "melody_programs": [
+        4,
+        5,
+        11,
+        38
+      ],
+      "harmony_programs": [
+        4,
+        89,
+        38
+      ],
+      "note": "電鋼／合成貝斯",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 89
+        },
+        {
+          "type": "hits",
+          "program": 80
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "sustain",
+          "program": 71
+        },
+        {
+          "type": "pad",
+          "program": 48
+        }
+      ]
+    },
+    "rnb": {
+      "label": "R&B／靈魂",
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "bpm_range": [
+        75,
+        95
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        2,
+        0
+      ],
+      "bass_variations": [
+        0,
+        1
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        4,
+        5,
+        65,
+        66
+      ],
+      "harmony_programs": [
+        4,
+        89,
+        48
+      ],
+      "note": "電鋼／薩克斯風",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 89
+        },
+        {
+          "type": "sustain",
+          "program": 65
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
+      ]
+    },
+    "country": {
+      "label": "鄉村 Country",
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "bpm_range": [
+        95,
+        120
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        0,
+        2
+      ],
+      "bass_variations": [
+        0,
+        2
+      ],
+      "harmony_variations": [
+        2,
+        0
+      ],
+      "melody_programs": [
+        25,
+        105,
+        27,
+        22
+      ],
+      "harmony_programs": [
+        24,
+        25,
+        0
+      ],
+      "note": "鋼弦／Banjo／口琴",
+      "decoration_choices": [
+        {
+          "type": "arp",
+          "program": 25
+        },
+        {
+          "type": "sustain",
+          "program": 22
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "arp",
+          "program": 105
+        },
+        {
+          "type": "pad",
+          "program": 48
+        }
+      ]
+    },
+    "latin": {
+      "label": "拉丁 Latin",
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "bpm_range": [
+        95,
+        125
+      ],
+      "rhythm_energy": "high",
+      "drum_variations": [
+        0,
+        1
+      ],
+      "bass_variations": [
+        2,
+        0
+      ],
+      "harmony_variations": [
+        2,
+        1
+      ],
+      "melody_programs": [
+        25,
+        24,
+        56,
+        114
+      ],
+      "harmony_programs": [
+        27,
+        4,
+        48
+      ],
+      "note": "拉丁吉他／小號／鋼鼓",
+      "decoration_choices": [
+        {
+          "type": "hits",
+          "program": 56
+        },
+        {
+          "type": "arp",
+          "program": 24
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "hits",
+          "program": 61
+        }
+      ]
+    },
+    "blues": {
+      "label": "藍調 Blues",
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "bpm_range": [
+        70,
+        100
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        2,
+        0
+      ],
+      "bass_variations": [
+        0,
+        2
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        27,
+        22,
+        66,
+        29
+      ],
+      "harmony_programs": [
+        4,
+        0,
+        48
+      ],
+      "note": "電吉他／口琴／薩克斯風",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 22
+        },
+        {
+          "type": "sustain",
+          "program": 66
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 4
+        },
+        {
+          "type": "sustain",
+          "program": 71
+        }
+      ]
+    },
+    "funk": {
+      "label": "放克 Funk",
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "bpm_range": [
+        100,
+        120
+      ],
+      "rhythm_energy": "high",
+      "drum_variations": [
+        1,
+        0
+      ],
+      "bass_variations": [
+        2
+      ],
+      "harmony_variations": [
+        2
+      ],
+      "melody_programs": [
+        27,
+        61,
+        4,
+        29
+      ],
+      "harmony_programs": [
+        27,
+        4,
+        61
+      ],
+      "note": "節奏吉他／銅管點綴",
+      "decoration_choices": [
+        {
+          "type": "hits",
+          "program": 56
+        },
+        {
+          "type": "hits",
+          "program": 61
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 4
+        },
+        {
+          "type": "arp",
+          "program": 27
+        }
+      ]
+    },
+    "disco": {
+      "label": "迪斯可 Disco",
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "bpm_range": [
+        110,
+        128
+      ],
+      "rhythm_energy": "high",
+      "drum_variations": [
+        0,
+        1
+      ],
+      "bass_variations": [
+        2
+      ],
+      "harmony_variations": [
+        2
+      ],
+      "melody_programs": [
+        4,
+        61,
+        81,
+        27
+      ],
+      "harmony_programs": [
+        4,
+        48,
+        61
+      ],
+      "note": "電鋼／銅管／合成",
+      "decoration_choices": [
+        {
+          "type": "hits",
+          "program": 61
+        },
+        {
+          "type": "pad",
+          "program": 50
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "hits",
+          "program": 56
+        }
+      ]
+    },
+    "ambient": {
+      "label": "氛圍 Ambient",
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "bpm_range": [
+        60,
+        80
+      ],
+      "rhythm_energy": "low",
+      "drum_variations": [],
+      "bass_variations": [
+        1
+      ],
+      "harmony_variations": [
+        0
+      ],
+      "melody_programs": [
+        88,
+        89,
+        73,
+        46
+      ],
+      "harmony_programs": [
+        89,
+        48,
+        90
+      ],
+      "note": "Pad／豎琴／長笛，無鼓",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 88
+        },
+        {
+          "type": "sustain",
+          "program": 73
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 90
+        },
+        {
+          "type": "arp",
+          "program": 46
+        }
+      ]
+    },
+    "cinematic": {
+      "label": "電影配樂",
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "bpm_range": [
+        70,
+        110
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        2
+      ],
+      "bass_variations": [
+        1,
+        0
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        40,
+        48,
+        61,
+        0,
+        68
+      ],
+      "harmony_programs": [
+        48,
+        49
+      ],
+      "note": "弦樂／銅管／鋼琴史詩感",
+      "decoration_choices": [
+        {
+          "type": "sustain",
+          "program": 40
+        },
+        {
+          "type": "hits",
+          "program": 61
+        },
+        {
+          "type": "pad",
+          "program": 49
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 42
+        }
+      ]
+    },
+    "bossa": {
+      "label": "巴薩諾瓦 Bossa",
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "bpm_range": [
+        75,
+        95
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        2
+      ],
+      "bass_variations": [
+        0
+      ],
+      "harmony_variations": [
+        0,
+        1
+      ],
+      "melody_programs": [
+        24,
+        26,
+        71,
+        11
+      ],
+      "harmony_programs": [
+        4,
+        24,
+        48
+      ],
+      "note": "尼龍吉他／豎笛／電鋼",
+      "decoration_choices": [
+        {
+          "type": "arp",
+          "program": 24
+        },
+        {
+          "type": "sustain",
+          "program": 71
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 4
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
+      ]
+    },
+    "gospel": {
+      "label": "福音 Gospel",
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "bpm_range": [
+        80,
+        110
+      ],
+      "rhythm_energy": "mid",
+      "drum_variations": [
+        0,
+        2
+      ],
+      "bass_variations": [
+        0,
+        2
+      ],
+      "harmony_variations": [
+        0,
+        2
+      ],
+      "melody_programs": [
+        16,
+        0,
+        52,
+        4
+      ],
+      "harmony_programs": [
+        52,
+        48,
+        16
+      ],
+      "note": "風琴／合唱／鋼琴",
+      "decoration_choices": [
+        {
+          "type": "pad",
+          "program": 52
+        },
+        {
+          "type": "hits",
+          "program": 61
+        }
+      ],
+      "decoration2_choices": [
+        {
+          "type": "pad",
+          "program": 48
+        },
+        {
+          "type": "sustain",
+          "program": 40
+        }
       ]
     }
   },

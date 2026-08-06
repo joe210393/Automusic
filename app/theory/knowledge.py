@@ -38,14 +38,40 @@ def list_styles() -> dict:
     return load_theory().get("styles", {})
 
 
-def pick_ensemble(mood: Optional[str], rng) -> dict:
+def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict:
     """
     挑一組樂團編制（主奏樂器＋和聲樂器＋裝飾聲部＋是否用鼓）。
-    有 mood 時優先挑感覺相符的編制，讓「自動」模式每次都換不同樂團。
+
+    優先順序：
+      1. style 標籤完全相符的編制（例如 reggae → 鋼鼓／雷鬼風琴）
+      2. mood 相符的編制
+      3. 全部編制
     """
     ensembles = load_theory().get("ensembles", [])
-    candidates = [e for e in ensembles if mood and mood in e.get("moods", [])] or ensembles
-    return rng.choice(candidates)
+    if not ensembles:
+        raise RuntimeError("theory_db 沒有 ensembles")
+
+    if style:
+        tagged = [e for e in ensembles if style in (e.get("styles") or [])]
+        if tagged:
+            return rng.choice(tagged)
+
+    if mood:
+        by_mood = [e for e in ensembles if mood in e.get("moods", [])]
+        if by_mood:
+            return rng.choice(by_mood)
+
+    return rng.choice(ensembles)
+
+
+def pick_style_for_mood(mood: str, rng) -> Optional[str]:
+    """自動模式：依素材 mood 隨機挑一個相容風格 id。"""
+    styles = load_theory().get("styles", {})
+    candidates = [sid for sid, cfg in styles.items() if mood in cfg.get("moods", [])]
+    if not candidates:
+        candidates = list(styles.keys())
+    return rng.choice(candidates) if candidates else None
+
 
 
 def _fit_to_bars(degrees: List[str], num_bars: int) -> List[str]:

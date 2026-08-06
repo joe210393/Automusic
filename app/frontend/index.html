@@ -168,19 +168,14 @@
     <div class="card">
       <div class="section-title">步驟 2｜素材轉旋律（選風格，AI 創作）</div>
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
-        系統萃取素材的動機、音域、明暗與能量，依樂理資料庫的經典和弦進行寫出一段新旋律。
+        系統萃取素材的動機、音域、明暗與能量；可選雷鬼、交響樂等約 20 種風格。
+        「自動」每次會隨機挑相容風格，並影響步驟 3 的樂器編制。
       </p>
       <div class="row" style="margin-top:6px;">
         <div>
-          <label for="styleSelect">風格</label>
+          <label for="styleSelect">風格（影響旋律與步驟 3 樂器）</label>
           <select id="styleSelect">
-            <option value="auto" selected>🎲 自動（依素材感覺）</option>
-            <option value="pop">🎤 流行 Pop</option>
-            <option value="ballad">💧 抒情 Ballad</option>
-            <option value="folk">🪕 民謠／兒歌</option>
-            <option value="rock">🎸 搖滾 Rock</option>
-            <option value="jazz">🎷 爵士 Jazz</option>
-            <option value="lullaby">🌙 搖籃曲</option>
+            <option value="auto" selected>🎲 自動（每次隨機相容風格）</option>
           </select>
         </div>
         <div>
@@ -189,6 +184,9 @@
         </div>
         <div style="margin-top:16px;">
           <button id="composeFromAudioBtn" disabled>✨ 從素材生成旋律</button>
+        </div>
+        <div style="margin-top:16px;">
+          <button id="remixMelodyBtn" class="secondary" disabled>🔁 換一版旋律</button>
         </div>
         <div style="margin-top:16px;">
           <button id="playMelodyBtn" class="secondary" disabled>▶ 試聽旋律</button>
@@ -370,10 +368,40 @@
     let recordingTimerInterval = null;
     let recordedBlob = null;
 
-    let lastAnalyzeResult = null; // { notes, bpm, key }
+    let lastAnalyzeResult = null; // { notes, bpm, key, material }
     let lastMidiBlob = null;      // 伺服器回傳的 MIDI 檔案
     let lastAIChords = null;      // 例如 ["I","V","vi","IV"]
+    let lastResolvedStyle = null; // 自動模式後端挑到的風格 id（影響步驟 3 樂器）
     let currentRecordingFilename = null; // 目前這段錄音在伺服器上的檔名（混音用）
+
+    const STYLE_ICONS = {
+      pop: '🎤', ballad: '💧', folk: '🪕', rock: '🎸', jazz: '🎷', lullaby: '🌙',
+      reggae: '🌴', symphony: '🎻', edm: '⚡', hiphop: '🎧', rnb: '💜', country: '🤠',
+      latin: '💃', blues: '🎺', funk: '🕺', disco: '✨', ambient: '🌫️',
+      cinematic: '🎬', bossa: '☕', gospel: '⛪',
+    };
+
+    async function loadStyleOptions() {
+      try {
+        const res = await fetch('/theory');
+        if (!res.ok) return;
+        const theory = await res.json();
+        const styles = theory.styles || {};
+        // 保留第一個 auto，清掉其餘後依資料庫重建
+        styleSelect.innerHTML = '<option value="auto" selected>🎲 自動（每次隨機相容風格）</option>';
+        Object.keys(styles).forEach((id) => {
+          const label = styles[id].label || id;
+          const icon = STYLE_ICONS[id] || '🎵';
+          const opt = document.createElement('option');
+          opt.value = id;
+          opt.textContent = `${icon} ${label}`;
+          styleSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn('載入風格清單失敗', err);
+      }
+    }
+    loadStyleOptions();
 
     function setStatus(el, text) {
       el.textContent = text || '';
@@ -561,38 +589,44 @@
       setStatus(recordingStatus, '');
       uploadRecordingBtn.disabled = true;
       document.getElementById('composeFromAudioBtn').disabled = true;
+      document.getElementById('remixMelodyBtn').disabled = true;
       renderBtn.disabled = true;
       playBtn.disabled = true;
       lastAnalyzeResult = null;
       lastMidiBlob = null;
       lastAIChords = null;
+      lastResolvedStyle = null;
       downloadLink.style.display = 'none';
       setStatus(analysisInfo, '');
       setStatus(renderStatus, '');
     });
 
-    // --- 從素材生成旋律：素材提供「元素與感覺」，AI 創作新旋律 ---
+    // --- 從素材生成旋律：素材提供「元素與感覺」，依風格寫新旋律 ---
     const composeFromAudioBtn = document.getElementById('composeFromAudioBtn');
+    const remixMelodyBtn = document.getElementById('remixMelodyBtn');
 
-    composeFromAudioBtn.addEventListener('click', async () => {
+    async function runComposeFromAudio() {
       if (!recordedBlob) {
         setStatus(analysisInfo, '請先錄音或載入素材。');
         return;
       }
       composeFromAudioBtn.disabled = true;
+      remixMelodyBtn.disabled = true;
       setStatus(analysisInfo, '分析素材的元素與感覺，生成旋律中…');
       try {
         const formData = new FormData();
         formData.append('file', new File([recordedBlob], 'material.wav', { type: 'audio/wav' }));
+        // 每次都帶新 seed，自動／指定風格都會換出版本
+        formData.append('seed', String(Math.floor(Math.random() * 1e9)));
         if (styleSelect.value !== 'auto') formData.append('style', styleSelect.value);
         const res = await fetch('/compose-from-audio', { method: 'POST', body: formData });
         if (!res.ok) throw new Error(await res.text());
-        const data = await res.json(); // { notes, bpm, key, chords, material }
+        const data = await res.json();
 
         lastAnalyzeResult = data;
-        // 旋律是照樂理資料庫的和弦進行寫的，編曲直接沿用同一組和弦
         lastAIChords = Array.isArray(data.chords) && data.chords.length ? data.chords : null;
         lastMidiBlob = null;
+        lastResolvedStyle = (data.material && data.material.style_id) || null;
         bpmInput.value = Math.round(data.bpm);
 
         const m = data.material || {};
@@ -602,22 +636,27 @@
           analysisInfo,
           `風格：${m.style || '自動'}｜素材感覺：${m.mood || ''}，能量 ${m.energy ?? '?'} 音/秒 → BPM ${Math.round(data.bpm)}\n` +
           progressionLine +
-          `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可試聽，或到步驟 3 製作完整歌曲。`
+          `已生成帶有素材動機的新旋律（${data.notes.length} 個音，${data.key} 調）。可按「換一版旋律」再變一次，或到步驟 3 編曲。`
         );
 
         renderBtn.disabled = false;
         document.getElementById('renderAudioBtn').disabled = false;
         document.getElementById('remakeBtn').disabled = false;
+        remixMelodyBtn.disabled = false;
         currentRenderSeed = Math.floor(Math.random() * 1e9);
-        stopMelodyPlayback(); // 換了新旋律，重置試聽狀態
+        stopMelodyPlayback();
         playMelodyBtn.disabled = false;
       } catch (err) {
         console.error(err);
         setStatus(analysisInfo, '從素材生成旋律失敗：' + err.message);
       } finally {
         composeFromAudioBtn.disabled = false;
+        if (recordedBlob) remixMelodyBtn.disabled = !lastAnalyzeResult;
       }
-    });
+    }
+
+    composeFromAudioBtn.addEventListener('click', () => runComposeFromAudio());
+    remixMelodyBtn.addEventListener('click', () => runComposeFromAudio());
 
     // --- 手機錄音同步 ---
     const remoteUrlInput = document.getElementById('remoteUrlInput');
@@ -1185,7 +1224,9 @@
             },
         chord_overrides: lastAIChords && lastAIChords.length ? lastAIChords : undefined,
         seed: currentRenderSeed,
-        style: styleSelect.value !== 'auto' ? styleSelect.value : undefined,
+        style: styleSelect.value !== 'auto'
+          ? styleSelect.value
+          : (lastResolvedStyle || undefined),
         duration_seconds: songDuration,
       };
     }
