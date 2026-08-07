@@ -814,17 +814,11 @@ def render_audio(request: RenderRequest):
         from app.audio.soundfont_render import render_midi_to_wav
 
         # 聲紋代唱時主旋律 MIDI 已壓低／關掉，不必再套原聲主奏疊層
-        info = render_midi_to_wav(
+        render_midi_to_wav(
             fluidsynth_bin,
             midi_path,
             wav_path,
             use_lead_overlay=not request.use_voiceprint,
-        )
-        print(
-            f"[render-audio] 音色：mode={info['mode']} "
-            f"program={info['melody_program']} "
-            f"base={Path(info['base_soundfont']).name} "
-            f"lead={Path(info['lead_soundfont']).name if info['lead_soundfont'] else '-'}"
         )
     except FileNotFoundError as e:
         raise HTTPException(status_code=501, detail=str(e))

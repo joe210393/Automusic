@@ -22,63 +22,77 @@ download() {
   mv "$out.download" "$out"
 }
 
-echo "=== 1) MuseScore_General（底音色，弦樂／長笛／銅管也會比較不電）==="
+echo "=== 1) MuseScore_General（底音色）==="
 download \
   "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/MuseScore_General.sf3" \
   "$SFDIR/MuseScore_General.sf3"
 
-echo "=== 2) FreePats 主奏原聲（鋼琴／吉他／豎笛）==="
+echo "=== 2) FreePats 主奏 ==="
 if [ ! -f "$LEAD/YDP-GrandPiano.sf2" ]; then
-  download \
-    "https://freepats.zenvoid.org/Piano/YDP-GrandPiano/YDP-GrandPiano-SF2-20160804.tar.bz2" \
-    "$TMP/YDP.tar.bz2"
-  rm -rf "$TMP/ydp" && mkdir -p "$TMP/ydp"
-  tar -xjf "$TMP/YDP.tar.bz2" -C "$TMP/ydp"
+  download "https://freepats.zenvoid.org/Piano/YDP-GrandPiano/YDP-GrandPiano-SF2-20160804.tar.bz2" "$TMP/YDP.tar.bz2"
+  rm -rf "$TMP/ydp" && mkdir -p "$TMP/ydp" && tar -xjf "$TMP/YDP.tar.bz2" -C "$TMP/ydp"
   cp "$(find "$TMP/ydp" -name '*.sf2' | head -1)" "$LEAD/YDP-GrandPiano.sf2"
 fi
-echo "OK YDP-GrandPiano.sf2"
+echo "OK YDP-GrandPiano"
 
 if [ ! -f "$LEAD/NylonGuitar.sf2" ]; then
-  download \
-    "https://freepats.zenvoid.org/Guitar/SpanishClassicalGuitar/SpanishClassicalGuitar-SF2-20190618.7z" \
-    "$TMP/Nylon.7z"
+  download "https://freepats.zenvoid.org/Guitar/SpanishClassicalGuitar/SpanishClassicalGuitar-SF2-20190618.7z" "$TMP/Nylon.7z"
   SEVEN=$(command -v 7z || command -v 7zz || true)
-  if [ -z "$SEVEN" ]; then
-    echo "需要 p7zip：brew install p7zip"
-    brew install p7zip
-    SEVEN=$(command -v 7z || command -v 7zz)
-  fi
+  [ -n "$SEVEN" ] || { brew install p7zip; SEVEN=$(command -v 7z || command -v 7zz); }
   rm -rf "$TMP/nylon" && mkdir -p "$TMP/nylon"
   "$SEVEN" x -y -o"$TMP/nylon" "$TMP/Nylon.7z" >/dev/null
   cp "$(find "$TMP/nylon" -name '*.sf2' | head -1)" "$LEAD/NylonGuitar.sf2"
 fi
-echo "OK NylonGuitar.sf2"
+echo "OK NylonGuitar"
 
 if [ ! -f "$LEAD/SteelGuitar.sf2" ]; then
-  download \
-    "https://freepats.zenvoid.org/Guitar/FSS-SteelStringGuitar/FSS-SteelStringGuitar-small-SF2-20200521.tar.xz" \
-    "$TMP/Steel.tar.xz"
-  rm -rf "$TMP/steel" && mkdir -p "$TMP/steel"
-  tar -xJf "$TMP/Steel.tar.xz" -C "$TMP/steel"
+  download "https://freepats.zenvoid.org/Guitar/FSS-SteelStringGuitar/FSS-SteelStringGuitar-small-SF2-20200521.tar.xz" "$TMP/Steel.tar.xz"
+  rm -rf "$TMP/steel" && mkdir -p "$TMP/steel" && tar -xJf "$TMP/Steel.tar.xz" -C "$TMP/steel"
   cp "$(find "$TMP/steel" -name '*.sf2' | head -1)" "$LEAD/SteelGuitar.sf2"
 fi
-echo "OK SteelGuitar.sf2"
+echo "OK SteelGuitar"
 
 if [ ! -f "$LEAD/Clarinet.sf2" ]; then
-  download \
-    "https://freepats.zenvoid.org/Reed/Clarinet1/Clarinet-SF2-20190818.tar.xz" \
-    "$TMP/Clarinet.tar.xz"
-  rm -rf "$TMP/clar" && mkdir -p "$TMP/clar"
-  tar -xJf "$TMP/Clarinet.tar.xz" -C "$TMP/clar"
+  download "https://freepats.zenvoid.org/Reed/Clarinet1/Clarinet-SF2-20190818.tar.xz" "$TMP/Clarinet.tar.xz"
+  rm -rf "$TMP/clar" && mkdir -p "$TMP/clar" && tar -xJf "$TMP/Clarinet.tar.xz" -C "$TMP/clar"
   cp "$(find "$TMP/clar" -name '*.sf2' | head -1)" "$LEAD/Clarinet.sf2"
 fi
-echo "OK Clarinet.sf2"
+echo "OK Clarinet"
+
+if [ ! -f "$LEAD/TenorSax.sf2" ]; then
+  download "https://freepats.zenvoid.org/Reed/TenorSaxophone/TenorSaxophone-small-SF2-20200717.tar.bz2" "$TMP/Sax.tar.bz2"
+  rm -rf "$TMP/sax" && mkdir -p "$TMP/sax" && tar -xjf "$TMP/Sax.tar.bz2" -C "$TMP/sax"
+  cp "$(find "$TMP/sax" -name '*.sf2' | head -1)" "$LEAD/TenorSax.sf2"
+fi
+echo "OK TenorSax"
+
+if [ ! -f "$LEAD/Recorder.sf2" ]; then
+  download "https://freepats.zenvoid.org/Wind/Recorder1/Recorder-SF2-20201205.7z" "$TMP/Rec.7z"
+  SEVEN=$(command -v 7z || command -v 7zz)
+  rm -rf "$TMP/rec" && mkdir -p "$TMP/rec"
+  "$SEVEN" x -y -o"$TMP/rec" "$TMP/Rec.7z" >/dev/null
+  cp "$(find "$TMP/rec" -name '*.sf2' | head -1)" "$LEAD/Recorder.sf2"
+fi
+echo "OK Recorder"
+
+if [ ! -f "$LEAD/ConcertHarp.sf2" ]; then
+  download "https://freepats.zenvoid.org/OrchestralStrings/ConcertHarp/ConcertHarp-small-SF2-20200702.tar.xz" "$TMP/Harp.tar.xz"
+  rm -rf "$TMP/harp" && mkdir -p "$TMP/harp" && tar -xJf "$TMP/Harp.tar.xz" -C "$TMP/harp"
+  cp "$(find "$TMP/harp" -name '*.sf2' | head -1)" "$LEAD/ConcertHarp.sf2"
+fi
+echo "OK ConcertHarp"
+
+echo "=== 3) Sonatina 管弦（小提琴／長笛／小號等，約 470MB）==="
+if [ ! -f "$LEAD/Sonatina_Orchestra.sf2" ]; then
+  download "https://ftp.osuosl.org/pub/musescore/soundfont/Sonatina_Symphonic_Orchestra_SF2.zip" "$TMP/sonatina.zip"
+  rm -rf "$TMP/sonatina" && mkdir -p "$TMP/sonatina"
+  unzip -q "$TMP/sonatina.zip" -d "$TMP/sonatina"
+  cp "$(find "$TMP/sonatina" -name 'Sonatina_Symphonic_Orchestra.sf2' | head -1)" "$LEAD/Sonatina_Orchestra.sf2"
+fi
+echo "OK Sonatina_Orchestra"
 
 echo ""
 echo "=== 安裝完成 ==="
 ls -lh "$SFDIR/MuseScore_General.sf3" "$LEAD"/*.sf2
 echo ""
-echo "重啟 Automusic 後步驟 3 會自動使用："
-echo "  - 底：MuseScore_General"
-echo "  - 主奏覆寫：鋼琴／尼龍吉他／鋼弦吉他／豎笛"
-echo "  launchctl kickstart -k \"gui/\$(id -u)/com.automusic.server\""
+echo "重啟：launchctl kickstart -k \"gui/\$(id -u)/com.automusic.server\""

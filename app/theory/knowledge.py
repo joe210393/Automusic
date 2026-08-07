@@ -38,8 +38,14 @@ def list_styles() -> dict:
     return load_theory().get("styles", {})
 
 
-# 已安裝 FreePats 原聲主奏取樣的 GM program（見 app/audio/soundfont_render.py）
-ACOUSTIC_LEAD_PROGRAMS = {0, 1, 2, 3, 24, 25, 71}
+def _installed_acoustic_lead_programs() -> set:
+    """本機已安裝原聲主奏取樣的 GM program（動態偵測）。"""
+    try:
+        from app.audio.soundfont_render import acoustic_lead_programs
+
+        return acoustic_lead_programs()
+    except Exception:
+        return {0, 1, 24, 25, 71}
 
 
 def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict:
@@ -51,7 +57,7 @@ def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict
       2. mood 相符的編制
       3. 全部編制
 
-    若候選裡有「已安裝原聲主奏」的編制，七成機率優先抽它們，讓步驟 3 更常聽到真取樣。
+    若候選裡有「已安裝原聲主奏」的編制，九成機率優先抽它們。
     """
     ensembles = load_theory().get("ensembles", [])
     if not ensembles:
@@ -71,11 +77,12 @@ def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict
     if candidates is None:
         candidates = ensembles
 
+    acoustic_progs = _installed_acoustic_lead_programs()
     acoustic = [
         e for e in candidates
-        if e.get("melody_program") in ACOUSTIC_LEAD_PROGRAMS
+        if e.get("melody_program") in acoustic_progs
     ]
-    if acoustic and rng.random() < 0.7:
+    if acoustic and rng.random() < 0.9:
         return rng.choice(acoustic)
     return rng.choice(candidates)
 

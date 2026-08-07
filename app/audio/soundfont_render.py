@@ -1,8 +1,8 @@
 """
-高品質音色渲染：MuseScore GM 當底，主奏（鋼琴／吉他／豎笛）用 FreePats 原聲取樣覆寫。
+高品質音色渲染：MuseScore GM 當底，主奏用原聲取樣覆寫。
 
-FreePats 單樂器 SF2 的 preset 都在 000-000，無法直接靠 program_change 對上 GM 編號，
-因此把主旋律軌拆出來、強制 program 0，用對應的原聲 SF2 單獨渲染後再混回伴奏。
+單樂器 SF2（FreePats）preset 多在 000-000；Sonatina 管弦則用自訂 program。
+因此拆出主旋律軌，寫入對應 preset 後單獨渲染，再混回伴奏。
 """
 from __future__ import annotations
 
@@ -10,22 +10,53 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from mido import MidiFile, MidiTrack, Message, MetaMessage
 
 SOUNDFONTS_DIR = Path(__file__).resolve().parent.parent.parent / "soundfonts"
 LEADS_DIR = SOUNDFONTS_DIR / "leads"
 
-# GM program → 本機原聲主奏 SF2（相對 soundfonts/）
-LEAD_PROGRAM_FONTS = {
-    0: "leads/YDP-GrandPiano.sf2",   # Acoustic Grand
-    1: "leads/YDP-GrandPiano.sf2",   # Bright Piano
-    2: "leads/YDP-GrandPiano.sf2",
-    3: "leads/YDP-GrandPiano.sf2",
-    24: "leads/NylonGuitar.sf2",     # Nylon
-    25: "leads/SteelGuitar.sf2",     # Steel
-    71: "leads/Clarinet.sf2",        # Clarinet
+# GM program → (相對 soundfonts/ 的 SF2, 該庫內的 preset program)
+# Sonatina presets：12 Violin Solo, 13 Cello Solo, 14 Flute Solo, 16 Oboe,
+# 18 Piccolo, 27 Trumpet Solo, 29 Horn Solo …
+LEAD_PROGRAM_FONTS: Dict[int, Tuple[str, int]] = {
+    # 鋼琴
+    0: ("leads/YDP-GrandPiano.sf2", 0),
+    1: ("leads/YDP-GrandPiano.sf2", 0),
+    2: ("leads/YDP-GrandPiano.sf2", 0),
+    3: ("leads/YDP-GrandPiano.sf2", 0),
+    # 吉他
+    24: ("leads/NylonGuitar.sf2", 0),
+    25: ("leads/SteelGuitar.sf2", 0),
+    26: ("leads/NylonGuitar.sf2", 0),   # jazz guitar → nylon
+    27: ("leads/SteelGuitar.sf2", 0),   # clean electric → steel acoustic
+    # 豎琴
+    46: ("leads/ConcertHarp.sf2", 0),
+    # 弦樂主奏（Sonatina）
+    40: ("leads/Sonatina_Orchestra.sf2", 12),  # Violin
+    41: ("leads/Sonatina_Orchestra.sf2", 12),  # Viola → violin solo
+    42: ("leads/Sonatina_Orchestra.sf2", 13),  # Cello
+    43: ("leads/Sonatina_Orchestra.sf2", 13),
+    # 銅管主奏
+    56: ("leads/Sonatina_Orchestra.sf2", 27),  # Trumpet
+    57: ("leads/Sonatina_Orchestra.sf2", 31),  # Trombone
+    60: ("leads/Sonatina_Orchestra.sf2", 29),  # French Horn
+    # 薩克斯風
+    64: ("leads/TenorSax.sf2", 0),
+    65: ("leads/TenorSax.sf2", 0),
+    66: ("leads/TenorSax.sf2", 0),
+    67: ("leads/TenorSax.sf2", 0),
+    # 木管
+    68: ("leads/Sonatina_Orchestra.sf2", 16),  # Oboe
+    69: ("leads/Sonatina_Orchestra.sf2", 19),  # English Horn
+    71: ("leads/Clarinet.sf2", 0),
+    72: ("leads/Sonatina_Orchestra.sf2", 18),  # Piccolo
+    73: ("leads/Sonatina_Orchestra.sf2", 14),  # Flute
+    74: ("leads/Recorder.sf2", 0),
+    75: ("leads/Recorder.sf2", 0),             # pan flute → recorder
+    78: ("leads/Recorder.sf2", 0),             # whistle
+    79: ("leads/Recorder.sf2", 0),             # ocarina
 }
 
 
@@ -58,12 +89,25 @@ def find_base_soundfont() -> Optional[str]:
     return None
 
 
-def resolve_lead_soundfont(program: int) -> Optional[str]:
-    rel = LEAD_PROGRAM_FONTS.get(program)
-    if not rel:
+def resolve_lead_soundfont(program: int) -> Optional[Tuple[str, int]]:
+    """回傳 (絕對路徑, preset) 或 None。"""
+    entry = LEAD_PROGRAM_FONTS.get(program)
+    if not entry:
         return None
+    rel, preset = entry
     path = SOUNDFONTS_DIR / rel
-    return str(path) if path.exists() else None
+    if not path.exists():
+        return None
+    return str(path), preset
+
+
+def acoustic_lead_programs() -> set:
+    """本機實際裝得到的原聲主奏 GM program 集合。"""
+    out = set()
+    for prog, (rel, _preset) in LEAD_PROGRAM_FONTS.items():
+        if (SOUNDFONTS_DIR / rel).exists():
+            out.add(prog)
+    return out
 
 
 def melody_program_from_midi(midi_path: str) -> int:
@@ -75,20 +119,11 @@ def melody_program_from_midi(midi_path: str) -> int:
     return 0
 
 
-def _copy_meta_tempo(src: MidiFile, dest_track: MidiTrack):
-    for track in src.tracks:
-        for msg in track:
-            if msg.type in ("set_tempo", "time_signature", "key_signature"):
-                dest_track.append(msg.copy(time=0 if dest_track else msg.time))
-                if msg.type == "set_tempo":
-                    return
-
-
-def split_melody_and_accomp(midi_path: str) -> Tuple[str, str]:
+def split_melody_and_accomp(midi_path: str, lead_preset: int = 0) -> Tuple[str, str]:
     """
     拆成：
-      - melody.mid：只含 channel 0，program 強制 0（配合 FreePats 單音色庫）
-      - accomp.mid：其餘聲部（鼓／貝斯／和聲／裝飾），不含主旋律音
+      - melody.mid：只含 channel 0，program = lead_preset
+      - accomp.mid：其餘聲部，不含主旋律音
     """
     src = MidiFile(midi_path)
     melody = MidiFile(ticks_per_beat=src.ticks_per_beat)
@@ -98,7 +133,6 @@ def split_melody_and_accomp(midi_path: str) -> Tuple[str, str]:
     melody.tracks.append(m_track)
     accomp.tracks.append(a_track)
 
-    # 先放 tempo
     tempo_set = False
     for track in src.tracks:
         for msg in track:
@@ -110,9 +144,8 @@ def split_melody_and_accomp(midi_path: str) -> Tuple[str, str]:
         if tempo_set:
             break
 
-    m_track.append(Message("program_change", program=0, channel=0, time=0))
+    m_track.append(Message("program_change", program=int(lead_preset) % 128, channel=0, time=0))
 
-    # 合併所有事件為絕對 tick 後再分流，避免 delta 錯亂
     abs_events = []
     for track in src.tracks:
         t = 0
@@ -138,13 +171,11 @@ def split_melody_and_accomp(midi_path: str) -> Tuple[str, str]:
     a_events = []
     for abs_t, kind, msg in abs_events:
         if kind == "meta":
-            # 非關鍵 meta 略過
             continue
         ch = getattr(msg, "channel", None)
         if ch == 0:
             if msg.type in ("note_on", "note_off"):
                 m_events.append((abs_t, kind, msg))
-            # channel 0 的 program_change 已強制為 0，忽略原值
         else:
             a_events.append((abs_t, kind, msg))
 
@@ -215,7 +246,6 @@ def render_midi_to_wav(
     """
     渲染 MIDI → WAV。
     若主奏 program 有對應原聲 SF2，則分軌渲染後混音；否則單次用底音色庫。
-    回傳 { "base_soundfont", "lead_soundfont", "mode" }。
     """
     base = find_base_soundfont()
     if not base:
@@ -226,20 +256,23 @@ def render_midi_to_wav(
 
     if not lead:
         _fluidsynth_render(fluidsynth_bin, [base], midi_path, wav_path, gain=0.7)
-        return {
+        info = {
             "base_soundfont": base,
             "lead_soundfont": None,
             "melody_program": program,
             "mode": "base_only",
         }
+        print(f"[render-audio] 音色：mode=base_only program={program} base={Path(base).name}", flush=True)
+        return info
 
-    melody_mid, accomp_mid = split_melody_and_accomp(midi_path)
+    lead_path, lead_preset = lead
+    melody_mid, accomp_mid = split_melody_and_accomp(midi_path, lead_preset=lead_preset)
     fd_m, melody_wav = tempfile.mkstemp(suffix="_melody.wav")
     fd_a, accomp_wav = tempfile.mkstemp(suffix="_accomp.wav")
     os.close(fd_m)
     os.close(fd_a)
     try:
-        _fluidsynth_render(fluidsynth_bin, [lead], melody_mid, melody_wav, gain=0.75)
+        _fluidsynth_render(fluidsynth_bin, [lead_path], melody_mid, melody_wav, gain=0.75)
         _fluidsynth_render(fluidsynth_bin, [base], accomp_mid, accomp_wav, gain=0.7)
         _mix_wavs(accomp_wav, melody_wav, wav_path)
     finally:
@@ -249,9 +282,15 @@ def render_midi_to_wav(
             except OSError:
                 pass
 
-    return {
+    info = {
         "base_soundfont": base,
-        "lead_soundfont": lead,
+        "lead_soundfont": lead_path,
         "melody_program": program,
         "mode": "lead_overlay",
     }
+    print(
+        f"[render-audio] 音色：mode=lead_overlay program={program} "
+        f"base={Path(base).name} lead={Path(lead_path).name} preset={lead_preset}",
+        flush=True,
+    )
+    return info
