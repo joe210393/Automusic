@@ -201,6 +201,7 @@
       <p style="font-size:13px;color:#6b7280;margin:4px 0 10px;">
         旋律配上鼓、貝斯、和聲，並可加入小提琴、長笛、豎笛、銅管等裝飾聲部。
         按「重新製作」會換一組伴奏與樂器；之後的人聲會在步驟 6 用你的聲紋演唱加入。
+        雲端版高音質會經 ngrok 打回你的 Mac 做原聲渲染（請保持本機服務開著）。
       </p>
       <div class="row" style="margin-top:6px;">
         <span style="font-size:13px;color:#4b5563;">歌曲長度：</span>
@@ -1431,14 +1432,14 @@
         activeRenderAudioCtrl.abort();
       }
       renderAudioBtn.disabled = true;
-      showProgress('🎧 正在轉換真實樂器音色，製作你的音樂…', 40, 95);
+      showProgress('🎧 正在轉換真實樂器音色（雲端會委託本機 Mac）…', 40, 95);
       const ctrl = new AbortController();
       activeRenderAudioCtrl = ctrl;
-      // 逾時改成「停滯偵測」：只有 120 秒完全沒有資料進來才中止，
-      // 下載慢但有在動就讓它跑完
+      // 停滯偵測：原聲分軌渲染＋ngrok 往返可能要數分鐘；
+      // 下載中有收到資料會刷新 lastActivity
       let lastActivity = Date.now();
       const stallTimer = setInterval(() => {
-        if (Date.now() - lastActivity > 120000) ctrl.abort();
+        if (Date.now() - lastActivity > 420000) ctrl.abort();
       }, 5000);
       try {
         // 素材是創作靈感，不混入成品；人聲將在步驟 6 以聲紋演唱的方式加入
@@ -1487,14 +1488,20 @@
         audioDownloadLink.download = contentType.includes('mpeg') ? 'song.mp3' : 'song.wav';
         audioDownloadLink.style.display = 'inline-block';
         finishProgress();
-        setStatus(renderStatus, '完成！下方播放器是真實樂器音色的成品，可直接播放或下載。');
+        const engine = res.headers.get('X-Render-Engine') || '';
+        const engineHint = engine === 'acoustic-remote'
+          ? '（已用本機 Mac 原聲）'
+          : engine === 'acoustic-local'
+            ? '（本機原聲）'
+            : '';
+        setStatus(renderStatus, `完成！下方播放器是真實樂器音色的成品${engineHint}，可直接播放或下載。`);
         songAudio.play().catch(() => {});
       } catch (err) {
         if (ctrl.superseded) return; // 被新的下載取代，不顯示錯誤
         console.error(err);
         hideProgress();
         if (err.name === 'AbortError') {
-          setStatus(renderStatus, '連線停滯（120 秒沒有收到任何資料），請按「🎧 重轉高音質音檔」重試。');
+          setStatus(renderStatus, '連線停滯（5 分鐘沒有收到資料）。請確認 Mac 的 Automusic＋ngrok 有開，再按「🎧 重轉高音質音檔」。');
         } else {
           setStatus(renderStatus, '高音質轉檔失敗：' + err.message);
         }

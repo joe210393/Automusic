@@ -129,6 +129,18 @@ def acoustic_lead_programs() -> set:
     return out
 
 
+def can_render_acoustic_locally() -> bool:
+    """
+    本機是否具備原聲向音色（不只 Docker 預設 FluidR3）。
+    Zeabur 通常為 False → 應把 MIDI 渲染委託回 Mac（ngrok）。
+    """
+    if acoustic_lead_programs():
+        return True
+    base = find_base_soundfont() or ""
+    name = Path(base).name
+    return "MuseScore" in name or "GeneralUser" in name
+
+
 def melody_program_from_midi(midi_path: str) -> int:
     mid = MidiFile(midi_path)
     for track in mid.tracks:

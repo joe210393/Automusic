@@ -35,3 +35,27 @@ cd ~/Automusic
 ./scripts/install-acoustic-leads.sh
 launchctl kickstart -k "gui/$(id -u)/com.automusic.server"
 ```
+
+## 雲端（Zeabur）怎麼用原聲？
+
+Zeabur 容器只有 FluidR3，沒有 MuseScore／FreePats／Sonatina。  
+步驟 3 高音質會自動：
+
+1. 在雲端生成 MIDI  
+2. 經 ngrok 呼叫本機 `POST /render-midi`  
+3. Mac 用原聲分軌渲染後把 WAV 傳回雲端  
+
+因此要用雲端網站聽到原聲，請保持：
+
+- `com.automusic.server`（:8080）
+- `com.automusic.ngrok`
+- `soundfonts/` 已裝好（見上方安裝）
+
+檢查本機：
+
+```bash
+curl -s http://127.0.0.1:8080/health | python3 -m json.tool
+# acoustic_render 應為 true
+```
+
+回應標頭 `X-Render-Engine: acoustic-remote` 代表雲端已成功委託 Mac。

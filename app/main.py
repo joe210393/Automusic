@@ -80,6 +80,12 @@ def _save_voiceprint_manifest(manifest: dict):
 # 錄音檔名只允許安全字元，避免路徑穿越
 SAFE_FILENAME_RE = re.compile(r"^[A-Za-z0-9._-]+\.wav$")
 
+# 雲端（Zeabur）沒有原聲 SF2 時，把 MIDI→WAV 委託回本機 Mac（同一條 ngrok）
+_default_render_urls = "https://tactually-venerable-inez.ngrok-free.dev"
+RENDER_REMOTE_URLS = [
+    u.strip() for u in os.getenv("RENDER_REMOTE_URLS", _default_render_urls).split(",") if u.strip()
+]
+
 
 def find_fluidsynth() -> Optional[str]:
     """尋找 fluidsynth 執行檔（launchd 環境的 PATH 可能不含 Homebrew）。"""
@@ -225,9 +231,10 @@ async def api_info():
 
 @app.get("/health")
 async def health():
-    """開機就緒檢查：DiffSinger / Seed-VC / LM Studio。"""
+    """開機就緒檢查：DiffSinger / Seed-VC / LM Studio / 原聲渲染。"""
     from app.voice import svs as _svs
     from app.voice import neural_vc as _vc
+    from app.audio.soundfont_render import can_render_acoustic_locally, acoustic_lead_programs
 
     lm_ok = False
     try:
@@ -236,12 +243,16 @@ async def health():
     except Exception:
         pass
 
-    ready = _svs.is_available() and _vc.is_available()
+    acoustic = can_render_acoustic_locally()
+    ready = _svs.is_available() and _vc.is_available() and acoustic
     return {
         "ok": ready,
         "diffsinger": _svs.is_available(),
         "seed_vc": _vc.is_available(),
         "lm_studio": lm_ok,
+        "acoustic_render": acoustic,
+        "acoustic_programs": sorted(acoustic_lead_programs()),
+        "fluidsynth": bool(find_fluidsynth()),
         "recordings_dir": str(RECORDINGS_DIR),
         "voiceprint_dir": str(VOICEPRINT_DIR),
     }
@@ -452,6 +463,97 @@ async def lm_proxy_v1(path: str, request: Request):
 
 
 # ---------- 神經歌聲轉換服務（給雲端部署委託本地電腦用） ----------
+
+@app.post("/render-midi")
+async def render_midi_remote_endpoint(
+    midi: UploadFile = File(...),
+    use_lead_overlay: bool = Form(True),
+):
+    """
+    本機原聲 FluidSynth 渲染：上傳 MIDI → 回傳 WAV。
+    給雲端 Zeabur 委託（與 /vc/convert、/svs/synthesize 同一條 ngrok）。
+    """
+    from app.audio.soundfont_render import render_midi_to_wav
+
+    fluidsynth_bin = find_fluidsynth()
+    if not fluidsynth_bin:
+        raise HTTPException(status_code=501, detail="此伺服器未安裝 FluidSynth")
+    soundfont = find_soundfont()
+    if not soundfont:
+        raise HTTPException(status_code=501, detail="找不到 SoundFont 音色庫")
+
+    fd_mid, midi_path = tempfile.mkstemp(suffix=".mid")
+    os.close(fd_mid)
+    fd_wav, wav_path = tempfile.mkstemp(suffix="_render.wav")
+    os.close(fd_wav)
+    try:
+        with open(midi_path, "wb") as f:
+            f.write(await midi.read())
+        render_midi_to_wav(
+            fluidsynth_bin,
+            midi_path,
+            wav_path,
+            use_lead_overlay=use_lead_overlay,
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=501, detail=str(e))
+    except subprocess.CalledProcessError as e:
+        err = (e.stderr or b"").decode(errors="replace")[:300]
+        raise HTTPException(status_code=500, detail=f"FluidSynth 轉檔失敗：{err}")
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="FluidSynth 轉檔逾時")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"音檔渲染失敗：{e}")
+    finally:
+        try:
+            os.unlink(midi_path)
+        except OSError:
+            pass
+
+    if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 1000:
+        raise HTTPException(status_code=500, detail="音檔產生失敗")
+
+    # 遠端委託回傳未壓縮 WAV（避免再壓一次損失）；雲端端再決定是否壓 MP3
+    return FileResponse(
+        wav_path,
+        media_type="audio/wav",
+        filename="render.wav",
+        headers={"X-Render-Engine": "acoustic-local"},
+    )
+
+
+def _render_midi_via_remote(
+    midi_path: str,
+    *,
+    use_lead_overlay: bool = True,
+    timeout: int = 420,
+) -> Optional[str]:
+    """把 MIDI 交給 Mac（ngrok /render-midi），成功回傳本機暫存 WAV 路徑。"""
+    if not RENDER_REMOTE_URLS:
+        return None
+    for base in RENDER_REMOTE_URLS:
+        url = base.rstrip("/") + "/render-midi"
+        try:
+            with open(midi_path, "rb") as mf:
+                resp = requests.post(
+                    url,
+                    headers={"ngrok-skip-browser-warning": "1"},
+                    files={"midi": ("song.mid", mf, "audio/midi")},
+                    data={"use_lead_overlay": "true" if use_lead_overlay else "false"},
+                    timeout=(10, timeout),
+                )
+            if resp.status_code != 200 or len(resp.content) < 1000:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:240]}")
+            out_path = tempfile.mktemp(prefix="render_remote_", suffix=".wav")
+            with open(out_path, "wb") as f:
+                f.write(resp.content)
+            print(f"[render-audio] 已用遠端原聲渲染：{url}", flush=True)
+            return out_path
+        except Exception as e:
+            print(f"[render-audio] 遠端渲染失敗（{url}）：{e}", flush=True)
+            continue
+    return None
+
 
 @app.post("/vc/convert")
 def vc_convert(source: UploadFile = File(...), reference: UploadFile = File(...)):
@@ -810,16 +912,37 @@ def render_audio(request: RenderRequest):
     )
 
     wav_path = "/tmp/full_render.wav"
+    use_lead_overlay = not request.use_voiceprint
+    render_engine = "local"
     try:
-        from app.audio.soundfont_render import render_midi_to_wav
-
-        # 聲紋代唱時主旋律 MIDI 已壓低／關掉，不必再套原聲主奏疊層
-        render_midi_to_wav(
-            fluidsynth_bin,
-            midi_path,
-            wav_path,
-            use_lead_overlay=not request.use_voiceprint,
+        from app.audio.soundfont_render import (
+            can_render_acoustic_locally,
+            render_midi_to_wav,
         )
+
+        # 雲端沒有原聲 SF2：先委託 Mac（ngrok /render-midi）；失敗再退回本機 FluidR3
+        remote_wav = None
+        if not can_render_acoustic_locally() and RENDER_REMOTE_URLS:
+            remote_wav = _render_midi_via_remote(
+                midi_path, use_lead_overlay=use_lead_overlay
+            )
+        if remote_wav:
+            shutil.copyfile(remote_wav, wav_path)
+            try:
+                os.unlink(remote_wav)
+            except OSError:
+                pass
+            render_engine = "acoustic-remote"
+        else:
+            # 聲紋代唱時主旋律 MIDI 已壓低／關掉，不必再套原聲主奏疊層
+            info = render_midi_to_wav(
+                fluidsynth_bin,
+                midi_path,
+                wav_path,
+                use_lead_overlay=use_lead_overlay,
+            )
+            mode = (info or {}).get("mode", "base_only")
+            render_engine = "acoustic-local" if mode == "layered" else "base-local"
     except FileNotFoundError as e:
         raise HTTPException(status_code=501, detail=str(e))
     except subprocess.CalledProcessError as e:
@@ -832,6 +955,8 @@ def render_audio(request: RenderRequest):
 
     if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 1000:
         raise HTTPException(status_code=500, detail="音檔產生失敗")
+
+    render_headers = {"X-Render-Engine": render_engine}
 
     # ---- 混入原始錄音（人聲）----
     if voice_path:
@@ -872,8 +997,12 @@ def render_audio(request: RenderRequest):
         sf.write(mixed_path, mix, 44100)
         mp3 = compress_to_mp3(mixed_path)
         if mp3:
-            return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
-        return FileResponse(mixed_path, media_type="audio/wav", filename="song.wav")
+            return FileResponse(
+                mp3, media_type="audio/mpeg", filename="song.mp3", headers=render_headers
+            )
+        return FileResponse(
+            mixed_path, media_type="audio/wav", filename="song.wav", headers=render_headers
+        )
 
     # ---- 步驟 6：系統代唱（DiffSinger）→ Seed-VC 換成使用者聲紋 → 混進伴奏 ----
     if request.use_voiceprint:
@@ -954,7 +1083,7 @@ def render_audio(request: RenderRequest):
 
         sung_path = "/tmp/full_render_sung.wav"
         sf.write(sung_path, mix, 44100)
-        headers = {"X-Vocal-Engine": vocal_engine}
+        headers = {**render_headers, "X-Vocal-Engine": vocal_engine}
         mp3 = compress_to_mp3(sung_path)
         if mp3:
             return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3", headers=headers)
@@ -962,8 +1091,12 @@ def render_audio(request: RenderRequest):
 
     mp3 = compress_to_mp3(wav_path)
     if mp3:
-        return FileResponse(mp3, media_type="audio/mpeg", filename="song.mp3")
-    return FileResponse(wav_path, media_type="audio/wav", filename="song.wav")
+        return FileResponse(
+            mp3, media_type="audio/mpeg", filename="song.mp3", headers=render_headers
+        )
+    return FileResponse(
+        wav_path, media_type="audio/wav", filename="song.wav", headers=render_headers
+    )
 
 
 @app.post("/ai-compose", response_model=AIComposeResponse)
