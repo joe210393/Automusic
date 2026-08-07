@@ -82,7 +82,17 @@ if [ ! -f "$LEAD/ConcertHarp.sf2" ]; then
 fi
 echo "OK ConcertHarp"
 
-echo "=== 3) Sonatina 管弦（小提琴／長笛／小號等，約 470MB）==="
+echo "=== 3) FingerBass（背景貝斯）==="
+if [ ! -f "$LEAD/FingerBass.sf2" ]; then
+  download "https://github.com/freepats/electric-bass-YR/releases/download/2019-09-30/FingerBassYR-SF2-20190930.7z" "$TMP/Bass.7z"
+  SEVEN=$(command -v 7z || command -v 7zz)
+  rm -rf "$TMP/bass" && mkdir -p "$TMP/bass"
+  "$SEVEN" x -y -o"$TMP/bass" "$TMP/Bass.7z" >/dev/null
+  cp "$(find "$TMP/bass" -name '*.sf2' | head -1)" "$LEAD/FingerBass.sf2"
+fi
+echo "OK FingerBass"
+
+echo "=== 4) Sonatina 管弦（小提琴／長笛／小號／弦樂鋪底，約 470MB）==="
 if [ ! -f "$LEAD/Sonatina_Orchestra.sf2" ]; then
   download "https://ftp.osuosl.org/pub/musescore/soundfont/Sonatina_Symphonic_Orchestra_SF2.zip" "$TMP/sonatina.zip"
   rm -rf "$TMP/sonatina" && mkdir -p "$TMP/sonatina"
@@ -95,4 +105,5 @@ echo ""
 echo "=== 安裝完成 ==="
 ls -lh "$SFDIR/MuseScore_General.sf3" "$LEAD"/*.sf2
 echo ""
+echo "看本機 log（不是網站）：tail -f /tmp/automusic.log"
 echo "重啟：launchctl kickstart -k \"gui/\$(id -u)/com.automusic.server\""

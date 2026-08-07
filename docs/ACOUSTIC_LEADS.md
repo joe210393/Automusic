@@ -1,19 +1,32 @@
-# 主奏原聲音色（Acoustic Leads）
+# 原聲音色（主奏＋背景）
 
-步驟 3 用兩層音色：
+## 為什麼 Zeabur 開 log 會 Not Found？
 
-| 層級 | 音色 | 用途 |
-|------|------|------|
-| 底 | **MuseScore_General.sf3** | 伴奏 GM |
-| 主奏覆寫 | FreePats + **Sonatina** | 只換主旋律樂器 |
+`/tmp/automusic.log` 在你的 **Mac 本機**，不是網站檔案。
 
-## 已涵蓋的主奏
+錯誤示範：`https://automusic.zeabur.app/web/tmp/automusic.log` → `{"detail":"Not Found"}`
 
-- 鋼琴、尼龍／鋼弦吉他、豎琴  
-- 豎笛、直笛、薩克斯風  
-- 小提琴／大提琴、長笛／短笛、雙簧管、小號／法國號／長號（Sonatina）
+正確看法（在 Mac 終端機）：
 
-鼓、貝斯、和聲墊底仍走底庫（不是這波範圍）。
+```bash
+tail -f /tmp/automusic.log
+# 或
+grep 'render-audio' /tmp/automusic.log | tail -20
+```
+
+成功時會看到類似：
+
+```text
+[render-audio] 音色：mode=layered program=40 base=MuseScore_General.sf3 overlays=['Sonatina_Orchestra.sf2:ch[0]', 'FingerBass.sf2:ch[1]', ...]
+```
+
+## 音色分層
+
+| 層 | 內容 | 音色 |
+|----|------|------|
+| 主奏 | channel 0 | FreePats／Sonatina 原聲 |
+| 背景 | 和聲／裝飾／弦樂墊／貝斯 | 同上（弦樂墊→Sonatina，貝斯→FingerBass） |
+| 底 | 鼓與未對應音色 | MuseScore_General |
 
 ## 安裝
 
@@ -22,15 +35,3 @@ cd ~/Automusic
 ./scripts/install-acoustic-leads.sh
 launchctl kickstart -k "gui/$(id -u)/com.automusic.server"
 ```
-
-約需 **650MB+** 磁碟（含 Sonatina）。`soundfonts/` 已 gitignore。
-
-## 怎麼確認成功
-
-步驟 3 製作後，log（`/tmp/automusic.log`）應出現：
-
-```text
-[render-audio] 音色：mode=lead_overlay program=40 lead=Sonatina_Orchestra.sf2 …
-```
-
-`mode=lead_overlay` = 主奏原聲有套上；`base_only` = 該次主奏還沒對應取樣（少見）。
