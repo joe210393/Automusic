@@ -38,6 +38,10 @@ def list_styles() -> dict:
     return load_theory().get("styles", {})
 
 
+# 已安裝 FreePats 原聲主奏取樣的 GM program（見 app/audio/soundfont_render.py）
+ACOUSTIC_LEAD_PROGRAMS = {0, 1, 2, 3, 24, 25, 71}
+
+
 def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict:
     """
     挑一組樂團編制（主奏樂器＋和聲樂器＋裝飾聲部＋是否用鼓）。
@@ -46,22 +50,34 @@ def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict
       1. style 標籤完全相符的編制（例如 reggae → 鋼鼓／雷鬼風琴）
       2. mood 相符的編制
       3. 全部編制
+
+    若候選裡有「已安裝原聲主奏」的編制，七成機率優先抽它們，讓步驟 3 更常聽到真取樣。
     """
     ensembles = load_theory().get("ensembles", [])
     if not ensembles:
         raise RuntimeError("theory_db 沒有 ensembles")
 
+    candidates = None
     if style:
         tagged = [e for e in ensembles if style in (e.get("styles") or [])]
         if tagged:
-            return rng.choice(tagged)
+            candidates = tagged
 
-    if mood:
+    if candidates is None and mood:
         by_mood = [e for e in ensembles if mood in e.get("moods", [])]
         if by_mood:
-            return rng.choice(by_mood)
+            candidates = by_mood
 
-    return rng.choice(ensembles)
+    if candidates is None:
+        candidates = ensembles
+
+    acoustic = [
+        e for e in candidates
+        if e.get("melody_program") in ACOUSTIC_LEAD_PROGRAMS
+    ]
+    if acoustic and rng.random() < 0.7:
+        return rng.choice(acoustic)
+    return rng.choice(candidates)
 
 
 def pick_style_for_mood(mood: str, rng) -> Optional[str]:

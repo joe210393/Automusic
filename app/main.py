@@ -128,20 +128,10 @@ def compress_to_mp3(wav_path: str) -> Optional[str]:
 
 
 def find_soundfont() -> Optional[str]:
-    """尋找可用的 SoundFont 音色庫（.sf2）。"""
-    candidates = []
-    if os.getenv("SOUNDFONT_PATH"):
-        candidates.append(Path(os.getenv("SOUNDFONT_PATH")))
-    project_sf_dir = Path(__file__).parent.parent / "soundfonts"
-    if project_sf_dir.exists():
-        candidates.extend(sorted(project_sf_dir.glob("*.sf2")))
-    # Linux（Docker / apt fluid-soundfont-gm）常見路徑
-    candidates.append(Path("/usr/share/sounds/sf2/FluidR3_GM.sf2"))
-    candidates.append(Path("/usr/share/sounds/sf2/default-GM.sf2"))
-    for p in candidates:
-        if p.exists():
-            return str(p)
-    return None
+    """尋找可用的 SoundFont（優先 MuseScore_General 原聲向 GM）。"""
+    from app.audio.soundfont_render import find_base_soundfont
+
+    return find_base_soundfont()
 
 
 # Request/Response models
@@ -821,24 +811,30 @@ def render_audio(request: RenderRequest):
 
     wav_path = "/tmp/full_render.wav"
     try:
-        subprocess.run(
-            [
-                fluidsynth_bin, "-ni",
-                "-F", wav_path,
-                "-r", "44100",
-                "-g", "0.7",       # 整體增益，避免破音
-                "-R", "1",         # 殘響：空間感
-                "-C", "1",         # 合唱效果：音色厚一點
-                soundfont, midi_path,
-            ],
-            check=True,
-            capture_output=True,
-            timeout=300,
+        from app.audio.soundfont_render import render_midi_to_wav
+
+        # 聲紋代唱時主旋律 MIDI 已壓低／關掉，不必再套原聲主奏疊層
+        info = render_midi_to_wav(
+            fluidsynth_bin,
+            midi_path,
+            wav_path,
+            use_lead_overlay=not request.use_voiceprint,
         )
+        print(
+            f"[render-audio] 音色：mode={info['mode']} "
+            f"program={info['melody_program']} "
+            f"base={Path(info['base_soundfont']).name} "
+            f"lead={Path(info['lead_soundfont']).name if info['lead_soundfont'] else '-'}"
+        )
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=501, detail=str(e))
     except subprocess.CalledProcessError as e:
-        raise HTTPException(status_code=500, detail=f"FluidSynth 轉檔失敗：{e.stderr.decode()[:300]}")
+        err = (e.stderr or b"").decode(errors="replace")[:300]
+        raise HTTPException(status_code=500, detail=f"FluidSynth 轉檔失敗：{err}")
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=500, detail="FluidSynth 轉檔逾時")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"音檔渲染失敗：{e}")
 
     if not os.path.exists(wav_path) or os.path.getsize(wav_path) < 1000:
         raise HTTPException(status_code=500, detail="音檔產生失敗")

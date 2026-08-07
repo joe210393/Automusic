@@ -129,6 +129,14 @@ music-mvp/
 
 詳見 [docs/AUTOSTART.md](docs/AUTOSTART.md)。LM Studio 請在 App 內開啟「登入時啟動」。
 
+主奏原聲音色（鋼琴／吉他／豎笛取樣，減少電子感）：
+
+```bash
+./scripts/install-acoustic-leads.sh
+```
+
+詳見 [docs/ACOUSTIC_LEADS.md](docs/ACOUSTIC_LEADS.md)。
+
 ## 本機啟動方式
 
 ### 1. 安裝依賴
