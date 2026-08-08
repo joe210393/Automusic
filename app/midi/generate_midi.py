@@ -207,7 +207,14 @@ def generate_full_midi(
 
     # 沒有指定和弦時，依旋律內容挑最貼合的和弦（含 V→I 終止式）
     if chord_overrides is None:
-        chord_overrides = select_chords_for_melody(quantized_notes, key, bpm, melody_bars)
+        chord_overrides = select_chords_for_melody(
+            quantized_notes, key, bpm, melody_bars,
+            style=style, seed=seed,
+        )
+        print(
+            f"[chords] style={style or 'auto'} → {'-'.join(chord_overrides)}",
+            flush=True,
+        )
     total_bars = INTRO_BARS + melody_bars * REPEATS + OUTRO_BARS
 
     # 各段主旋律的起始小節

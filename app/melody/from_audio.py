@@ -199,7 +199,9 @@ def generate_melody_from_material(
 
     # --- 生成 4 小節：動機 | 發展 | 動機 | 收尾（跟著樂理資料庫的和弦進行走） ---
     NUM_BARS = 4
-    progression = pick_progression_for_mood(mood, NUM_BARS, rng)
+    progression = pick_progression_for_mood(
+        mood, NUM_BARS, rng, style=resolved_style
+    )
     bar_chord_tones = [
         get_chord_pitch_classes(key_name, degree) for degree in progression["degrees"]
     ]

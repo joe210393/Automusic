@@ -2,6 +2,1870 @@
   "description": "Automusic 樂理資料庫：作曲引擎在生成音樂前會先讀取這裡的規則。可以直接編輯這個檔案來調整作曲風格，不需要改程式。",
   "progressions": [
     {
+      "name": "流行 Axis",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 5,
+      "note": "經典流行四和弦"
+    },
+    {
+      "name": "流行六四",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 5,
+      "note": "小調起手的流行進行"
+    },
+    {
+      "name": "流行上行",
+      "degrees": [
+        "I",
+        "iii",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 4,
+      "note": "根音緩步上行"
+    },
+    {
+      "name": "流行 V7 推進",
+      "degrees": [
+        "I",
+        "V7",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 4,
+      "note": "屬七增加張力"
+    },
+    {
+      "name": "流行 IVmaj7",
+      "degrees": [
+        "I",
+        "IVmaj7",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 3,
+      "note": "大七和聲更現代"
+    },
+    {
+      "name": "流行循環",
+      "degrees": [
+        "I",
+        "vi",
+        "ii",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "pop"
+      ],
+      "weight": 3,
+      "note": "五度循環收尾感"
+    },
+    {
+      "name": "抒情卡農",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "iii",
+        "IV",
+        "I",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "styles": [
+        "ballad"
+      ],
+      "weight": 5,
+      "note": "卡農式流動"
+    },
+    {
+      "name": "抒情小調",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "styles": [
+        "ballad"
+      ],
+      "weight": 5,
+      "note": "憂鬱但有推進"
+    },
+    {
+      "name": "抒情敘事",
+      "degrees": [
+        "vi",
+        "IV",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "styles": [
+        "ballad"
+      ],
+      "weight": 4,
+      "note": "停留小調色彩"
+    },
+    {
+      "name": "抒情大七",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "IVmaj7",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "styles": [
+        "ballad"
+      ],
+      "weight": 4,
+      "note": "溫柔七和弦鋪底"
+    },
+    {
+      "name": "抒情下行",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "iii"
+      ],
+      "moods": [
+        "emotional",
+        "warm",
+        "sad"
+      ],
+      "styles": [
+        "ballad"
+      ],
+      "weight": 3,
+      "note": "緩緩下沉"
+    },
+    {
+      "name": "民謠 I-IV-V",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "folk"
+      ],
+      "weight": 5,
+      "note": "最樸實的民謠骨架"
+    },
+    {
+      "name": "民謠溫柔",
+      "degrees": [
+        "I",
+        "IV",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "folk"
+      ],
+      "weight": 4,
+      "note": "多一點感性"
+    },
+    {
+      "name": "民謠 Doo-wop",
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "folk"
+      ],
+      "weight": 4,
+      "note": "復古兒歌感"
+    },
+    {
+      "name": "民謠旅行",
+      "degrees": [
+        "I",
+        "V",
+        "IV",
+        "I"
+      ],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "folk"
+      ],
+      "weight": 3,
+      "note": "來回擺盪"
+    },
+    {
+      "name": "民謠敘事",
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "I"
+      ],
+      "moods": [
+        "simple",
+        "bright",
+        "warm"
+      ],
+      "styles": [
+        "folk"
+      ],
+      "weight": 3,
+      "note": "收在主和弦的故事感"
+    },
+    {
+      "name": "搖滾動力",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "IV"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock"
+      ],
+      "weight": 5,
+      "note": "持續推進不停歇"
+    },
+    {
+      "name": "搖滾力量",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "I"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock"
+      ],
+      "weight": 5,
+      "note": "調式搖滾經典"
+    },
+    {
+      "name": "搖滾小調",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock"
+      ],
+      "weight": 4,
+      "note": "另類搖滾常用"
+    },
+    {
+      "name": "搖滾五度",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock"
+      ],
+      "weight": 3,
+      "note": "懸而未決的能量"
+    },
+    {
+      "name": "搖滾藍調感",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "bVII"
+      ],
+      "moods": [
+        "rock",
+        "energetic"
+      ],
+      "styles": [
+        "rock"
+      ],
+      "weight": 4,
+      "note": "扁平七級循環"
+    },
+    {
+      "name": "爵士二五一",
+      "degrees": [
+        "ii",
+        "V",
+        "I",
+        "I"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "styles": [
+        "jazz"
+      ],
+      "weight": 5,
+      "note": "最有解決感"
+    },
+    {
+      "name": "爵士循環圈",
+      "degrees": [
+        "vi",
+        "ii",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "styles": [
+        "jazz"
+      ],
+      "weight": 5,
+      "note": "五度循環骨架"
+    },
+    {
+      "name": "爵士七和弦",
+      "degrees": [
+        "ii7",
+        "V7",
+        "Imaj7",
+        "vi7"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "styles": [
+        "jazz"
+      ],
+      "weight": 5,
+      "note": "標準曲七和弦版"
+    },
+    {
+      "name": "爵士三級",
+      "degrees": [
+        "iii7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "styles": [
+        "jazz"
+      ],
+      "weight": 4,
+      "note": "長循環導入"
+    },
+    {
+      "name": "爵士轉位感",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "jazzy",
+        "calm"
+      ],
+      "styles": [
+        "jazz"
+      ],
+      "weight": 4,
+      "note": "從主七出發"
+    },
+    {
+      "name": "搖籃曲擺盪",
+      "degrees": [
+        "I",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "styles": [
+        "lullaby"
+      ],
+      "weight": 5,
+      "note": "安穩無起伏"
+    },
+    {
+      "name": "搖籃曲溫柔",
+      "degrees": [
+        "I",
+        "IV",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "styles": [
+        "lullaby"
+      ],
+      "weight": 4,
+      "note": "輕柔收束"
+    },
+    {
+      "name": "搖籃曲大七",
+      "degrees": [
+        "Imaj7",
+        "IVmaj7",
+        "Imaj7",
+        "V"
+      ],
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "styles": [
+        "lullaby"
+      ],
+      "weight": 4,
+      "note": "軟軟的七和弦"
+    },
+    {
+      "name": "搖籃曲簡約",
+      "degrees": [
+        "I",
+        "V",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "lullaby",
+        "calm"
+      ],
+      "styles": [
+        "lullaby"
+      ],
+      "weight": 3,
+      "note": "主屬輕搖"
+    },
+    {
+      "name": "雷鬼 I-V-vi-IV",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "weight": 4,
+      "note": "陽光流行骨架"
+    },
+    {
+      "name": "雷鬼 Offbeat",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "IV"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "weight": 5,
+      "note": "反拍友好進行"
+    },
+    {
+      "name": "雷鬼小調",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "weight": 4,
+      "note": "一點點憂鬱"
+    },
+    {
+      "name": "雷鬼循環",
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "weight": 3,
+      "note": "復古島嶼感"
+    },
+    {
+      "name": "雷鬼調式",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "bright",
+        "energetic"
+      ],
+      "styles": [
+        "reggae"
+      ],
+      "weight": 3,
+      "note": "扁平七級色彩"
+    },
+    {
+      "name": "管弦卡農",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "iii",
+        "IV",
+        "I",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "weight": 5,
+      "note": "古典流動"
+    },
+    {
+      "name": "管弦上行",
+      "degrees": [
+        "I",
+        "iii",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "weight": 4,
+      "note": "逐步推向高潮"
+    },
+    {
+      "name": "管弦敘事",
+      "degrees": [
+        "vi",
+        "iii",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "weight": 4,
+      "note": "從關係小調展開"
+    },
+    {
+      "name": "管弦莊嚴",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "weight": 3,
+      "note": "簡潔莊重"
+    },
+    {
+      "name": "管弦屬七",
+      "degrees": [
+        "I",
+        "vi",
+        "ii",
+        "V7"
+      ],
+      "moods": [
+        "emotional",
+        "calm",
+        "warm"
+      ],
+      "styles": [
+        "symphony"
+      ],
+      "weight": 4,
+      "note": "古典終止導入"
+    },
+    {
+      "name": "EDM 四和弦",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm"
+      ],
+      "weight": 5,
+      "note": "電音流行骨架"
+    },
+    {
+      "name": "EDM 小調泵",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm"
+      ],
+      "weight": 5,
+      "note": "副歌推進"
+    },
+    {
+      "name": "EDM 懸留",
+      "degrees": [
+        "vi",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm"
+      ],
+      "weight": 4,
+      "note": "先緊後鬆"
+    },
+    {
+      "name": "EDM 調式泵",
+      "degrees": [
+        "vi",
+        "bVII",
+        "IV",
+        "I"
+      ],
+      "moods": [
+        "energetic",
+        "bright"
+      ],
+      "styles": [
+        "edm"
+      ],
+      "weight": 4,
+      "note": "扁平七級電音推進"
+    },
+    {
+      "name": "嘻哈循環",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "hiphop"
+      ],
+      "weight": 5,
+      "note": "現代嘻哈常用"
+    },
+    {
+      "name": "嘻哈七和弦",
+      "degrees": [
+        "vi7",
+        "IVmaj7",
+        "Imaj7",
+        "V"
+      ],
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "hiphop"
+      ],
+      "weight": 4,
+      "note": "柔和 R&B 向"
+    },
+    {
+      "name": "嘻哈二五",
+      "degrees": [
+        "ii7",
+        "V7",
+        "Imaj7",
+        "vi7"
+      ],
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "hiphop"
+      ],
+      "weight": 3,
+      "note": "取一點爵士味"
+    },
+    {
+      "name": "嘻哈簡骨",
+      "degrees": [
+        "vi",
+        "IV",
+        "V",
+        "vi"
+      ],
+      "moods": [
+        "energetic",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "hiphop"
+      ],
+      "weight": 3,
+      "note": "短循環 loop 感"
+    },
+    {
+      "name": "R&B 七和弦",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "styles": [
+        "rnb"
+      ],
+      "weight": 5,
+      "note": "絲滑七和弦"
+    },
+    {
+      "name": "R&B 小調",
+      "degrees": [
+        "vi7",
+        "IVmaj7",
+        "Imaj7",
+        "V7"
+      ],
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "styles": [
+        "rnb"
+      ],
+      "weight": 5,
+      "note": "感性鋪陳"
+    },
+    {
+      "name": "R&B 二五一",
+      "degrees": [
+        "ii7",
+        "V7",
+        "Imaj7",
+        "Imaj7"
+      ],
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "styles": [
+        "rnb"
+      ],
+      "weight": 4,
+      "note": "解決感強"
+    },
+    {
+      "name": "R&B 流行骨",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "styles": [
+        "rnb"
+      ],
+      "weight": 3,
+      "note": "偏流行的 R&B"
+    },
+    {
+      "name": "R&B 三級鏈",
+      "degrees": [
+        "iii7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "warm",
+        "emotional",
+        "jazzy"
+      ],
+      "styles": [
+        "rnb"
+      ],
+      "weight": 3,
+      "note": "長線張力"
+    },
+    {
+      "name": "鄉村 I-IV-V",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "country"
+      ],
+      "weight": 5,
+      "note": "經典鄉村"
+    },
+    {
+      "name": "鄉村溫暖",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "country"
+      ],
+      "weight": 4,
+      "note": "流行鄉村交叉"
+    },
+    {
+      "name": "鄉村敘事",
+      "degrees": [
+        "I",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "country"
+      ],
+      "weight": 4,
+      "note": "說故事"
+    },
+    {
+      "name": "鄉村 Doo-wop",
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "country"
+      ],
+      "weight": 3,
+      "note": "復古鄉村"
+    },
+    {
+      "name": "鄉村旅行",
+      "degrees": [
+        "I",
+        "V",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "warm",
+        "simple"
+      ],
+      "styles": [
+        "country"
+      ],
+      "weight": 3,
+      "note": "開闊感"
+    },
+    {
+      "name": "拉丁熱情",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "latin"
+      ],
+      "weight": 4,
+      "note": "歡快骨架"
+    },
+    {
+      "name": "拉丁小調",
+      "degrees": [
+        "vi",
+        "IV",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "latin"
+      ],
+      "weight": 5,
+      "note": "弗拉明戈感導入"
+    },
+    {
+      "name": "拉丁安達盧西",
+      "degrees": [
+        "vi",
+        "V",
+        "IV",
+        "bIII"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "latin"
+      ],
+      "weight": 4,
+      "note": "下行安達盧西亞進行"
+    },
+    {
+      "name": "拉丁循環",
+      "degrees": [
+        "ii",
+        "V",
+        "I",
+        "vi"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "latin"
+      ],
+      "weight": 4,
+      "note": "有舞蹈方向感"
+    },
+    {
+      "name": "拉丁 bVII",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "latin"
+      ],
+      "weight": 3,
+      "note": "熱帶調式"
+    },
+    {
+      "name": "藍調十二小节骨",
+      "degrees": [
+        "I",
+        "I",
+        "I",
+        "I",
+        "IV",
+        "IV",
+        "I",
+        "I",
+        "V",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues"
+      ],
+      "weight": 5,
+      "note": "濃縮十二小節藍調"
+    },
+    {
+      "name": "藍調 V7",
+      "degrees": [
+        "I",
+        "IV",
+        "I",
+        "V7"
+      ],
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues"
+      ],
+      "weight": 5,
+      "note": "短循環藍調"
+    },
+    {
+      "name": "藍調小調",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V7"
+      ],
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues"
+      ],
+      "weight": 4,
+      "note": "憂鬱藍調向"
+    },
+    {
+      "name": "藍調 I-bVII",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "V7"
+      ],
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues"
+      ],
+      "weight": 4,
+      "note": "搖滾藍調交叉"
+    },
+    {
+      "name": "藍調來回",
+      "degrees": [
+        "I",
+        "IV",
+        "V",
+        "IV"
+      ],
+      "moods": [
+        "sad",
+        "warm",
+        "emotional"
+      ],
+      "styles": [
+        "blues"
+      ],
+      "weight": 3,
+      "note": "反覆搓揉"
+    },
+    {
+      "name": "放克 V7",
+      "degrees": [
+        "I",
+        "V7",
+        "IV",
+        "V7"
+      ],
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk"
+      ],
+      "weight": 5,
+      "note": "屬七律動"
+    },
+    {
+      "name": "放克七和弦",
+      "degrees": [
+        "Imaj7",
+        "ii7",
+        "V7",
+        "Imaj7"
+      ],
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk"
+      ],
+      "weight": 4,
+      "note": "緊密解決"
+    },
+    {
+      "name": "放克小調",
+      "degrees": [
+        "vi7",
+        "ii7",
+        "V7",
+        "Imaj7"
+      ],
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk"
+      ],
+      "weight": 4,
+      "note": "groovy 小調"
+    },
+    {
+      "name": "放克 bVII",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "bVII"
+      ],
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk"
+      ],
+      "weight": 4,
+      "note": "調式放克"
+    },
+    {
+      "name": "放克循環",
+      "degrees": [
+        "ii7",
+        "V7",
+        "Imaj7",
+        "vi7"
+      ],
+      "moods": [
+        "energetic",
+        "bright",
+        "jazzy"
+      ],
+      "styles": [
+        "funk"
+      ],
+      "weight": 3,
+      "note": "爵士放克"
+    },
+    {
+      "name": "迪斯可四和弦",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "disco"
+      ],
+      "weight": 5,
+      "note": "舞池流行骨"
+    },
+    {
+      "name": "迪斯可循環",
+      "degrees": [
+        "I",
+        "vi",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "disco"
+      ],
+      "weight": 4,
+      "note": "復古 Disco"
+    },
+    {
+      "name": "迪斯可七和弦",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "IV",
+        "V7"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "disco"
+      ],
+      "weight": 4,
+      "note": "閃亮七和弦"
+    },
+    {
+      "name": "迪斯可小調泵",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "disco"
+      ],
+      "weight": 4,
+      "note": "副歌上揚"
+    },
+    {
+      "name": "迪斯可 V 懸",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "V"
+      ],
+      "moods": [
+        "bright",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "disco"
+      ],
+      "weight": 3,
+      "note": "停在屬和弦的推進"
+    },
+    {
+      "name": "氛圍懸浮",
+      "degrees": [
+        "Imaj7",
+        "IVmaj7",
+        "vi7",
+        "IVmaj7"
+      ],
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient"
+      ],
+      "weight": 5,
+      "note": "幾乎不解決"
+    },
+    {
+      "name": "氛圍漂流",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "IVmaj7",
+        "V"
+      ],
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient"
+      ],
+      "weight": 4,
+      "note": "輕輕靠岸"
+    },
+    {
+      "name": "氛圍平行",
+      "degrees": [
+        "I",
+        "bVII",
+        "bVI",
+        "bVII"
+      ],
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient"
+      ],
+      "weight": 4,
+      "note": "平行調式漂流"
+    },
+    {
+      "name": "氛圍簡約",
+      "degrees": [
+        "Imaj7",
+        "IVmaj7",
+        "Imaj7",
+        "IVmaj7"
+      ],
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient"
+      ],
+      "weight": 3,
+      "note": "兩和弦呼吸"
+    },
+    {
+      "name": "氛圍小調霧",
+      "degrees": [
+        "vi7",
+        "IVmaj7",
+        "Imaj7",
+        "V"
+      ],
+      "moods": [
+        "calm",
+        "lullaby",
+        "emotional"
+      ],
+      "styles": [
+        "ambient"
+      ],
+      "weight": 3,
+      "note": "薄霧收尾"
+    },
+    {
+      "name": "電影史詩",
+      "degrees": [
+        "vi",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "weight": 5,
+      "note": "預告片常用"
+    },
+    {
+      "name": "電影上行",
+      "degrees": [
+        "I",
+        "iii",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "weight": 4,
+      "note": "推向高潮"
+    },
+    {
+      "name": "電影暗潮",
+      "degrees": [
+        "vi",
+        "bVI",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "weight": 4,
+      "note": "扁平六級張力"
+    },
+    {
+      "name": "電影卡農",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "iii",
+        "IV",
+        "I",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "weight": 4,
+      "note": "長線敘事"
+    },
+    {
+      "name": "電影力量",
+      "degrees": [
+        "I",
+        "bVII",
+        "IV",
+        "V"
+      ],
+      "moods": [
+        "emotional",
+        "energetic",
+        "warm"
+      ],
+      "styles": [
+        "cinematic"
+      ],
+      "weight": 3,
+      "note": "英雄主題感"
+    },
+    {
+      "name": "巴薩二五一",
+      "degrees": [
+        "ii7",
+        "V7",
+        "Imaj7",
+        "vi7"
+      ],
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa"
+      ],
+      "weight": 5,
+      "note": "Bossa 標準骨架"
+    },
+    {
+      "name": "巴薩循環",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa"
+      ],
+      "weight": 5,
+      "note": "柔順循環"
+    },
+    {
+      "name": "巴薩長鏈",
+      "degrees": [
+        "iii7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa"
+      ],
+      "weight": 4,
+      "note": "更長的導入"
+    },
+    {
+      "name": "巴薩溫柔",
+      "degrees": [
+        "Imaj7",
+        "IVmaj7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa"
+      ],
+      "weight": 4,
+      "note": "陽光海岸"
+    },
+    {
+      "name": "巴薩小調",
+      "degrees": [
+        "vi7",
+        "ii7",
+        "V7",
+        "Imaj7"
+      ],
+      "moods": [
+        "calm",
+        "warm",
+        "jazzy"
+      ],
+      "styles": [
+        "bossa"
+      ],
+      "weight": 3,
+      "note": "夜色 Bossa"
+    },
+    {
+      "name": "福音 一五六四",
+      "degrees": [
+        "I",
+        "V",
+        "vi",
+        "IV"
+      ],
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel"
+      ],
+      "weight": 4,
+      "note": "敬拜流行骨"
+    },
+    {
+      "name": "福音二五一",
+      "degrees": [
+        "ii",
+        "V",
+        "I",
+        "I"
+      ],
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel"
+      ],
+      "weight": 5,
+      "note": "強解決"
+    },
+    {
+      "name": "福音七和弦",
+      "degrees": [
+        "Imaj7",
+        "vi7",
+        "ii7",
+        "V7"
+      ],
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel"
+      ],
+      "weight": 5,
+      "note": "教堂七和弦"
+    },
+    {
+      "name": "福音行進",
+      "degrees": [
+        "I",
+        "IV",
+        "I",
+        "V"
+      ],
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel"
+      ],
+      "weight": 3,
+      "note": "讚美詩簡骨"
+    },
+    {
+      "name": "福音循環圈",
+      "degrees": [
+        "vi",
+        "ii",
+        "V",
+        "I"
+      ],
+      "moods": [
+        "warm",
+        "energetic",
+        "emotional"
+      ],
+      "styles": [
+        "gospel"
+      ],
+      "weight": 4,
+      "note": "走向主和弦"
+    },
+    {
       "name": "流行四和弦（Axis）",
       "degrees": [
         "I",
@@ -15,7 +1879,22 @@
         "energetic"
       ],
       "weight": 5,
-      "note": "近代流行歌最常見的進行，明亮、朗朗上口（Let It Be、多數流行金曲）"
+      "note": "近代流行歌最常見的進行，明亮、朗朗上口（Let It Be、多數流行金曲）",
+      "styles": [
+        "ballad",
+        "country",
+        "disco",
+        "edm",
+        "folk",
+        "funk",
+        "gospel",
+        "hiphop",
+        "latin",
+        "pop",
+        "reggae",
+        "rnb",
+        "rock"
+      ]
     },
     {
       "name": "50 年代進行（Doo-wop）",
@@ -31,7 +1910,23 @@
         "calm"
       ],
       "weight": 4,
-      "note": "溫暖復古，適合抒情與兒歌（Stand by Me）"
+      "note": "溫暖復古，適合抒情與兒歌（Stand by Me）",
+      "styles": [
+        "ambient",
+        "ballad",
+        "bossa",
+        "country",
+        "disco",
+        "folk",
+        "gospel",
+        "jazz",
+        "latin",
+        "lullaby",
+        "pop",
+        "reggae",
+        "rnb",
+        "symphony"
+      ]
     },
     {
       "name": "卡農進行",
@@ -51,7 +1946,20 @@
         "emotional"
       ],
       "weight": 4,
-      "note": "Pachelbel 卡農，優雅流動，8 小節一循環"
+      "note": "Pachelbel 卡農，優雅流動，8 小節一循環",
+      "styles": [
+        "ambient",
+        "ballad",
+        "bossa",
+        "cinematic",
+        "country",
+        "gospel",
+        "jazz",
+        "lullaby",
+        "pop",
+        "rnb",
+        "symphony"
+      ]
     },
     {
       "name": "抒情小調進行",
@@ -67,7 +1975,21 @@
         "energetic"
       ],
       "weight": 5,
-      "note": "以關係小調開頭，憂鬱但有推進力，適合小調感覺的素材"
+      "note": "以關係小調開頭，憂鬱但有推進力，適合小調感覺的素材",
+      "styles": [
+        "ballad",
+        "blues",
+        "cinematic",
+        "disco",
+        "edm",
+        "funk",
+        "gospel",
+        "hiphop",
+        "pop",
+        "rnb",
+        "rock",
+        "symphony"
+      ]
     },
     {
       "name": "民謠進行",
@@ -83,7 +2005,20 @@
         "calm"
       ],
       "weight": 3,
-      "note": "最基本的 I-IV-V，穩定樸實，適合童謠"
+      "note": "最基本的 I-IV-V，穩定樸實，適合童謠",
+      "styles": [
+        "ambient",
+        "bossa",
+        "country",
+        "disco",
+        "folk",
+        "jazz",
+        "latin",
+        "lullaby",
+        "pop",
+        "reggae",
+        "symphony"
+      ]
     },
     {
       "name": "溫柔進行",
@@ -98,7 +2033,19 @@
         "calm"
       ],
       "weight": 3,
-      "note": "柔和，第三小節的 vi 帶一點感性"
+      "note": "柔和，第三小節的 vi 帶一點感性",
+      "styles": [
+        "ambient",
+        "ballad",
+        "bossa",
+        "country",
+        "gospel",
+        "jazz",
+        "lullaby",
+        "pop",
+        "rnb",
+        "symphony"
+      ]
     },
     {
       "name": "上行推進",
@@ -113,22 +2060,19 @@
         "energetic"
       ],
       "weight": 2,
-      "note": "根音逐步上行，越來越亮，適合能量高的素材"
-    },
-    {
-      "name": "爵士二五一",
-      "degrees": [
-        "ii",
-        "V",
-        "I",
-        "I"
-      ],
-      "moods": [
-        "calm",
-        "jazzy"
-      ],
-      "weight": 2,
-      "note": "ii-V-I 是最有解決感的進行，收尾特別穩"
+      "note": "根音逐步上行，越來越亮，適合能量高的素材",
+      "styles": [
+        "country",
+        "disco",
+        "edm",
+        "folk",
+        "funk",
+        "hiphop",
+        "latin",
+        "pop",
+        "reggae",
+        "rock"
+      ]
     },
     {
       "name": "小調敘事",
@@ -143,22 +2087,15 @@
         "emotional"
       ],
       "weight": 3,
-      "note": "停留在小調色彩，說故事的感覺"
-    },
-    {
-      "name": "搖滾動力",
-      "degrees": [
-        "I",
-        "IV",
-        "V",
-        "IV"
-      ],
-      "moods": [
-        "rock",
-        "energetic"
-      ],
-      "weight": 3,
-      "note": "I-IV-V 循環不回主和弦，持續推進不停歇，搖滾常用"
+      "note": "停留在小調色彩，說故事的感覺",
+      "styles": [
+        "ballad",
+        "blues",
+        "cinematic",
+        "gospel",
+        "rnb",
+        "symphony"
+      ]
     },
     {
       "name": "循環圈",
@@ -173,7 +2110,17 @@
         "calm"
       ],
       "weight": 3,
-      "note": "五度循環 vi-ii-V-I，爵士標準曲的骨架，優雅有方向感"
+      "note": "五度循環 vi-ii-V-I，爵士標準曲的骨架，優雅有方向感",
+      "styles": [
+        "ambient",
+        "bossa",
+        "funk",
+        "hiphop",
+        "jazz",
+        "lullaby",
+        "rnb",
+        "symphony"
+      ]
     },
     {
       "name": "搖籃曲進行",
@@ -189,7 +2136,16 @@
         "simple"
       ],
       "weight": 3,
-      "note": "只在 I、IV、V 之間輕輕擺盪，安穩無起伏，適合哄睡"
+      "note": "只在 I、IV、V 之間輕輕擺盪，安穩無起伏，適合哄睡",
+      "styles": [
+        "ambient",
+        "bossa",
+        "country",
+        "folk",
+        "jazz",
+        "lullaby",
+        "symphony"
+      ]
     }
   ],
   "ensembles": [
@@ -1728,6 +3684,14 @@
           "type": "sustain",
           "program": 40
         }
+      ],
+      "progressions": [
+        "流行 Axis",
+        "流行六四",
+        "流行上行",
+        "流行 V7 推進",
+        "流行 IVmaj7",
+        "流行循環"
       ]
     },
     "ballad": {
@@ -1782,6 +3746,13 @@
           "type": "sustain",
           "program": 42
         }
+      ],
+      "progressions": [
+        "抒情卡農",
+        "抒情小調",
+        "抒情敘事",
+        "抒情大七",
+        "抒情下行"
       ]
     },
     "folk": {
@@ -1839,6 +3810,13 @@
           "type": "arp",
           "program": 45
         }
+      ],
+      "progressions": [
+        "民謠 I-IV-V",
+        "民謠溫柔",
+        "民謠 Doo-wop",
+        "民謠旅行",
+        "民謠敘事"
       ]
     },
     "rock": {
@@ -1879,7 +3857,14 @@
       "decoration2": {
         "type": "hits",
         "program": 61
-      }
+      },
+      "progressions": [
+        "搖滾動力",
+        "搖滾力量",
+        "搖滾小調",
+        "搖滾五度",
+        "搖滾藍調感"
+      ]
     },
     "jazz": {
       "label": "爵士 Jazz",
@@ -1934,6 +3919,13 @@
           "type": "pad",
           "program": 4
         }
+      ],
+      "progressions": [
+        "爵士二五一",
+        "爵士循環圈",
+        "爵士七和弦",
+        "爵士三級",
+        "爵士轉位感"
       ]
     },
     "lullaby": {
@@ -1983,6 +3975,12 @@
           "type": "sustain",
           "program": 40
         }
+      ],
+      "progressions": [
+        "搖籃曲擺盪",
+        "搖籃曲溫柔",
+        "搖籃曲大七",
+        "搖籃曲簡約"
       ]
     },
     "reggae": {
@@ -2040,6 +4038,13 @@
           "type": "sustain",
           "program": 71
         }
+      ],
+      "progressions": [
+        "雷鬼 I-V-vi-IV",
+        "雷鬼 Offbeat",
+        "雷鬼小調",
+        "雷鬼循環",
+        "雷鬼調式"
       ]
     },
     "symphony": {
@@ -2097,6 +4102,13 @@
           "type": "arp",
           "program": 46
         }
+      ],
+      "progressions": [
+        "管弦卡農",
+        "管弦上行",
+        "管弦敘事",
+        "管弦莊嚴",
+        "管弦屬七"
       ]
     },
     "edm": {
@@ -2150,6 +4162,12 @@
           "type": "hits",
           "program": 61
         }
+      ],
+      "progressions": [
+        "EDM 四和弦",
+        "EDM 小調泵",
+        "EDM 懸留",
+        "EDM 調式泵"
       ]
     },
     "hiphop": {
@@ -2207,6 +4225,12 @@
           "type": "pad",
           "program": 48
         }
+      ],
+      "progressions": [
+        "嘻哈循環",
+        "嘻哈七和弦",
+        "嘻哈二五",
+        "嘻哈簡骨"
       ]
     },
     "rnb": {
@@ -2264,6 +4288,13 @@
           "type": "sustain",
           "program": 40
         }
+      ],
+      "progressions": [
+        "R&B 七和弦",
+        "R&B 小調",
+        "R&B 二五一",
+        "R&B 流行骨",
+        "R&B 三級鏈"
       ]
     },
     "country": {
@@ -2321,6 +4352,13 @@
           "type": "pad",
           "program": 48
         }
+      ],
+      "progressions": [
+        "鄉村 I-IV-V",
+        "鄉村溫暖",
+        "鄉村敘事",
+        "鄉村 Doo-wop",
+        "鄉村旅行"
       ]
     },
     "latin": {
@@ -2378,6 +4416,13 @@
           "type": "hits",
           "program": 61
         }
+      ],
+      "progressions": [
+        "拉丁熱情",
+        "拉丁小調",
+        "拉丁安達盧西",
+        "拉丁循環",
+        "拉丁 bVII"
       ]
     },
     "blues": {
@@ -2435,6 +4480,13 @@
           "type": "sustain",
           "program": 71
         }
+      ],
+      "progressions": [
+        "藍調十二小节骨",
+        "藍調 V7",
+        "藍調小調",
+        "藍調 I-bVII",
+        "藍調來回"
       ]
     },
     "funk": {
@@ -2490,6 +4542,13 @@
           "type": "arp",
           "program": 27
         }
+      ],
+      "progressions": [
+        "放克 V7",
+        "放克七和弦",
+        "放克小調",
+        "放克 bVII",
+        "放克循環"
       ]
     },
     "disco": {
@@ -2545,6 +4604,13 @@
           "type": "hits",
           "program": 56
         }
+      ],
+      "progressions": [
+        "迪斯可四和弦",
+        "迪斯可循環",
+        "迪斯可七和弦",
+        "迪斯可小調泵",
+        "迪斯可 V 懸"
       ]
     },
     "ambient": {
@@ -2597,6 +4663,13 @@
           "type": "arp",
           "program": 46
         }
+      ],
+      "progressions": [
+        "氛圍懸浮",
+        "氛圍漂流",
+        "氛圍平行",
+        "氛圍簡約",
+        "氛圍小調霧"
       ]
     },
     "cinematic": {
@@ -2657,6 +4730,13 @@
           "type": "sustain",
           "program": 42
         }
+      ],
+      "progressions": [
+        "電影史詩",
+        "電影上行",
+        "電影暗潮",
+        "電影卡農",
+        "電影力量"
       ]
     },
     "bossa": {
@@ -2712,6 +4792,13 @@
           "type": "sustain",
           "program": 40
         }
+      ],
+      "progressions": [
+        "巴薩二五一",
+        "巴薩循環",
+        "巴薩長鏈",
+        "巴薩溫柔",
+        "巴薩小調"
       ]
     },
     "gospel": {
@@ -2769,6 +4856,13 @@
           "type": "sustain",
           "program": 40
         }
+      ],
+      "progressions": [
+        "福音 一五六四",
+        "福音二五一",
+        "福音七和弦",
+        "福音行進",
+        "福音循環圈"
       ]
     }
   },

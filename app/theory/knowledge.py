@@ -123,25 +123,43 @@ def _fit_to_bars(degrees: List[str], num_bars: int) -> List[str]:
     return fitted[:num_bars]
 
 
+def _progressions_for_style(style: Optional[str], mood: Optional[str] = None) -> list:
+    """依風格（優先）或 mood 過濾和弦進行池。"""
+    progressions = load_theory()["progressions"]
+    if style and style != "auto":
+        tagged = [p for p in progressions if style in (p.get("styles") or [])]
+        if tagged:
+            return tagged
+        # 風格設定裡若列出進行名稱，用名稱對應
+        style_cfg = get_style(style)
+        names = set((style_cfg or {}).get("progressions") or [])
+        if names:
+            named = [p for p in progressions if p.get("name") in names]
+            if named:
+                return named
+    if mood:
+        by_mood = [p for p in progressions if mood in (p.get("moods") or [])]
+        if by_mood:
+            return by_mood
+    return progressions
+
+
 def pick_progression_for_mood(
     mood: str,
     num_bars: int,
     rng=None,
+    style: Optional[str] = None,
 ) -> dict:
     """
-    依感覺（mood）從資料庫挑一組和弦進行。
+    依風格／感覺從資料庫挑一組和弦進行。
 
-    mood 可以是 bright / warm / calm / sad / emotional / energetic / simple / jazzy。
+    有指定 style 時，只從該風格的多組進行裡抽（每次可換一組）。
     回傳 {"name": 進行名稱, "degrees": 貼合小節數的和弦列表}。
     """
     import random as _random
 
     rng = rng or _random
-    progressions = load_theory()["progressions"]
-    candidates = [p for p in progressions if mood in p.get("moods", [])]
-    if not candidates:
-        candidates = progressions
-
+    candidates = _progressions_for_style(style, mood)
     weights = [p.get("weight", 1) for p in candidates]
     chosen = rng.choices(candidates, weights=weights)[0]
     return {
@@ -156,20 +174,22 @@ def best_progression_for_melody(
     bpm: float,
     num_bars: int,
     time_signature: tuple = (4, 4),
+    style: Optional[str] = None,
+    seed: Optional[int] = None,
 ) -> dict:
     """
-    幫既有旋律配和弦：把資料庫裡每一組經典進行逐一跟旋律比對，
-    以「旋律音落在和弦內音上的總時值」評分，挑總分最高的進行。
+    幫既有旋律配和弦：在「該風格的進行池」裡評分，
+    再從高分候選人中依 seed 抽一組（同一旋律換 seed／重新製作會換和弦）。
 
-    比起逐小節貪婪挑和弦，整組進行天生就有起承轉合，聽起來更像一首歌。
     回傳 {"name": 進行名稱, "degrees": 和弦列表}。
     """
+    import random as _random
+
     from app.arrange.chords import get_chord_pitch_classes
 
     beats_per_second = bpm / 60.0
     bar_duration = time_signature[0] / beats_per_second
 
-    # 預先統計每小節各音級的總時值
     bar_pc_durations = []
     for bar in range(num_bars):
         bar_start = bar * bar_duration
@@ -182,8 +202,9 @@ def best_progression_for_melody(
                 pc_duration[pc] = pc_duration.get(pc, 0.0) + overlap
         bar_pc_durations.append(pc_duration)
 
-    best_name, best_degrees, best_score = None, None, float("-inf")
-    for prog in load_theory()["progressions"]:
+    candidates = _progressions_for_style(style)
+    scored = []
+    for prog in candidates:
         degrees = _fit_to_bars(prog["degrees"], num_bars)
         score = 0.0
         for bar, degree in enumerate(degrees):
@@ -192,12 +213,24 @@ def best_progression_for_melody(
             total = sum(pc_duration.values()) or 1.0
             hit = sum(dur for pc, dur in pc_duration.items() if pc in tones)
             score += hit / total
-        # 資料庫權重當成小加分，同分時偏好常用進行
         score += prog.get("weight", 1) * 0.02
-        if score > best_score:
-            best_name, best_degrees, best_score = prog["name"], degrees, score
+        scored.append((score, prog, degrees))
 
-    return {"name": best_name, "degrees": best_degrees}
+    if not scored:
+        return {"name": "I", "degrees": ["I"] * max(1, num_bars)}
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    best_score = scored[0][0]
+    # 取分數尚可的前幾名，讓同風格「重新製作」真的換得到不同和弦
+    top = [s for s in scored if s[0] >= best_score * 0.72][:8]
+    if len(top) < 3:
+        top = scored[: min(5, len(scored))]
+
+    rng = _random.Random(seed)
+    # 略抬高權重差異，但仍保留探索空間
+    weights = [(max(0.01, t[0]) ** 1.5) * t[1].get("weight", 1) for t in top]
+    score, prog, degrees = rng.choices(top, weights=weights)[0]
+    return {"name": prog["name"], "degrees": degrees}
 
 
 def theory_prompt_text(mood: Optional[str] = None, compact: bool = False) -> str:

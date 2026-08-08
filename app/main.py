@@ -844,12 +844,21 @@ async def render_music(request: RenderRequest):
     )
 
 
-def _rule_based_chords(notes: List[Note], key: str, bpm: float, num_bars: int) -> List[str]:
-    """規則式和弦推薦：依旋律評分挑和弦，含 V→I 終止式。"""
+def _rule_based_chords(
+    notes: List[Note],
+    key: str,
+    bpm: float,
+    num_bars: int,
+    style: Optional[str] = None,
+    seed: Optional[int] = None,
+) -> List[str]:
+    """規則式和弦推薦：依風格進行池＋旋律評分挑選。"""
     from app.arrange.chords import select_chords_for_melody
 
     notes_list = [{"start": n.start, "end": n.end, "midi": n.midi, "velocity": n.velocity} for n in notes]
-    return select_chords_for_melody(notes_list, key, bpm, num_bars)
+    return select_chords_for_melody(
+        notes_list, key, bpm, num_bars, style=style, seed=seed,
+    )
 
 
 def _load_voice_mono_44k(path: Path):
@@ -1123,7 +1132,8 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
         "你是一位流行音樂作曲老師，專門為兒童與親子課程設計簡單、穩定的和弦進行。\n\n"
         + theory_prompt_text(compact=True)
         + "\n\n格式規則：\n"
-        "- 只能使用這些和弦級數：I, ii, iii, IV, V, vi。每小節一個和弦，4/4 拍。\n"
+        "- 可用和弦級數：I, ii, iii, IV, V, vi, vii, bVII, bVI, bIII, "
+        "Imaj7, ii7, iii7, IVmaj7, V7, vi7。每小節一個和弦，4/4 拍。\n"
         "- 不要逐音分析，直接依旋律的整體感覺挑選，越快決定越好。\n"
         "- 回覆時，**只回傳 JSON**，格式為：{\"chords\":[\"I\",\"V\",\"vi\",\"IV\"]}，不要加任何註解或多餘文字。\n"
     )
@@ -1176,7 +1186,9 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
             raise RuntimeError("LM Studio 回傳的 chords 無效")
 
         # 清洗和弦，只保留允許的級數
-        allowed = {"I", "IV", "V", "vi", "ii", "iii"}
+        from app.arrange.chords import CHORD_TYPES
+
+        allowed = set(CHORD_TYPES.keys())
         cleaned = [c for c in chords if isinstance(c, str) and c in allowed]
         if not cleaned:
             raise RuntimeError("LM Studio 沒有回傳有效的和弦級數")
@@ -1197,5 +1209,8 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
 
     # 全部連不上：改用規則式推薦
     print("[ai-compose] 所有 LM Studio 網址都不可用，改用規則式推薦")
-    fallback = _rule_based_chords(request.notes, request.key, request.bpm, request.num_bars)
+    fallback = _rule_based_chords(
+        request.notes, request.key, request.bpm, request.num_bars,
+        seed=hash((request.key, request.bpm, request.num_bars)) % (10**9),
+    )
     return AIComposeResponse(chords=fallback, source="rules")
