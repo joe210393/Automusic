@@ -2,15 +2,15 @@
 地端旋律生成器
 
 輸入音階（內建音階或自訂音名），完全在本機用演算法生成旋律：
-- 音高：音階內的隨機漫步（以級進為主、偶爾跳進），樂句結尾傾向落在穩定音
-- 節奏：從常見節奏型中挑選，每小節一組
+- 音高：樂句拱形＋動機重複，級進為主、強拍偏向穩定音
+- 節奏：更多樣的節奏型（含切分、休止暗示）
 - 收尾：最後一個音強制回到主音並拉長，聽起來有結束感
 
 不需要任何外部 API 或模型。
 """
 
 import random
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 # 音名 -> pitch class（支援升降記號）
 NOTE_NAME_TO_PC = {
@@ -32,6 +32,7 @@ SCALE_INTERVALS = {
 }
 
 # 每小節的節奏型（單位：拍，總和為 4，配合 4/4 拍）
+# 含較多長短對比與切分，避免四平八穩的「練習曲感」
 RHYTHM_PATTERNS = [
     [1, 1, 1, 1],
     [0.5, 0.5, 1, 1, 1],
@@ -43,6 +44,14 @@ RHYTHM_PATTERNS = [
     [0.5, 0.5, 0.5, 0.5, 1, 1],
     [1.5, 0.5, 1, 1],
     [2, 2],
+    [0.5, 1.5, 1, 1],
+    [1, 0.5, 1.5, 1],
+    [1.5, 0.5, 0.5, 0.5, 1],
+    [0.75, 0.25, 1, 0.5, 0.5, 1],
+    [2, 0.5, 0.5, 1],
+    [1, 2, 1],
+    [0.5, 0.5, 2, 1],
+    [1.5, 1.5, 1],
 ]
 
 
@@ -57,12 +66,87 @@ def parse_note_name(name: str) -> int:
 def build_scale_pitches(
     root_pc: int,
     intervals: List[int],
-    low: int = 60,
-    high: int = 84,
+    low: int = 55,
+    high: int = 79,
 ) -> List[int]:
     """在 [low, high] 的 MIDI 範圍內，列出所有屬於這個音階的音高（由低到高）。"""
     pcs = {(root_pc + iv) % 12 for iv in intervals}
     return [m for m in range(low, high + 1) if m % 12 in pcs]
+
+
+def _stable_degrees(intervals: List[int]) -> set:
+    """主音、三度、五度（若在音階內）視為穩定音。"""
+    want = {0, 4, 7, 3}  # 大/小三、五
+    return {iv for iv in intervals if iv in want or iv == 0}
+
+
+def _pick_near(
+    scale_pitches: List[int],
+    target: int,
+    prefer_pcs: Optional[set] = None,
+) -> int:
+    cands = scale_pitches
+    if prefer_pcs:
+        filtered = [m for m in scale_pitches if (m % 12) in prefer_pcs]
+        if filtered:
+            cands = filtered
+    return min(cands, key=lambda m: abs(m - target))
+
+
+def _generate_bar_contour(
+    rng: random.Random,
+    scale_pitches: List[int],
+    start_idx: int,
+    pattern: List[float],
+    *,
+    tonic_pcs: set,
+    stable_pcs: set,
+    phrase_role: str,
+) -> Tuple[List[int], int]:
+    """
+    產生一小節的音高索引序列。
+    phrase_role: open / rise / fall / close
+    """
+    idxs = []
+    idx = start_idx
+    n = len(pattern)
+    for i, _dur in enumerate(pattern):
+        beat_pos = sum(pattern[:i])
+        on_strong = abs(beat_pos - round(beat_pos)) < 1e-6 and int(round(beat_pos)) % 2 == 0
+        is_last = i == n - 1
+
+        if phrase_role == "close" and is_last:
+            target = _pick_near(scale_pitches, scale_pitches[idx], tonic_pcs)
+            idx = scale_pitches.index(target)
+        elif phrase_role == "open" and is_last:
+            # 半終止感：落到五度或三度
+            prefer = stable_pcs - tonic_pcs or stable_pcs
+            target = _pick_near(scale_pitches, scale_pitches[idx], prefer)
+            idx = scale_pitches.index(target)
+        else:
+            # 拱形：前半偏上、後半偏下
+            if phrase_role == "rise":
+                weights = [1, 2, 6, 18, 6, 28, 22, 10, 7]
+            elif phrase_role == "fall":
+                weights = [7, 10, 22, 28, 6, 18, 6, 2, 1]
+            else:
+                weights = [2, 4, 14, 26, 6, 26, 14, 5, 3]
+            step = rng.choices(
+                population=[-4, -3, -2, -1, 0, 1, 2, 3, 4],
+                weights=weights,
+            )[0]
+            # 強拍更常落在穩定音：先走一步再吸附
+            idx = max(0, min(len(scale_pitches) - 1, idx + step))
+            if on_strong and rng.random() < 0.55:
+                target = _pick_near(scale_pitches, scale_pitches[idx], stable_pcs)
+                idx = scale_pitches.index(target)
+            # 避免同一音連敲超過兩次
+            if len(idxs) >= 2 and idxs[-1] == idxs[-2] == idx:
+                step2 = 1 if rng.random() < 0.5 else -1
+                idx = max(0, min(len(scale_pitches) - 1, idx + step2))
+
+        idxs.append(idx)
+    return idxs, idx
 
 
 def generate_melody(
@@ -106,67 +190,88 @@ def generate_melody(
     else:
         raise ValueError(f"不支援的音階類型：{scale_type}")
 
-    scale_pitches = build_scale_pitches(root_pc, intervals, low=60, high=84)
+    # 音域壓在舒適歌唱／樂器區，避免編成歌曲後出現刺耳高音
+    scale_pitches = build_scale_pitches(root_pc, intervals, low=55, high=79)
     if len(scale_pitches) < 3:
         raise ValueError("音階可用的音太少，無法生成旋律")
 
-    # 音階內「穩定音」：主音（樂句結尾偏好落在這些音上）
+    tonic_pcs = {root_pc}
+    stable_iv = _stable_degrees(intervals)
+    stable_pcs = {(root_pc + iv) % 12 for iv in stable_iv} | tonic_pcs
+
     tonic_pitches = [m for m in scale_pitches if m % 12 == root_pc]
-    # 起始音：靠近範圍中間的主音
     mid = (scale_pitches[0] + scale_pitches[-1]) / 2
-    start_pitch = min(tonic_pitches, key=lambda m: abs(m - mid)) if tonic_pitches else scale_pitches[len(scale_pitches) // 2]
+    # 起始略低於中間，留給後面上行空間
+    start_target = mid - 4
+    start_pitch = (
+        min(tonic_pitches, key=lambda m: abs(m - start_target))
+        if tonic_pitches
+        else scale_pitches[len(scale_pitches) // 3]
+    )
 
     beat_sec = 60.0 / bpm
     notes = []
     idx = scale_pitches.index(start_pitch)
     current_time = 0.0
 
-    for bar in range(num_bars):
-        pattern = rng.choice(RHYTHM_PATTERNS)
-        is_last_bar = bar == num_bars - 1
+    # 先做「動機」小節，後續重複／變奏，聽起來更像完整旋律
+    motif_pattern = rng.choice(RHYTHM_PATTERNS)
+    motif_idxs, motif_end_idx = _generate_bar_contour(
+        rng, scale_pitches, idx, motif_pattern,
+        tonic_pcs=tonic_pcs, stable_pcs=stable_pcs, phrase_role="open",
+    )
 
-        # 最後一小節用簡單節奏，留空間收尾
-        if is_last_bar:
-            pattern = rng.choice([[2, 2], [1, 1, 2], [2, 1, 1]])
+    # 每 4 小節一組：動機 → 上揚 → 動機變奏 → 收束
+    roles_cycle = ["open", "rise", "open", "close"]
+
+    for bar in range(num_bars):
+        is_last_bar = bar == num_bars - 1
+        role = "close" if is_last_bar else roles_cycle[bar % 4]
+
+        if bar == 0:
+            pattern, bar_idxs = motif_pattern, list(motif_idxs)
+            idx = motif_end_idx
+        elif role == "open" and bar % 4 == 2 and rng.random() < 0.75:
+            # 重複動機節奏，音高做小變奏（平移 ±1～2 級）
+            pattern = motif_pattern
+            shift = rng.choice([-2, -1, 1, 2])
+            bar_idxs = [
+                max(0, min(len(scale_pitches) - 1, i + shift))
+                for i in motif_idxs
+            ]
+            # 結尾拉回穩定音
+            end_pitch = _pick_near(scale_pitches, scale_pitches[bar_idxs[-1]], stable_pcs)
+            bar_idxs[-1] = scale_pitches.index(end_pitch)
+            idx = bar_idxs[-1]
+        else:
+            if is_last_bar:
+                pattern = rng.choice([[2, 2], [1, 1, 2], [2, 1, 1], [1.5, 0.5, 2]])
+            else:
+                pattern = rng.choice(RHYTHM_PATTERNS)
+            bar_idxs, idx = _generate_bar_contour(
+                rng, scale_pitches, idx, pattern,
+                tonic_pcs=tonic_pcs, stable_pcs=stable_pcs, phrase_role=role,
+            )
 
         for i, dur_beats in enumerate(pattern):
             is_final_note = is_last_bar and i == len(pattern) - 1
-            is_phrase_end = (not is_final_note) and (bar % 2 == 1) and i == len(pattern) - 1
-
-            if is_final_note:
-                # 收尾：回到最近的主音
-                if tonic_pitches:
-                    idx = scale_pitches.index(
-                        min(tonic_pitches, key=lambda m: abs(m - scale_pitches[idx]))
-                    )
-            else:
-                # 隨機漫步：以級進為主，偶爾跳進
-                step = rng.choices(
-                    population=[-4, -3, -2, -1, 0, 1, 2, 3, 4],
-                    weights=[2, 4, 14, 22, 8, 22, 14, 4, 2],
-                )[0]
-                idx = max(0, min(len(scale_pitches) - 1, idx + step))
-
-                # 偶數小節結尾傾向靠近主音，讓樂句有段落感
-                if is_phrase_end and tonic_pitches and rng.random() < 0.6:
-                    idx = scale_pitches.index(
-                        min(tonic_pitches, key=lambda m: abs(m - scale_pitches[idx]))
-                    )
-
+            pitch_idx = bar_idxs[i]
             dur_sec = dur_beats * beat_sec
-            # 稍微斷開音符，聽起來比較自然（保留 90% 長度）
-            note_len = dur_sec * (1.0 if is_final_note else 0.9)
+            # 長音多留一點，短音稍微斷開
+            legato = 0.96 if dur_beats >= 1.5 else 0.88
+            note_len = dur_sec * (1.0 if is_final_note else legato)
 
-            # 力度：正拍稍強
             beat_pos = sum(pattern[:i])
             on_downbeat = abs(beat_pos - round(beat_pos)) < 1e-6 and int(round(beat_pos)) % 2 == 0
-            velocity = rng.randint(88, 100) if on_downbeat else rng.randint(76, 90)
+            velocity = rng.randint(86, 98) if on_downbeat else rng.randint(72, 88)
+            if is_final_note:
+                velocity = max(velocity, 90)
 
             notes.append(
                 {
                     "start": round(current_time, 4),
                     "end": round(current_time + note_len, 4),
-                    "midi": scale_pitches[idx],
+                    "midi": scale_pitches[pitch_idx],
                     "velocity": velocity,
                 }
             )

@@ -48,6 +48,10 @@ def _installed_acoustic_lead_programs() -> set:
         return {0, 1, 24, 25, 71}
 
 
+# GM 短笛／直笛／排笛／口哨／陶笛：成品容易出現刺耳高頻哨音
+PIERCING_MELODY_PROGRAMS = {72, 74, 75, 78, 79}
+
+
 def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict:
     """
     挑一組樂團編制（主奏樂器＋和聲樂器＋裝飾聲部＋是否用鼓）。
@@ -58,6 +62,7 @@ def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict
       3. 全部編制
 
     若候選裡有「已安裝原聲主奏」的編制，九成機率優先抽它們。
+    預設避開刺耳哨笛類主奏（短笛／直笛／口哨等）。
     """
     ensembles = load_theory().get("ensembles", [])
     if not ensembles:
@@ -76,6 +81,13 @@ def pick_ensemble(mood: Optional[str], rng, style: Optional[str] = None) -> dict
 
     if candidates is None:
         candidates = ensembles
+
+    soft = [
+        e for e in candidates
+        if e.get("melody_program") not in PIERCING_MELODY_PROGRAMS
+    ]
+    if soft:
+        candidates = soft
 
     acoustic_progs = _installed_acoustic_lead_programs()
     acoustic = [

@@ -65,12 +65,13 @@ LAYER_PROGRAM_FONTS: Dict[int, Tuple[str, int]] = {
     68: ("leads/Sonatina_Orchestra.sf2", 16),
     69: ("leads/Sonatina_Orchestra.sf2", 19),
     71: ("leads/Clarinet.sf2", 0),
-    72: ("leads/Sonatina_Orchestra.sf2", 18),
-    73: ("leads/Sonatina_Orchestra.sf2", 14),
-    74: ("leads/Recorder.sf2", 0),
-    75: ("leads/Recorder.sf2", 0),
-    78: ("leads/Recorder.sf2", 0),
-    79: ("leads/Recorder.sf2", 0),
+    # 短笛／直笛／口哨類易刺耳：不要映到 Piccolo Solo 或 Recorder.sf2
+    72: ("leads/Sonatina_Orchestra.sf2", 14),  # Piccolo → Flute Solo
+    73: ("leads/Sonatina_Orchestra.sf2", 14),  # Flute Solo
+    74: ("leads/Clarinet.sf2", 0),             # Recorder → Clarinet
+    75: ("leads/Sonatina_Orchestra.sf2", 14),  # Pan Flute → Flute
+    78: ("leads/Sonatina_Orchestra.sf2", 14),  # Whistle → Flute
+    79: ("leads/Clarinet.sf2", 0),             # Ocarina → Clarinet
 }
 
 # 向下相容舊名稱
@@ -268,12 +269,21 @@ def _mix_many(wav_gains: List[Tuple[str, float]], out_wav: str):
     sf.write(out_wav, mixed, sr0, subtype="PCM_16")
 
 
-def _stem_gain(channels: set) -> float:
-    """主旋律稍大聲，背景鋪底略收。"""
+# 高音木管／哨笛類：主奏也壓小聲，避免刺耳
+PIERCING_PROGRAMS = {72, 73, 74, 75, 78, 79}
+
+
+def _stem_gain(channels: set, programs: Optional[Dict[int, int]] = None) -> float:
+    """主旋律稍大聲，背景鋪底略收；刺耳木管再壓一檔。"""
+    progs = programs or {}
     if 0 in channels:
+        if progs.get(0) in PIERCING_PROGRAMS:
+            return 0.62
         return 0.92
     if channels <= {1}:  # 只有貝斯
         return 0.78
+    if any(progs.get(ch) in PIERCING_PROGRAMS for ch in channels):
+        return 0.55
     return 0.70
 
 
@@ -337,7 +347,9 @@ def render_midi_to_wav(
             os.close(fd)
             tmp_paths.extend([mid, wav])
             _fluidsynth_render(fluidsynth_bin, [sf2_path], mid, wav, gain=0.72)
-            wav_gains.append((wav, _stem_gain(set(ch_presets.keys()))))
+            # ch_presets 的值是 remap 後 preset；音量判斷用原始 GM program
+            stem_progs = {ch: programs.get(ch, 0) for ch in ch_presets}
+            wav_gains.append((wav, _stem_gain(set(ch_presets.keys()), stem_progs)))
             overlay_names.append(
                 f"{Path(sf2_path).name}:ch{sorted(ch_presets.keys())}"
             )

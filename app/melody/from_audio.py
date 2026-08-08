@@ -173,8 +173,8 @@ def generate_melody_from_material(
     high = min(81, center + 10)
     scale_pitches = build_scale_pitches(feat["root_pc"], intervals, low, high)
     while len(scale_pitches) < 5:
-        low = max(36, low - 4)
-        high = min(96, high + 4)
+        low = max(48, low - 4)
+        high = min(79, high + 4)  # 再高編成歌曲後容易刺耳
         scale_pitches = build_scale_pitches(feat["root_pc"], intervals, low, high)
 
     tonic_pitches = [p for p in scale_pitches if p % 12 == feat["root_pc"]]

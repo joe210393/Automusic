@@ -235,7 +235,7 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
@@ -826,7 +826,7 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
@@ -850,7 +850,7 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
@@ -990,7 +990,7 @@
       ],
       "decoration": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       },
       "decoration2": {
         "type": "pad",
@@ -1128,7 +1128,7 @@
       ],
       "decoration": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       },
       "decoration2": {
         "type": "pad",
@@ -1136,8 +1136,8 @@
       }
     },
     {
-      "name": "短笛明亮",
-      "melody_program": 72,
+      "name": "弦樂明亮",
+      "melody_program": 40,
       "harmony_program": 48,
       "drums": true,
       "moods": [
@@ -1151,7 +1151,7 @@
       ],
       "decoration": {
         "type": "arp",
-        "program": 73
+        "program": 71
       },
       "decoration2": {
         "type": "hits",
@@ -1183,8 +1183,8 @@
       }
     },
     {
-      "name": "直笛童趣",
-      "melody_program": 74,
+      "name": "豎笛童趣",
+      "melody_program": 71,
       "harmony_program": 24,
       "drums": false,
       "moods": [
@@ -1202,8 +1202,8 @@
       }
     },
     {
-      "name": "排笛異國",
-      "melody_program": 75,
+      "name": "豎琴異國",
+      "melody_program": 46,
       "harmony_program": 48,
       "drums": false,
       "moods": [
@@ -1222,12 +1222,12 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
-      "name": "溫柔口哨",
-      "melody_program": 78,
+      "name": "尼龍溫柔",
+      "melody_program": 24,
       "harmony_program": 24,
       "drums": true,
       "moods": [
@@ -1245,8 +1245,8 @@
       }
     },
     {
-      "name": "陶笛幻想",
-      "melody_program": 79,
+      "name": "鐘琴幻想",
+      "melody_program": 11,
       "harmony_program": 48,
       "drums": false,
       "moods": [
@@ -1335,7 +1335,7 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
@@ -1408,7 +1408,7 @@
       },
       "decoration2": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       }
     },
     {
@@ -1427,7 +1427,7 @@
       ],
       "decoration": {
         "type": "sustain",
-        "program": 73
+        "program": 71
       },
       "decoration2": {
         "type": "pad",
@@ -1712,7 +1712,7 @@
         },
         {
           "type": "sustain",
-          "program": 73
+          "program": 71
         },
         {
           "type": "hits",
@@ -1811,7 +1811,7 @@
         24,
         25,
         73,
-        74,
+        71,
         105
       ],
       "harmony_programs": [
@@ -1827,7 +1827,7 @@
         },
         {
           "type": "sustain",
-          "program": 73
+          "program": 71
         }
       ],
       "decoration2_choices": [
@@ -1958,7 +1958,7 @@
         10,
         8,
         73,
-        79
+        11
       ],
       "harmony_programs": [
         48
@@ -1971,7 +1971,7 @@
         },
         {
           "type": "sustain",
-          "program": 73
+          "program": 71
         }
       ],
       "decoration2_choices": [
@@ -2585,7 +2585,7 @@
         },
         {
           "type": "sustain",
-          "program": 73
+          "program": 71
         }
       ],
       "decoration2_choices": [

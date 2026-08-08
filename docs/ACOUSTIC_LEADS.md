@@ -59,3 +59,11 @@ curl -s http://127.0.0.1:8080/health | python3 -m json.tool
 ```
 
 回應標頭 `X-Render-Engine: acoustic-remote` 代表雲端已成功委託 Mac。
+
+## 刺耳哨音
+
+短笛／直笛／口哨／陶笛等 GM 音色容易在成品裡變成高頻哨聲。目前：
+
+- 編制池已改成小提琴／豎笛／豎琴／尼龍吉他等
+- 裝飾長笛改豎笛，音域上限約 E5
+- 原聲對應不再把 72–79 映到 Piccolo Solo／Recorder.sf2

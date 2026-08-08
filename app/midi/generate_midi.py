@@ -24,6 +24,28 @@ BASS_PROGRAM = 33                          # Electric Bass (finger)
 
 CRASH = 49  # Crash Cymbal 1
 
+# 木管／哨笛類：強制收進舒適音域，避免成品出現刺耳高頻
+WOODWIND_LIKE_PROGRAMS = {68, 69, 71, 72, 73, 74, 75, 78, 79}
+PIERCING_MELODY_PROGRAMS = {72, 74, 75, 78, 79}
+# 若理論庫仍殘留刺耳主奏，編成時改成溫暖替代
+SAFE_MELODY_FALLBACK = {
+    72: 40,  # piccolo → violin
+    74: 71,  # recorder → clarinet
+    75: 46,  # pan flute → harp
+    78: 24,  # whistle → nylon guitar
+    79: 11,  # ocarina → vibraphone
+}
+
+
+def _fold_midi_note(note: int, low: int = 55, high: int = 76) -> int:
+    """把音高折進 [low, high]，保留音名（十二平均律八度）。"""
+    n = int(note)
+    while n > high:
+        n -= 12
+    while n < low:
+        n += 12
+    return max(low, min(high, n))
+
 
 def compute_song_structure(notes: list, bpm: float, target_seconds: int = 30) -> dict:
     """
@@ -150,7 +172,21 @@ def generate_full_midi(
         bass_var = rng.randrange(NUM_BASS_VARIATIONS)
         harmony_var = rng.randrange(NUM_HARMONY_VARIATIONS)
 
+    # 安全網：刺耳哨笛主奏改成溫暖樂器
+    if melody_program in SAFE_MELODY_FALLBACK:
+        melody_program = SAFE_MELODY_FALLBACK[melody_program]
+    if decoration and decoration.get("program") in PIERCING_MELODY_PROGRAMS:
+        decoration = {**decoration, "program": 71}
+    if decoration2 and decoration2.get("program") in PIERCING_MELODY_PROGRAMS:
+        decoration2 = {**decoration2, "program": 48}
+
     quantized_notes = quantize_notes(notes, bpm, grid="1/8")
+
+    # 主奏是木管類時，素材旋律也折進較低音域
+    if melody_program in WOODWIND_LIKE_PROGRAMS:
+        for n in quantized_notes:
+            n["midi"] = _fold_midi_note(n["midi"], low=55, high=74)
+            n["velocity"] = min(int(n.get("velocity", 90)), 88)
 
     beats_per_second = bpm / 60.0
     bar_duration = 4.0 / beats_per_second
@@ -252,11 +288,12 @@ def generate_full_midi(
 
     # ---- 旋律軌 ----
     # melody_gain < 1 時旋律轉為小聲跟奏（例如混入原始人聲時）
+    mel_high = 74 if melody_program in WOODWIND_LIKE_PROGRAMS else 81
     melody_events = [
         (
             n["start"],
             n["end"] - n["start"],
-            n["midi"],
+            _fold_midi_note(n["midi"], low=48, high=mel_high),
             max(20, min(127, int(max(70, min(110, n.get("velocity", 90))) * melody_gain))),
         )
         for n in full_melody
@@ -321,14 +358,32 @@ def generate_full_midi(
         # 裝飾聲部 1／2（小提琴、長笛、豎笛、銅管等織體；主歌段不進，留給副歌）
         if decoration and not is_quiet:
             deco_type = "pad" if is_outro else decoration.get("type", "arp")
+            deco_prog = decoration.get("program", 0)
             deco_events = get_decoration_pattern(degree, key, bar_duration, deco_type=deco_type)
-            deco_all.extend((bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco_events)
+            high = 74 if deco_prog in WOODWIND_LIKE_PROGRAMS else 76
+            deco_all.extend(
+                (
+                    bar_start + e["time"],
+                    e["duration"],
+                    _fold_midi_note(e["note"], low=48, high=high),
+                    e["velocity"],
+                )
+                for e in deco_events
+            )
         if decoration2 and not is_quiet and not is_outro:
+            deco2_prog = decoration2.get("program", 0)
             deco2_events = get_decoration_pattern(
                 degree, key, bar_duration, deco_type=decoration2.get("type", "sustain")
             )
+            high2 = 74 if deco2_prog in WOODWIND_LIKE_PROGRAMS else 76
             deco2_all.extend(
-                (bar_start + e["time"], e["duration"], e["note"], e["velocity"]) for e in deco2_events
+                (
+                    bar_start + e["time"],
+                    e["duration"],
+                    _fold_midi_note(e["note"], low=48, high=high2),
+                    e["velocity"],
+                )
+                for e in deco2_events
             )
 
     write_track_events(drums_track, 9, drum_all)

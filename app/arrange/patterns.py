@@ -160,12 +160,12 @@ def get_decoration_pattern(
                 "duration": bar_duration * 0.98,
             })
     elif deco_type == "sustain":
-        # 三音＋五音長音，音量壓低當對位，不搶主旋律
+        # 三音＋五音長音；上限約 E5，避免長笛／木管拉到哨音區
         for note in chord_notes[1:3]:
             events.append({
                 "time": beat * 0.5,
-                "note": min(84, note + 12),
-                "velocity": 38,
+                "note": min(76, note + 7),
+                "velocity": 32,
                 "duration": bar_duration * 0.7,
             })
     elif deco_type == "hits":
@@ -173,22 +173,23 @@ def get_decoration_pattern(
             for note in chord_notes:
                 events.append({
                     "time": when,
-                    "note": note,
+                    "note": min(72, note),
                     "velocity": 48 if i == 0 else 40,
                     "duration": beat * 0.35,
                 })
     else:
-        # 分解和弦：根-三-五-八 上行再下行，8 分音符
+        # 分解和弦：根-三-五-八 上行再下行，8 分音符；八度上限壓在 76
+        top = min(76, chord_notes[0] + 12)
         seq = [
-            chord_notes[0], chord_notes[1], chord_notes[2], chord_notes[0] + 12,
+            chord_notes[0], chord_notes[1], chord_notes[2], top,
             chord_notes[2], chord_notes[1],
         ]
         seq = (seq + seq)[:8]
         for i, note in enumerate(seq):
             events.append({
                 "time": i * beat * 0.5,
-                "note": note,
-                "velocity": 42,
+                "note": min(76, note),
+                "velocity": 38,
                 "duration": beat * 0.48,
             })
 
