@@ -5,7 +5,7 @@
 | 服務 | LaunchAgent | 作用 |
 |------|-------------|------|
 | Automusic FastAPI | `com.automusic.server` | `:8080`（含 DiffSinger / Seed-VC / 原聲 `/render-midi`） |
-| ACE-Step API | `com.automusic.acestep` | `:8001`（AI 整曲人聲，MLX） |
+| ACE-Step API | `com.automusic.acestep` | `:8001`（AI 整曲人聲，MLX；Zeabur 經 ngrok `/acestep/generate` 委託） |
 | ngrok | `com.automusic.ngrok` | 公開網域 → 本機 8080（給 Zeabur 打） |
 
 掛掉會自動重開（`KeepAlive`）。

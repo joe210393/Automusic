@@ -313,11 +313,14 @@ async def health():
         pass
 
     acoustic = can_render_acoustic_locally()
-    ace_ok = _ace.is_available()
+    # health 上標記本機引擎；雲端另以 remote 判斷
+    ace_local = _ace.local_available()
+    ace_ok = ace_local or _ace.is_available()
     ready = (_svs.is_available() and _vc.is_available() and acoustic) or ace_ok
     return {
         "ok": ready,
         "acestep": ace_ok,
+        "acestep_local": ace_local,
         "diffsinger": _svs.is_available(),
         "seed_vc": _vc.is_available(),
         "lm_studio": lm_ok,
@@ -674,6 +677,48 @@ def svs_synthesize(job: SVSJobRequest):
     if not out:
         raise HTTPException(status_code=500, detail="DiffSinger 代唱失敗")
     return FileResponse(out, media_type="audio/wav", filename="svs.wav")
+
+
+class AceStepGenerateRequest(BaseModel):
+    lyrics: dict
+    bpm: float = 100
+    key: Optional[str] = None
+    singer_id: Optional[str] = None
+    engine_style: Optional[str] = None
+    duration_sec: float = 45.0
+
+
+@app.get("/acestep/health")
+def acestep_health():
+    """本機 ACE-Step 是否就緒（給雲端 Zeabur 探測；只查 :8001）。"""
+    from app.voice import acestep as _ace
+
+    ok = _ace.local_available()
+    return {"ok": ok, "url": _ace.ACESTEP_URL}
+
+
+@app.post("/acestep/generate")
+def acestep_generate(req: AceStepGenerateRequest):
+    """
+    用本機 ACE-Step 產生含人聲整曲 MP3。
+    雲端 Zeabur 經 ngrok 委託此端點（與 /svs、/vc 相同）。
+    """
+    from app.voice import acestep as _ace
+
+    if not _ace.local_available():
+        raise HTTPException(status_code=501, detail="此伺服器未啟動 ACE-Step")
+    try:
+        out = _ace.generate_to_tempfile(
+            lyrics=req.lyrics,
+            bpm=float(req.bpm),
+            key=req.key,
+            singer_id=req.singer_id,
+            engine_style=req.engine_style,
+            duration_sec=float(req.duration_sec or 45.0),
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ACE-Step 產生失敗: {e}") from e
+    return FileResponse(out, media_type="audio/mpeg", filename="acestep.mp3")
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)

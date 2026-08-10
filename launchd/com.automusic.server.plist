@@ -31,6 +31,10 @@
         <string>http://127.0.0.1:1234</string>
         <key>ACESTEP_URL</key>
         <string>http://127.0.0.1:8001</string>
+        <key>ACESTEP_REMOTE_URLS</key>
+        <string>https://tactually-venerable-inez.ngrok-free.dev</string>
+        <key>ACESTEP_THINKING</key>
+        <string>1</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

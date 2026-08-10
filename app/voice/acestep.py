@@ -1,48 +1,86 @@
 """
 本機 ACE-Step 1.5 API 客戶端：文字＋歌詞 → 整曲（含人聲）。
 
-預設打 http://127.0.0.1:8001（LaunchAgent com.automusic.acestep）。
-失敗時由呼叫端 fallback 到編曲／主旋律路徑。
+- 本機 Automusic：打 http://127.0.0.1:8001
+- 雲端 Zeabur：經 ngrok 打本機 Automusic 的 /acestep/generate（與 DiffSinger／Seed-VC 同模式）
 """
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 import time
 import urllib.parse
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
 
 ACESTEP_URL = os.getenv("ACESTEP_URL", "http://127.0.0.1:8001").rstrip("/")
 ACESTEP_API_KEY = (os.getenv("ACESTEP_API_KEY") or "").strip()
 ACESTEP_MODEL = os.getenv("ACESTEP_MODEL", "acestep-v15-turbo")
-# thinking=true 需要 5Hz LM；本機為加速預設關閉（純 DiT 仍可唱歌詞）
-ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "0").strip().lower() in ("1", "true", "yes")
+# thinking=true 用 5Hz LM 規劃，人聲明顯較穩；需本機 ACE-Step 已載入 LM
+ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "1").strip().lower() not in ("0", "false", "no")
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 
+_default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
+ACESTEP_REMOTE_URLS: List[str] = [
+    u.strip().rstrip("/")
+    for u in os.getenv("ACESTEP_REMOTE_URLS", _default_remote).split(",")
+    if u.strip()
+]
+
 ProgressCb = Optional[Callable[[int, str], None]]
 
-# 歌手模板 → ACE-Step prompt 風格提示
 SINGER_PROMPTS: Dict[str, str] = {
-    "female_bright": "bright clear female vocals, sunny Mandarin pop, travel souvenir song",
-    "female_warm": "warm soft female vocals, gentle Mandarin pop ballad, nostalgic travel song",
-    "female_soft": "soft intimate female vocals, quiet Mandarin acoustic pop, seaside memory",
-    "male_deep": "deep rich male vocals, warm Mandarin pop, grounded travel anthem",
-    "male_warm": "warm mid male vocals, heartfelt Mandarin pop, coastal journey song",
-    "male_clear": "clear strong male vocals, uplifting Mandarin pop, memorable travel song",
+    "female_bright": (
+        "A bright Mandarin pop travel song. The lead female vocal is clear, present, and sings "
+        "Chinese lyrics throughout the verse and chorus; sunny coastal vibe with full-band backing."
+    ),
+    "female_warm": (
+        "A warm Mandarin pop ballad. The lead female vocal is soft but clearly audible, singing "
+        "Chinese lyrics in verse and chorus; nostalgic travel mood with full-band accompaniment."
+    ),
+    "female_soft": (
+        "A gentle Mandarin acoustic pop song. Intimate soft female lead vocals sing Chinese lyrics "
+        "prominently; light seaside arrangement that never covers the singer."
+    ),
+    "male_deep": (
+        "A grounded Mandarin pop anthem. Deep rich male lead vocals sing Chinese lyrics clearly "
+        "through verse and chorus; full-band travel mood."
+    ),
+    "male_warm": (
+        "A heartfelt Mandarin pop song. Warm mid-range male lead vocals are front and center, "
+        "singing Chinese lyrics in verse and chorus; coastal journey arrangement."
+    ),
+    "male_clear": (
+        "An uplifting Mandarin pop souvenir song. Clear strong male lead vocals sing Chinese lyrics "
+        "prominently; memorable travel arrangement with full band."
+    ),
 }
 
 
-def is_available(timeout: float = 1.5) -> bool:
+def _headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
+    h = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "ngrok-skip-browser-warning": "1",
+    }
+    if ACESTEP_API_KEY:
+        h["Authorization"] = f"Bearer {ACESTEP_API_KEY}"
+    if extra:
+        h.update(extra)
+    return h
+
+
+def local_available(timeout: float = 1.5) -> bool:
+    """只檢查本機 ACE-Step :8001（給 /acestep/health 用，避免遠端遞迴）。"""
     try:
         r = requests.get(f"{ACESTEP_URL}/health", timeout=timeout)
         if r.status_code != 200:
             return False
         data = r.json()
-        # ACE-Step wraps as {data, code} or may return plain
         if isinstance(data, dict) and "code" in data:
             return int(data.get("code") or 0) == 200
         return True
@@ -50,38 +88,55 @@ def is_available(timeout: float = 1.5) -> bool:
         return False
 
 
-def _headers() -> Dict[str, str]:
-    h = {"Content-Type": "application/json", "Accept": "application/json"}
-    if ACESTEP_API_KEY:
-        h["Authorization"] = f"Bearer {ACESTEP_API_KEY}"
-    return h
+def remote_available(timeout: float = 3.0) -> bool:
+    for base in ACESTEP_REMOTE_URLS:
+        try:
+            r = requests.get(
+                f"{base}/acestep/health",
+                headers={"ngrok-skip-browser-warning": "1"},
+                timeout=timeout,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                if isinstance(data, dict) and data.get("ok"):
+                    return True
+        except Exception:
+            continue
+    return False
+
+
+def is_available(timeout: float = 1.5) -> bool:
+    return local_available(timeout=timeout) or remote_available(timeout=max(timeout, 2.5))
 
 
 def format_lyrics(lyrics: dict) -> str:
+    """ACE-Step 建議結構標籤；避免空歌詞被當成 instrumental。"""
     title = (lyrics.get("title") or "").strip()
     verse = (lyrics.get("verse") or "").strip()
     chorus = (lyrics.get("chorus") or "").strip()
     parts = []
     if title:
-        parts.append(f"[title]\n{title}")
+        parts.append(f"[Intro]\n{title}")
     if verse:
-        parts.append(f"[verse]\n{verse}")
+        parts.append(f"[Verse]\n{verse}")
     if chorus:
-        parts.append(f"[chorus]\n{chorus}")
-    return "\n\n".join(parts).strip()
+        parts.append(f"[Chorus]\n{chorus}")
+        # 再唱一次副歌，拉長人聲段落
+        parts.append(f"[Chorus]\n{chorus}")
+    text = "\n\n".join(parts).strip()
+    if not text:
+        return ""
+    return text
 
 
 def format_key_scale(key: Optional[str]) -> str:
     raw = (key or "").strip()
     if not raw:
         return ""
-    # Already "C Major" / "A Minor"
     if " " in raw:
         return raw
-    # Am / A#m / F#m
     if raw.endswith("m") and not raw.lower().endswith("major"):
-        root = raw[:-1]
-        return f"{root} Minor"
+        return f"{raw[:-1]} Minor"
     return f"{raw} Major"
 
 
@@ -91,12 +146,20 @@ def build_prompt(
     engine_style: Optional[str],
     title: Optional[str] = None,
 ) -> str:
-    base = SINGER_PROMPTS.get(singer_id or "", "Mandarin pop song with natural vocals, travel memory")
-    bits = [base, "Chinese vocals", "complete song with accompaniment and singing"]
+    base = SINGER_PROMPTS.get(
+        singer_id or "",
+        "Mandarin pop song with natural lead vocals singing Chinese lyrics, travel memory, full arrangement",
+    )
+    bits = [
+        base,
+        "lead vocal must be clearly audible and sing the given Mandarin lyrics",
+        "not instrumental-only",
+        "not a karaoke backing track without singer",
+    ]
     if engine_style:
         bits.append(str(engine_style))
     if title:
-        bits.append(f"song title vibe: {title}")
+        bits.append(f"song about: {title}")
     return ", ".join(bits)
 
 
@@ -110,14 +173,13 @@ def _parse_result_payload(raw: Any) -> Optional[dict]:
         return raw
     if isinstance(raw, str):
         try:
-            parsed = json.loads(raw)
-            return _parse_result_payload(parsed)
+            return _parse_result_payload(json.loads(raw))
         except Exception:
             return None
     return None
 
 
-def _audio_url_from_result(item: dict) -> Optional[str]:
+def _audio_url_from_result(item: dict, base_url: str) -> Optional[str]:
     file_ref = item.get("file") or item.get("audio") or item.get("path")
     if not file_ref:
         return None
@@ -125,26 +187,21 @@ def _audio_url_from_result(item: dict) -> Optional[str]:
     if file_ref.startswith("http://") or file_ref.startswith("https://"):
         return file_ref
     if file_ref.startswith("/"):
-        return f"{ACESTEP_URL}{file_ref}"
-    # bare path → /v1/audio?path=
-    return f"{ACESTEP_URL}/v1/audio?path={urllib.parse.quote(file_ref, safe='')}"
+        return f"{base_url.rstrip('/')}{file_ref}"
+    return f"{base_url.rstrip('/')}/v1/audio?path={urllib.parse.quote(file_ref, safe='')}"
 
 
-def generate_to_file(
+def _generate_via_local_api(
     *,
     lyrics: dict,
     bpm: float,
     key: Optional[str],
-    singer_id: Optional[str] = None,
-    engine_style: Optional[str] = None,
-    duration_sec: float = 45.0,
+    singer_id: Optional[str],
+    engine_style: Optional[str],
+    duration_sec: float,
     out_path: Path,
     progress: ProgressCb = None,
 ) -> Path:
-    """
-    呼叫 ACE-Step 產生整曲並寫入 out_path（建議 .mp3 / .wav）。
-    成功回傳 out_path；失敗 raise RuntimeError。
-    """
     if progress:
         progress(20, "連線 AI 唱歌引擎")
 
@@ -157,18 +214,25 @@ def generate_to_file(
         engine_style=engine_style,
         title=lyrics.get("title"),
     )
-    duration_sec = max(10.0, min(120.0, float(duration_sec)))
+    duration_sec = max(20.0, min(90.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
 
     body: Dict[str, Any] = {
         "prompt": prompt,
+        "caption": prompt,
         "lyrics": lyric_text,
         "vocal_language": "zh",
         "thinking": ACESTEP_THINKING,
+        "use_cot_caption": False,
+        "use_cot_language": False,
+        "use_cot_metas": False,
+        "instrumental": False,
         "audio_format": "mp3" if str(out_path).lower().endswith(".mp3") else "wav",
         "model": ACESTEP_MODEL,
         "audio_duration": duration_sec,
         "time_signature": "4",
+        "batch_size": 1,
+        "inference_steps": 8,
     }
     if bpm_i:
         body["bpm"] = bpm_i
@@ -204,12 +268,20 @@ def generate_to_file(
     deadline = time.time() + ACESTEP_TIMEOUT_SEC
     last_status = None
     while time.time() < deadline:
-        qr = requests.post(
-            f"{ACESTEP_URL}/query_result",
-            headers=_headers(),
-            json={"task_id_list": [task_id]},
-            timeout=30,
-        )
+        try:
+            qr = requests.post(
+                f"{ACESTEP_URL}/query_result",
+                headers=_headers(),
+                json={"task_id_list": [task_id]},
+                # 首次載入 LM／推理時 worker 會卡住，query 也需較長讀取逾時
+                timeout=120,
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            if progress:
+                progress(50, "AI 正在作曲唱歌")
+            print(f"[acestep] query_result retry after {type(e).__name__}")
+            time.sleep(ACESTEP_POLL_INTERVAL)
+            continue
         if qr.status_code >= 400:
             raise RuntimeError(f"ACE-Step query_result HTTP {qr.status_code}: {qr.text[:300]}")
         qwrap = qr.json()
@@ -229,7 +301,7 @@ def generate_to_file(
             item = _parse_result_payload(row.get("result"))
             if not item:
                 raise RuntimeError("ACE-Step 成功但結果為空")
-            audio_url = _audio_url_from_result(item)
+            audio_url = _audio_url_from_result(item, ACESTEP_URL)
             if not audio_url:
                 raise RuntimeError(f"ACE-Step 結果缺少音檔: {item}")
             if progress:
@@ -237,6 +309,8 @@ def generate_to_file(
             ar = requests.get(audio_url, headers=_headers(), timeout=120)
             if ar.status_code >= 400:
                 raise RuntimeError(f"ACE-Step 下載音檔失敗 HTTP {ar.status_code}")
+            if len(ar.content) < 5000:
+                raise RuntimeError("ACE-Step 音檔異常過短")
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(ar.content)
             if progress:
@@ -246,9 +320,118 @@ def generate_to_file(
             err = row.get("error") or row.get("message") or row.get("result") or "unknown"
             raise RuntimeError(f"ACE-Step 產生失敗: {err}")
 
-        # still running
         if progress:
             progress(55, "AI 正在作曲唱歌")
         time.sleep(ACESTEP_POLL_INTERVAL)
 
     raise RuntimeError(f"ACE-Step 逾時（status={last_status}）")
+
+
+def _generate_via_remote(
+    *,
+    lyrics: dict,
+    bpm: float,
+    key: Optional[str],
+    singer_id: Optional[str],
+    engine_style: Optional[str],
+    duration_sec: float,
+    out_path: Path,
+    progress: ProgressCb = None,
+) -> Path:
+    if progress:
+        progress(20, "連線本機 AI 唱歌引擎")
+    payload = {
+        "lyrics": lyrics,
+        "bpm": bpm,
+        "key": key,
+        "singer_id": singer_id,
+        "engine_style": engine_style,
+        "duration_sec": duration_sec,
+    }
+    last_err = None
+    for base in ACESTEP_REMOTE_URLS:
+        try:
+            if progress:
+                progress(35, "AI 正在作曲唱歌")
+            r = requests.post(
+                f"{base}/acestep/generate",
+                headers=_headers(),
+                json=payload,
+                timeout=ACESTEP_TIMEOUT_SEC + 30,
+            )
+            if r.status_code >= 400:
+                last_err = f"HTTP {r.status_code}: {r.text[:240]}"
+                continue
+            ctype = (r.headers.get("content-type") or "").lower()
+            if "json" in ctype:
+                last_err = f"unexpected json: {r.text[:240]}"
+                continue
+            if len(r.content) < 5000:
+                last_err = "remote audio too small"
+                continue
+            if progress:
+                progress(90, "輸出成品")
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_bytes(r.content)
+            return out_path
+        except Exception as e:
+            last_err = str(e)
+            continue
+    raise RuntimeError(f"遠端 ACE-Step 失敗: {last_err or 'unreachable'}")
+
+
+def generate_to_file(
+    *,
+    lyrics: dict,
+    bpm: float,
+    key: Optional[str],
+    singer_id: Optional[str] = None,
+    engine_style: Optional[str] = None,
+    duration_sec: float = 45.0,
+    out_path: Path,
+    progress: ProgressCb = None,
+    force_local: bool = False,
+) -> Path:
+    """
+    產生整曲並寫入 out_path。
+    force_local=True 時只打本機 :8001（給 /acestep/generate 代理用）。
+    """
+    if force_local or local_available():
+        return _generate_via_local_api(
+            lyrics=lyrics,
+            bpm=bpm,
+            key=key,
+            singer_id=singer_id,
+            engine_style=engine_style,
+            duration_sec=duration_sec,
+            out_path=out_path,
+            progress=progress,
+        )
+    if ACESTEP_REMOTE_URLS:
+        return _generate_via_remote(
+            lyrics=lyrics,
+            bpm=bpm,
+            key=key,
+            singer_id=singer_id,
+            engine_style=engine_style,
+            duration_sec=duration_sec,
+            out_path=out_path,
+            progress=progress,
+        )
+    raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
+
+
+def generate_to_tempfile(**kwargs) -> str:
+    """給 HTTP 代理用：寫到暫存 mp3，回傳路徑。"""
+    fd, path = tempfile.mkstemp(prefix="acestep_", suffix=".mp3")
+    os.close(fd)
+    out = Path(path)
+    try:
+        generate_to_file(out_path=out, force_local=True, **kwargs)
+        return str(out)
+    except Exception:
+        try:
+            out.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
