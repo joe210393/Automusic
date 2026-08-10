@@ -749,22 +749,44 @@ textarea { min-height: 96px; resize: vertical; }
 }
 
 .rec-orb {
-  width: min(140px, 40vw);
-  height: min(140px, 40vw);
+  width: min(160px, 46vw);
+  height: min(160px, 46vw);
   border-radius: 50%;
-  margin: 20px auto;
+  margin: 0 auto;
   display: grid;
   place-items: center;
-  gap: 6px;
+  gap: 2px;
   background: var(--navy);
   color: #fff;
   font-weight: 700;
   box-shadow: 0 14px 30px rgba(26, 43, 74, 0.28);
+  padding: 12px;
+  line-height: 1.2;
 }
 .rec-orb svg { width: 26px; height: 26px; }
+.rec-orb #recBtnLabel { font-size: 14px; }
+.rec-orb .rec-timer {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
 .rec-orb.recording {
   background: #c45c2a;
   animation: recPulse 1.2s ease-in-out infinite;
+}
+.rec-wrap {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin: 18px auto 8px;
+}
+.rec-wave {
+  width: min(320px, 100%);
+  height: 56px;
+  border-radius: 12px;
+  background: rgba(26, 43, 74, 0.06);
+  display: block;
 }
 @keyframes recPulse {
   0%, 100% { transform: scale(1); }

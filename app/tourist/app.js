@@ -13,6 +13,17 @@
   let chunks = [];
   let lastBlob = null;
   let recording = false;
+  let recStream = null;
+  let recAudioCtx = null;
+  let recAnalyser = null;
+  let recProcessor = null;
+  let recSource = null;
+  let recMute = null;
+  let pcmChunks = [];
+  let recStartedAt = 0;
+  let recTimerId = null;
+  let recRafId = 0;
+  let recSampleRate = 44100;
 
   const $ = (id) => document.getElementById(id);
   const screens = {
@@ -380,74 +391,298 @@
     }
   }
 
-  async function startRecording() {
-    if (recording) {
-      mediaRecorder && mediaRecorder.stop();
-      return;
+  function formatRecTime(ms) {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(sec / 60);
+    const s = String(sec % 60).padStart(2, "0");
+    return `${m}:${s}`;
+  }
+
+  function setRecUi(isRec, elapsedMs) {
+    const label = $("recBtnLabel");
+    const timer = $("recTimer");
+    const wave = $("recWave");
+    const btn = $("recBtn");
+    if (!btn) return;
+    btn.classList.toggle("recording", isRec);
+    if (label) label.textContent = isRec ? "停止" : "開始錄音";
+    if (timer) {
+      timer.hidden = !isRec;
+      if (isRec) timer.textContent = formatRecTime(elapsedMs || 0);
     }
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    chunks = [];
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      stream.getTracks().forEach((t) => t.stop());
-      lastBlob = new Blob(chunks, { type: "audio/webm" });
-      $("collectPreview").src = URL.createObjectURL(lastBlob);
-      $("collectPreview").style.display = "block";
+    if (wave) wave.hidden = !isRec;
+  }
+
+  function drawRecWave() {
+    const canvas = $("recWave");
+    const analyser = recAnalyser;
+    if (!canvas || !analyser || !recording) return;
+    const ctx = canvas.getContext("2d");
+    const w = canvas.width;
+    const h = canvas.height;
+    const bins = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(bins);
+    ctx.clearRect(0, 0, w, h);
+    const bars = 28;
+    const gap = 3;
+    const barW = (w - gap * (bars - 1)) / bars;
+    const step = Math.floor(bins.length / bars);
+    for (let i = 0; i < bars; i++) {
+      let sum = 0;
+      for (let j = 0; j < step; j++) sum += bins[i * step + j] || 0;
+      const avg = sum / step / 255;
+      const barH = Math.max(4, avg * (h - 8));
+      const x = i * (barW + gap);
+      const y = (h - barH) / 2;
+      ctx.fillStyle = `rgba(196, 92, 42, ${0.35 + avg * 0.65})`;
+      ctx.beginPath();
+      const r = Math.min(4, barW / 2);
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + barW, y, x + barW, y + barH, r);
+      ctx.arcTo(x + barW, y + barH, x, y + barH, r);
+      ctx.arcTo(x, y + barH, x, y, r);
+      ctx.arcTo(x, y, x + barW, y, r);
+      ctx.closePath();
+      ctx.fill();
+    }
+    recRafId = requestAnimationFrame(drawRecWave);
+  }
+
+  function mergePcmChunks(list) {
+    let total = 0;
+    list.forEach((c) => { total += c.length; });
+    const out = new Float32Array(total);
+    let offset = 0;
+    list.forEach((c) => {
+      out.set(c, offset);
+      offset += c.length;
+    });
+    return out;
+  }
+
+  function floatToWavBlob(float32, sampleRate) {
+    const pcm = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+      const s = Math.max(-1, Math.min(1, float32[i]));
+      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return new Blob([encodeWav(pcm, sampleRate, 1)], { type: "audio/wav" });
+  }
+
+  function pickRecorderMime() {
+    if (typeof MediaRecorder === "undefined") return "";
+    const types = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/aac",
+      "audio/ogg;codecs=opus",
+    ];
+    return types.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+  }
+
+  async function stopCollectRecording() {
+    if (!recording) return;
+    recording = false;
+    if (recTimerId) {
+      clearInterval(recTimerId);
+      recTimerId = null;
+    }
+    if (recRafId) {
+      cancelAnimationFrame(recRafId);
+      recRafId = 0;
+    }
+
+    try {
+      if (mediaRecorder && mediaRecorder.state !== "inactive") {
+        await new Promise((resolve) => {
+          const done = () => resolve();
+          mediaRecorder.addEventListener("stop", done, { once: true });
+          try { mediaRecorder.requestData(); } catch (_) { /* ignore */ }
+          mediaRecorder.stop();
+        });
+      }
+    } catch (_) { /* ignore */ }
+
+    try {
+      if (recProcessor) {
+        recProcessor.onaudioprocess = null;
+        recProcessor.disconnect();
+      }
+      if (recSource) recSource.disconnect();
+      if (recAnalyser) recAnalyser.disconnect();
+      if (recMute) recMute.disconnect();
+      if (recAudioCtx && recAudioCtx.state !== "closed") await recAudioCtx.close();
+    } catch (_) { /* ignore */ }
+
+    if (recStream) {
+      recStream.getTracks().forEach((t) => t.stop());
+      recStream = null;
+    }
+
+    mediaRecorder = null;
+    recProcessor = null;
+    recSource = null;
+    recAnalyser = null;
+    recMute = null;
+    recAudioCtx = null;
+
+    try {
+      let blob = null;
+      if (pcmChunks.length) {
+        blob = floatToWavBlob(mergePcmChunks(pcmChunks), recSampleRate);
+      } else if (chunks.length) {
+        const mime = chunks[0].type || "audio/webm";
+        const raw = new Blob(chunks, { type: mime });
+        blob = await blobToWav(raw);
+      }
+      if (!blob || blob.size < 44) {
+        throw new Error("沒有錄到聲音，請再試一次");
+      }
+      lastBlob = blob;
+      const preview = $("collectPreview");
+      if (preview) {
+        if (preview.src) URL.revokeObjectURL(preview.src);
+        preview.src = URL.createObjectURL(lastBlob);
+        preview.style.display = "block";
+      }
       $("btnPlayLast").disabled = false;
       $("btnRedo").disabled = false;
       $("btnKeep").disabled = false;
-      const label = $("recBtnLabel");
-      if (label) label.textContent = "開始錄音";
-      $("recBtn").classList.remove("recording");
-      recording = false;
-    };
-    mediaRecorder.start();
+      setRecUi(false);
+      setStatus($("collectStatus"), `已錄 ${formatRecTime(Date.now() - recStartedAt)}，可以聽聽看或收進聲音盒`);
+    } catch (err) {
+      setRecUi(false);
+      setStatus($("collectStatus"), err.message || "錄音失敗，請再試一次", true);
+      lastBlob = null;
+      $("btnKeep").disabled = true;
+    } finally {
+      pcmChunks = [];
+      chunks = [];
+    }
+  }
+
+  async function startRecording() {
+    if (recording) {
+      await stopCollectRecording();
+      return;
+    }
+    if (!activeSlot) {
+      setStatus($("collectStatus"), "請先點一個聲音空格再錄音", true);
+      return;
+    }
+    try {
+      recStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch (err) {
+      setStatus($("collectStatus"), "無法使用麥克風，請允許權限後再試", true);
+      throw err;
+    }
+
+    chunks = [];
+    pcmChunks = [];
+    lastBlob = null;
+    recStartedAt = Date.now();
+    recSampleRate = 44100;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    recAudioCtx = new AudioCtx();
+    if (recAudioCtx.state === "suspended") {
+      try { await recAudioCtx.resume(); } catch (_) { /* ignore */ }
+    }
+    recSampleRate = recAudioCtx.sampleRate || 44100;
+    recSource = recAudioCtx.createMediaStreamSource(recStream);
+    recAnalyser = recAudioCtx.createAnalyser();
+    recAnalyser.fftSize = 256;
+    recSource.connect(recAnalyser);
+
+    // PCM path：避免 MediaRecorder / decodeAudioData 在部分瀏覽器失敗
+    const bufferSize = 4096;
+    if (recAudioCtx.createScriptProcessor) {
+      recProcessor = recAudioCtx.createScriptProcessor(bufferSize, 1, 1);
+      recProcessor.onaudioprocess = (e) => {
+        if (!recording) return;
+        const input = e.inputBuffer.getChannelData(0);
+        pcmChunks.push(new Float32Array(input));
+      };
+      recMute = recAudioCtx.createGain();
+      recMute.gain.value = 0;
+      recAnalyser.connect(recProcessor);
+      recProcessor.connect(recMute);
+      recMute.connect(recAudioCtx.destination);
+    } else {
+      // 備援：MediaRecorder
+      const mime = pickRecorderMime();
+      mediaRecorder = mime
+        ? new MediaRecorder(recStream, { mimeType: mime })
+        : new MediaRecorder(recStream);
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size) chunks.push(e.data);
+      };
+      mediaRecorder.start(200);
+    }
+
     recording = true;
-    const label = $("recBtnLabel");
-    if (label) label.textContent = "停止";
-    $("recBtn").classList.add("recording");
-    setStatus($("collectStatus"), "錄音中…");
+    setRecUi(true, 0);
+    setStatus($("collectStatus"), "錄音中…再按一次停止");
+    recTimerId = setInterval(() => {
+      if (!recording) return;
+      setRecUi(true, Date.now() - recStartedAt);
+    }, 200);
+    drawRecWave();
   }
 
   async function keepRecording() {
     if (!lastBlob || !activeSlot) return;
+    if (!journey || !journey.id) {
+      setStatus($("collectStatus"), "旅程尚未建立，請返回重試", true);
+      return;
+    }
     setStatus($("collectStatus"), "上傳中…");
-    // webm → 仍以 wav 副檔名存；後端只當 bytes。為相容轉成 wav 較佳，先直接上傳 webm 內容但用 .wav 名可能壞 compose。
-    // 用 AudioContext 轉 PCM wav
-    const wavBlob = await webmToWav(lastBlob);
-    const fd = new FormData();
-    fd.append("file", wavBlob, `${activeSlot}.wav`);
-    fd.append("slot", activeSlot);
-    const data = await api(`/api/journey/${journey.id}/sounds`, {
-      method: "POST",
-      body: fd,
-      headers: authHeaders(),
-    });
-    journey.sounds = data.sounds;
-    refreshSoundBoxState();
-    setStatus($("collectStatus"), "已收進聲音盒");
-    $("btnKeep").disabled = true;
+    try {
+      const wavBlob = lastBlob.type === "audio/wav"
+        ? lastBlob
+        : await blobToWav(lastBlob);
+      const fd = new FormData();
+      fd.append("file", wavBlob, `${activeSlot}.wav`);
+      fd.append("slot", activeSlot);
+      const data = await api(`/api/journey/${journey.id}/sounds`, {
+        method: "POST",
+        body: fd,
+        headers: authHeaders(),
+      });
+      journey.sounds = data.sounds;
+      refreshSoundBoxState();
+      setStatus($("collectStatus"), "已收進聲音盒");
+      $("btnKeep").disabled = true;
+    } catch (err) {
+      setStatus($("collectStatus"), err.message || "上傳失敗", true);
+    }
   }
 
-  async function webmToWav(blob) {
+  async function blobToWav(blob) {
+    if (blob.type === "audio/wav") return blob;
     const buf = await blob.arrayBuffer();
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
-    const audio = await ctx.decodeAudioData(buf.slice(0));
-    const length = audio.length;
-    const ch = 1;
-    const rate = audio.sampleRate;
-    const mono = audio.numberOfChannels > 1
-      ? averageChannels(audio)
-      : audio.getChannelData(0);
-    const pcm = new Int16Array(length);
-    for (let i = 0; i < length; i++) {
-      const s = Math.max(-1, Math.min(1, mono[i]));
-      pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    try {
+      const audio = await ctx.decodeAudioData(buf.slice(0));
+      const mono = audio.numberOfChannels > 1
+        ? averageChannels(audio)
+        : audio.getChannelData(0);
+      const pcm = new Int16Array(mono.length);
+      for (let i = 0; i < mono.length; i++) {
+        const s = Math.max(-1, Math.min(1, mono[i]));
+        pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
+      return new Blob([encodeWav(pcm, audio.sampleRate, 1)], { type: "audio/wav" });
+    } finally {
+      try { await ctx.close(); } catch (_) { /* ignore */ }
     }
-    const wav = encodeWav(pcm, rate, ch);
-    await ctx.close();
-    return new Blob([wav], { type: "audio/wav" });
   }
 
   function averageChannels(audio) {
@@ -610,15 +845,19 @@
           if (!localRecording) {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             localChunks = [];
-            rec = new MediaRecorder(stream);
-            rec.ondataavailable = (e) => { if (e.data.size) localChunks.push(e.data); };
+            const mime = pickRecorderMime();
+            rec = mime
+              ? new MediaRecorder(stream, { mimeType: mime })
+              : new MediaRecorder(stream);
+            rec.ondataavailable = (e) => { if (e.data && e.data.size) localChunks.push(e.data); };
             rec.onstop = async () => {
               stream.getTracks().forEach((t) => t.stop());
               localRecording = false;
               btn.textContent = "上傳中…";
               try {
-                const blob = new Blob(localChunks, { type: "audio/webm" });
-                const wav = await webmToWav(blob);
+                if (!localChunks.length) throw new Error("沒有錄到聲音");
+                const blob = new Blob(localChunks, { type: localChunks[0]?.type || mime || "audio/webm" });
+                const wav = await blobToWav(blob);
                 const fd = new FormData();
                 fd.append("file", wav, "line.wav");
                 fd.append("section", line.section);
@@ -639,10 +878,11 @@
                 btn.textContent = "🎙️ 再試一次";
               }
             };
-            rec.start();
+            rec.start(200);
             localRecording = true;
             btn.textContent = "⏹ 停止";
-          } else {
+          } else if (rec && rec.state !== "inactive") {
+            try { rec.requestData(); } catch (_) { /* ignore */ }
             rec.stop();
           }
         } catch (err) {
@@ -706,14 +946,24 @@
     btn.addEventListener("click", () => show(btn.dataset.back));
   });
 
-  $("recBtn").addEventListener("click", () => startRecording().catch((e) => setStatus($("collectStatus"), e.message, true)));
+  $("recBtn").addEventListener("click", () => {
+    startRecording().catch((e) => setStatus($("collectStatus"), e.message || "錄音失敗", true));
+  });
   $("btnPlayLast").addEventListener("click", () => $("collectPreview").play());
   $("btnRedo").addEventListener("click", () => {
     lastBlob = null;
     $("btnKeep").disabled = true;
+    $("btnPlayLast").disabled = true;
+    const preview = $("collectPreview");
+    if (preview) {
+      if (preview.src) URL.revokeObjectURL(preview.src);
+      preview.removeAttribute("src");
+      preview.style.display = "none";
+    }
+    setRecUi(false);
     setStatus($("collectStatus"), "再錄一次吧");
   });
-  $("btnKeep").addEventListener("click", () => keepRecording().catch((e) => setStatus($("collectStatus"), e.message, true)));
+  $("btnKeep").addEventListener("click", () => keepRecording());
   $("btnCollectNext").addEventListener("click", () => show("story"));
   $("btnMoodNext").addEventListener("click", () => runCompose());
   $("btnRegenLyrics").addEventListener("click", async () => {
