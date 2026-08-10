@@ -8,6 +8,9 @@
   let journey = null;
   let selectedRoute = null;
   let selectedMood = null;
+  let selectedGender = "female";
+  let selectedSinger = null;
+  let singerCatalog = [];
   let activeSlot = null;
   let mediaRecorder = null;
   let chunks = [];
@@ -291,8 +294,11 @@
   function screenForStatus(status) {
     const s = status || "";
     if (s === "done" || s === "finalized") return "result";
-    if (s === "voicing" || s === "finalizing") return "voice";
-    if (s === "preview" || s === "composing" || s === "style" || s === "error") return "compose";
+    if (s === "voicing" || s === "finalizing") {
+      return journey?.final_file ? "result" : "voice";
+    }
+    if (s === "style") return "voice";
+    if (s === "preview" || s === "composing" || s === "error") return "compose";
     if (s === "story") return "mood";
     if (s === "collecting" || s === "route") return "collect";
     return "route";
@@ -356,7 +362,6 @@
       if (journey.preview_file) {
         $("previewAudio").src = `/api/journey/${journey.id}/audio/preview?t=${Date.now()}`;
       }
-      setupVoiceLines(ly);
       setStatus($("composeStatus"), journey.status === "error"
         ? (journey.error || "上次創作失敗，可再試一次")
         : "這是你上次的創作。想換感覺可按「換一個版本」。");
@@ -373,15 +378,22 @@
     const title = journey.title || ly.title || "旅行之歌";
     show("result");
     $("finalTitle").textContent = `《${title}》`;
-    $("finalMeta").textContent = `${(journey.nickname || "旅人")}的${(destination.brand || {}).place || ""}旅行歌`;
+    $("finalMeta").textContent = `${(journey.nickname || "旅人")}的${(destination?.brand || {}).place || ""}旅行歌`;
+    if ($("aiSingerMeta")) {
+      $("aiSingerMeta").textContent = journey.ai_singer_label
+        ? `演唱：${journey.ai_singer_label}`
+        : "";
+    }
     if (journey.final_file) {
       const url = `/api/journey/${journey.id}/audio/final?t=${Date.now()}`;
       $("finalAudio").src = url;
       $("btnDownload").href = url;
-      $("btnDownload").download = `${title}.mp3`;
+      $("btnDownload").download = `${title}-AI.mp3`;
     }
+    syncVoiceVersionUi();
+    setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你完成的旅行歌曲，可以再聽、下載或分享。");
+    setStatus($("resultStatus"), "這是你的 AI 歌手版。想換成自己的聲音，可在下方開啟。");
   }
 
   async function resumeJourney(id) {
@@ -411,9 +423,8 @@
       showComposeFromMeta();
     } else if (screen === "voice") {
       if (selectedRoute) setupSoundBox();
-      showComposeFromMeta();
+      renderSingers();
       show("voice");
-      $("btnFinalize").disabled = false;
     } else if (screen === "result") {
       showResultFromMeta();
     } else {
@@ -896,6 +907,7 @@
       ...chorus.slice(0, 4).map((text, index) => ({ section: "chorus", index, text })),
     ].slice(0, 6);
     const box = $("voiceLines");
+    if (!box) return;
     box.innerHTML = "";
     lines.forEach((line) => {
       const div = document.createElement("div");
@@ -904,12 +916,77 @@
       div.dataset.index = String(line.index);
       div.innerHTML = `
         <div class="voice-text">「${line.text}」</div>
-        <button class="primary voice-rec" type="button">🎙️ 按住說話／點擊錄音</button>
+        <div class="voice-actions">
+          <button class="primary voice-rec" type="button">🎙️ 按住說話／點擊錄音</button>
+          <button class="secondary voice-play" type="button" hidden>▶ 聽看看</button>
+          <button class="secondary voice-redo" type="button" hidden>重錄</button>
+        </div>
+        <audio class="voice-preview" controls preload="metadata"></audio>
         <span class="status"></span>`;
-      const btn = div.querySelector("button");
+      const btn = div.querySelector(".voice-rec");
+      const playBtn = div.querySelector(".voice-play");
+      const redoBtn = div.querySelector(".voice-redo");
+      const audioEl = div.querySelector(".voice-preview");
       let rec = null;
       let localChunks = [];
       let localRecording = false;
+      let objectUrl = null;
+
+      function setPreviewUrl(url, { show = true } = {}) {
+        if (objectUrl) {
+          try { URL.revokeObjectURL(objectUrl); } catch (_) { /* ignore */ }
+          objectUrl = null;
+        }
+        if (!url) {
+          audioEl.removeAttribute("src");
+          audioEl.classList.remove("is-visible");
+          playBtn.hidden = true;
+          redoBtn.hidden = true;
+          return;
+        }
+        if (url.startsWith("blob:")) objectUrl = url;
+        audioEl.src = url;
+        audioEl.classList.toggle("is-visible", show);
+        playBtn.hidden = false;
+        redoBtn.hidden = false;
+      }
+
+      function markDone(count) {
+        div.classList.add("done");
+        btn.textContent = "✓ 已錄好";
+        btn.hidden = true;
+        playBtn.hidden = false;
+        redoBtn.hidden = false;
+        const status = div.querySelector(".status");
+        status.textContent = count != null ? `已錄 ${count} 句` : "可聽看看，不滿意就重錄";
+        refreshVoiceFinalizeEnabled(count);
+      }
+
+      function startFreshRecord() {
+        try { audioEl.pause(); } catch (_) { /* ignore */ }
+        setPreviewUrl(null);
+        div.classList.remove("done");
+        btn.hidden = false;
+        btn.textContent = "🎙️ 按住說話／點擊錄音";
+        div.querySelector(".status").textContent = "準備重新錄音…";
+        if ($("btnFinalizeVoice")) $("btnFinalizeVoice").disabled = true;
+      }
+
+      playBtn.addEventListener("click", async () => {
+        try {
+          if (!audioEl.src) return;
+          audioEl.classList.add("is-visible");
+          await audioEl.play();
+        } catch (err) {
+          div.querySelector(".status").textContent = err.message || "無法播放";
+        }
+      });
+
+      redoBtn.addEventListener("click", () => {
+        startFreshRecord();
+        btn.click();
+      });
+
       btn.addEventListener("click", async () => {
         const status = div.querySelector(".status");
         try {
@@ -929,6 +1006,7 @@
                 if (!localChunks.length) throw new Error("沒有錄到聲音");
                 const blob = new Blob(localChunks, { type: localChunks[0]?.type || mime || "audio/webm" });
                 const wav = await blobToWav(blob);
+                setPreviewUrl(URL.createObjectURL(wav), { show: true });
                 const fd = new FormData();
                 fd.append("file", wav, "line.wav");
                 fd.append("section", line.section);
@@ -939,19 +1017,21 @@
                   body: fd,
                   headers: authHeaders(),
                 });
-                div.classList.add("done");
-                btn.textContent = "✓ 完成";
-                status.textContent = `已錄 ${data.count} 句`;
-                $("btnFinalize").disabled = data.count < 2;
-                setStatus($("voiceStatus"), data.count >= 2 ? "已經記住你的聲音了。" : "再錄一兩句會更好聽");
+                markDone(data.count);
+                setStatus($("resultVoiceStatus"), data.count >= 2
+                  ? "已經記住你的聲音了。可以聽看看，確認後再製作。"
+                  : "再錄一兩句會更好聽");
               } catch (err) {
                 status.textContent = err.message;
+                btn.hidden = false;
                 btn.textContent = "🎙️ 再試一次";
               }
             };
             rec.start(200);
             localRecording = true;
+            btn.hidden = false;
             btn.textContent = "⏹ 停止";
+            status.textContent = "錄音中…再按一次停止";
           } else if (rec && rec.state !== "inactive") {
             try { rec.requestData(); } catch (_) { /* ignore */ }
             rec.stop();
@@ -960,31 +1040,315 @@
           status.textContent = err.message;
         }
       });
+
       box.appendChild(div);
     });
+
+    hydrateVoiceLines();
+  }
+
+  function refreshVoiceFinalizeEnabled(count) {
+    const done = count != null
+      ? count
+      : document.querySelectorAll("#voiceLines .voice-line.done").length;
+    if ($("btnFinalizeVoice")) {
+      $("btnFinalizeVoice").disabled = done < 2 || document.body.classList.contains("finalize-busy");
+    }
+  }
+
+  async function hydrateVoiceLines() {
+    if (!journey?.id) return;
+    try {
+      const data = await api(`/api/journey/${journey.id}/voice-lines`);
+      const byKey = new Map(
+        (data.lines || []).map((l) => [`${l.section}:${l.index}`, l])
+      );
+      document.querySelectorAll("#voiceLines .voice-line").forEach(async (div) => {
+        const key = `${div.dataset.section}:${div.dataset.index}`;
+        const saved = byKey.get(key);
+        if (!saved) return;
+        div.classList.add("done");
+        const btn = div.querySelector(".voice-rec");
+        const playBtn = div.querySelector(".voice-play");
+        const redoBtn = div.querySelector(".voice-redo");
+        const audioEl = div.querySelector(".voice-preview");
+        const status = div.querySelector(".status");
+        if (btn) { btn.hidden = true; btn.textContent = "✓ 已錄好"; }
+        if (playBtn) playBtn.hidden = false;
+        if (redoBtn) redoBtn.hidden = false;
+        if (status) status.textContent = "可聽看看，不滿意就重錄";
+        if (audioEl && saved.filename) {
+          try {
+            const url = await fetchVoiceLineUrl(saved.filename);
+            audioEl.src = url;
+            audioEl.classList.add("is-visible");
+          } catch (_) { /* 仍可重錄 */ }
+        }
+      });
+      refreshVoiceFinalizeEnabled(data.count);
+      if (data.count >= 2) {
+        setStatus($("resultVoiceStatus"), "已經記住你的聲音了。可以聽看看，確認後再製作。");
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  async function fetchVoiceLineUrl(filename) {
+    const res = await fetch(`/api/journey/${journey.id}/voice-lines/${encodeURIComponent(filename)}?t=${Date.now()}`, {
+      headers: authHeaders(),
+    });
+    if (!res.ok) throw new Error("無法載入錄音");
+    const blob = await res.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  const AI_FINALIZE_STEPS = [
+    "準備製作",
+    "編排伴奏",
+    "AI 歌手代唱",
+    "套用模板音色",
+    "混音處理",
+    "輸出成品",
+    "完成",
+  ];
+  const VOICE_FINALIZE_STEPS = [
+    "準備製作",
+    "編排伴奏",
+    "AI 歌手代唱",
+    "套用你的聲音",
+    "混音處理",
+    "輸出成品",
+    "完成",
+  ];
+
+  async function loadSingerCatalog() {
+    if (singerCatalog.length) return singerCatalog;
+    const data = await api("/api/singers");
+    singerCatalog = data.singers || [];
+    return singerCatalog;
+  }
+
+  async function renderSingers() {
+    await loadSingerCatalog();
+    selectedSinger = singerCatalog.find((s) => s.id === journey?.ai_singer_id) || null;
+    if (selectedSinger) selectedGender = selectedSinger.gender;
+    document.querySelectorAll(".gender-choice").forEach((btn) => {
+      btn.classList.toggle("selected", btn.dataset.gender === selectedGender);
+    });
+    const list = $("singerList");
+    if (!list) return;
+    list.innerHTML = "";
+    const items = singerCatalog.filter((s) => s.gender === selectedGender);
+    items.forEach((s) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "choice";
+      if (selectedSinger && selectedSinger.id === s.id) btn.classList.add("selected");
+      btn.innerHTML = `<strong>${s.label}</strong><span>${s.blurb || ""}</span>`;
+      btn.addEventListener("click", () => {
+        list.querySelectorAll(".choice").forEach((c) => c.classList.remove("selected"));
+        btn.classList.add("selected");
+        selectedSinger = s;
+        $("btnFinalize").disabled = false;
+        setStatus($("voiceStatus"), `已選「${s.label}」`);
+      });
+      list.appendChild(btn);
+    });
+    $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
+    if (!selectedSinger) setStatus($("voiceStatus"), "先選女聲或男聲，再挑一種模板。");
+  }
+
+  function syncVoiceVersionUi() {
+    const block = $("voiceVersionBlock");
+    const upgrade = $("voiceprintUpgrade");
+    const hasVoice = !!(journey?.final_voice_file);
+    if (block) block.hidden = !hasVoice;
+    if (hasVoice && journey?.id) {
+      const title = journey.title || (journey.lyrics || {}).title || "旅行之歌";
+      const url = `/api/journey/${journey.id}/audio/final-voice?t=${Date.now()}`;
+      if ($("finalVoiceAudio")) $("finalVoiceAudio").src = url;
+      if ($("btnDownloadVoice")) {
+        $("btnDownloadVoice").href = url;
+        $("btnDownloadVoice").download = `${title}-我的聲音.mp3`;
+      }
+      if (upgrade) upgrade.hidden = true;
+    } else if (upgrade) {
+      upgrade.hidden = false;
+    }
+  }
+
+  function setupResultVoiceprintUi() {
+    const consented = !!(journey?.voiceprint_consent?.accepted || journey?.voiceprint_consent === true);
+    const hasVoice = !!(journey?.final_voice_file);
+    if (hasVoice) return;
+    if ($("consentBox")) $("consentBox").hidden = consented;
+    if ($("voiceRecPanel")) $("voiceRecPanel").hidden = !consented;
+    if (consented) {
+      setupVoiceLines(journey.lyrics || {});
+    }
+    if ($("consentCheck")) {
+      $("consentCheck").checked = false;
+      if ($("btnConsentStart")) $("btnConsentStart").disabled = true;
+    }
+  }
+
+  function setFinalizeBusy(busy, { panelId = "finalizeProgress", enableBtn = null } = {}) {
+    document.body.classList.toggle("finalize-busy", !!busy);
+    const panel = $(panelId);
+    if (panel) panel.hidden = !busy;
+    if (enableBtn === "ai" && $("btnFinalize")) {
+      $("btnFinalize").disabled = busy || !selectedSinger;
+    }
+    if (enableBtn === "voice" && $("btnFinalizeVoice")) {
+      refreshVoiceFinalizeEnabled();
+      if (busy) $("btnFinalizeVoice").disabled = true;
+    }
+  }
+
+  function renderProgress(panelPrefix, steps, pct, label) {
+    const safePct = Math.max(0, Math.min(100, Math.round(pct || 0)));
+    const pctEl = $(panelPrefix === "voice" ? "voiceFinalizePct" : "finalizePct");
+    const barEl = $(panelPrefix === "voice" ? "voiceFinalizePctBar" : "finalizePctBar");
+    const labelEl = $(panelPrefix === "voice" ? "voiceFinalizePctLabel" : "finalizePctLabel");
+    const ul = $(panelPrefix === "voice" ? "voiceFinalizeSteps" : "finalizeSteps");
+    if (pctEl) pctEl.textContent = `${safePct}%`;
+    if (barEl) barEl.style.width = `${safePct}%`;
+    if (labelEl) labelEl.textContent = label || "製作中";
+    if (!ul) return;
+    let activeIdx = steps.findIndex((s) => s === label);
+    if (activeIdx < 0) {
+      activeIdx = Math.min(steps.length - 1, Math.floor(safePct / (100 / (steps.length - 1))));
+    }
+    ul.innerHTML = steps.map((t, i) => {
+      const cls = i < activeIdx ? "done" : (i === activeIdx ? "active" : "");
+      return `<li class="${cls}">${t}</li>`;
+    }).join("");
+  }
+
+  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl, fallbackLabels }) {
+    setFinalizeBusy(true, { panelId, enableBtn });
+    renderProgress(panelPrefix, steps, 3, steps[0]);
+    setStatus(statusEl, "正在製作，請稍候…");
+
+    let stopPoll = false;
+    let fallbackPct = 3;
+    const fallbackTimer = setInterval(() => {
+      if (stopPoll) return;
+      fallbackPct = Math.min(88, fallbackPct + 2);
+      const idx = Math.min(steps.length - 2, Math.floor(fallbackPct / (100 / (steps.length - 1))));
+      renderProgress(panelPrefix, steps, fallbackPct, fallbackLabels?.[idx] || steps[idx]);
+    }, 1800);
+
+    const poll = (async () => {
+      while (!stopPoll) {
+        try {
+          const meta = await api(`/api/journey/${journey.id}`);
+          const fp = meta.finalize_progress || {};
+          if (fp.pct != null) renderProgress(panelPrefix, steps, fp.pct, fp.label || "製作中");
+        } catch (_) { /* ignore */ }
+        await new Promise((r) => setTimeout(r, 900));
+      }
+    })();
+
+    try {
+      const data = await request();
+      stopPoll = true;
+      clearInterval(fallbackTimer);
+      renderProgress(panelPrefix, steps, 100, "完成");
+      await onDone(data);
+    } catch (e) {
+      stopPoll = true;
+      clearInterval(fallbackTimer);
+      setStatus(statusEl, e.message, true);
+    } finally {
+      stopPoll = true;
+      clearInterval(fallbackTimer);
+      try { await poll; } catch (_) { /* ignore */ }
+      setFinalizeBusy(false, { panelId, enableBtn });
+    }
   }
 
   async function finalize() {
-    setStatus($("voiceStatus"), "正在製作你的旅行歌曲，可能需要幾分鐘…");
-    $("btnFinalize").disabled = true;
+    if (!selectedSinger) {
+      setStatus($("voiceStatus"), "請先選擇 AI 歌手", true);
+      return;
+    }
+    await runProgressJob({
+      steps: AI_FINALIZE_STEPS,
+      panelPrefix: "ai",
+      panelId: "finalizeProgress",
+      enableBtn: "ai",
+      statusEl: $("voiceStatus"),
+      request: async () => {
+        await api(`/api/journey/${journey.id}/singer`, {
+          method: "POST",
+          body: JSON.stringify({ singer_id: selectedSinger.id }),
+        });
+        return api(`/api/journey/${journey.id}/finalize`, { method: "POST", body: "{}" });
+      },
+      onDone: async (data) => {
+        journey = {
+          ...(journey || {}),
+          status: "done",
+          final_file: "final.mp3",
+          slug: data.slug,
+          share_path: data.share_path,
+          ai_singer_id: data.ai_singer_id || selectedSinger.id,
+          ai_singer_label: data.ai_singer_label || selectedSinger.label,
+          lyrics: data.lyrics || journey.lyrics,
+          title: (data.lyrics && data.lyrics.title) || journey.title,
+        };
+        persistJourney();
+        showResultFromMeta();
+        if (data.final_url) {
+          $("finalAudio").src = data.final_url + "?t=" + Date.now();
+          $("btnDownload").href = data.final_url;
+        }
+        setStatus($("resultStatus"), "AI 歌手版完成！可以下載，或在下方用自己的聲音再做一版。");
+      },
+    });
+  }
+
+  async function finalizeVoice() {
+    await runProgressJob({
+      steps: VOICE_FINALIZE_STEPS,
+      panelPrefix: "voice",
+      panelId: "voiceFinalizeProgress",
+      enableBtn: "voice",
+      statusEl: $("resultVoiceStatus"),
+      request: () => api(`/api/journey/${journey.id}/finalize-voice`, { method: "POST", body: "{}" }),
+      onDone: async (data) => {
+        journey = {
+          ...(journey || {}),
+          status: "done",
+          final_voice_file: "final-voice.mp3",
+          slug: data.slug,
+          share_path: data.share_path,
+        };
+        persistJourney();
+        syncVoiceVersionUi();
+        if (data.final_voice_url && $("finalVoiceAudio")) {
+          $("finalVoiceAudio").src = data.final_voice_url + "?t=" + Date.now();
+        }
+        setStatus($("resultVoiceStatus"), "我的聲音版完成！現在你有兩首作品了。");
+        setStatus($("resultStatus"), "你現在有 AI 版與自己的聲音版，兩首都可下載。");
+      },
+    });
+  }
+
+  async function acceptVoiceConsent() {
     try {
-      const data = await api(`/api/journey/${journey.id}/finalize`, {
+      const data = await api(`/api/journey/${journey.id}/voiceprint/consent`, {
         method: "POST",
-        body: "{}",
+        body: JSON.stringify({ accepted: true }),
       });
-      show("result");
-      const title = (data.lyrics && data.lyrics.title) || "旅行之歌";
-      $("finalTitle").textContent = `《${title}》`;
-      $("finalMeta").textContent = `${(journey.nickname || "旅人")}的${destination.brand.place}旅行歌`;
-      $("finalAudio").src = data.final_url + "?t=" + Date.now();
-      $("btnDownload").href = data.final_url;
-      $("btnDownload").download = `${title}.mp3`;
-      journey.slug = data.slug;
-      journey.share_path = data.share_path;
-      setStatus($("resultStatus"), "完成！可以下載或分享給朋友。");
+      journey.voiceprint_consent = data.voiceprint_consent || { accepted: true };
+      journey.status = "voicing";
+      if ($("consentBox")) $("consentBox").hidden = true;
+      if ($("voiceRecPanel")) $("voiceRecPanel").hidden = false;
+      setupVoiceLines(journey.lyrics || {});
+      setStatus($("resultVoiceStatus"), "請錄至少兩句，再製作我的聲音版。");
     } catch (e) {
-      setStatus($("voiceStatus"), e.message, true);
-      $("btnFinalize").disabled = false;
+      setStatus($("resultStatus"), e.message, true);
     }
   }
 
@@ -1038,8 +1402,23 @@
   $("btnCollectNext").addEventListener("click", () => show("story"));
   $("btnMoodNext").addEventListener("click", () => runCompose());
   $("btnRegenLyrics").addEventListener("click", () => startRegenVersion());
-  $("btnToVoice").addEventListener("click", () => show("voice"));
+  $("btnToVoice").addEventListener("click", async () => {
+    await renderSingers();
+    show("voice");
+  });
   $("btnFinalize").addEventListener("click", () => finalize());
+  document.querySelectorAll(".gender-choice").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedGender = btn.dataset.gender || "female";
+      selectedSinger = null;
+      renderSingers();
+    });
+  });
+  $("consentCheck")?.addEventListener("change", (e) => {
+    if ($("btnConsentStart")) $("btnConsentStart").disabled = !e.target.checked;
+  });
+  $("btnConsentStart")?.addEventListener("click", () => acceptVoiceConsent());
+  $("btnFinalizeVoice")?.addEventListener("click", () => finalizeVoice());
   $("btnCopyShare").addEventListener("click", async () => {
     const url = location.origin + (journey.share_path || `/s/${journey.slug}`);
     try {

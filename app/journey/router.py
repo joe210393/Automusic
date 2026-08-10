@@ -34,6 +34,14 @@ class MoodBody(BaseModel):
     mood_id: str
 
 
+class SingerBody(BaseModel):
+    singer_id: str
+
+
+class ConsentBody(BaseModel):
+    accepted: bool = True
+
+
 class CreateBody(BaseModel):
     destination: str = "suao"
 
@@ -443,6 +451,67 @@ def voice_status(journey_id: str):
     return {"count": len(lines), "lines": lines}
 
 
+@router.get("/api/journey/{journey_id}/voice-lines/{filename}")
+def get_voice_line_file(
+    journey_id: str,
+    filename: str,
+    x_account_token: Optional[str] = Header(None),
+):
+    meta = _meta_or_404(journey_id)
+    if meta.get("account_id"):
+        _require_journey_owner(meta, x_account_token)
+    if "/" in filename or "\\" in filename or filename.startswith("."):
+        raise HTTPException(status_code=400, detail="檔名無效")
+    if not filename.endswith(".wav"):
+        raise HTTPException(status_code=400, detail="檔名無效")
+    path = store.voiceprint_dir(journey_id) / filename
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="找不到這句錄音")
+    return FileResponse(path, media_type="audio/wav", filename=filename)
+
+
+@router.get("/api/singers")
+def list_singers(gender: Optional[str] = None):
+    from app.voice.singer_templates import list_templates
+
+    if gender and gender not in ("female", "male"):
+        raise HTTPException(status_code=400, detail="gender 無效")
+    return {"singers": list_templates(gender)}
+
+
+@router.post("/api/journey/{journey_id}/singer")
+def set_singer(journey_id: str, body: SingerBody):
+    from app.voice.singer_templates import get_template, is_valid_singer_id
+
+    meta = _meta_or_404(journey_id)
+    if not is_valid_singer_id(body.singer_id):
+        raise HTTPException(status_code=400, detail="請選擇有效的 AI 歌手")
+    tpl = get_template(body.singer_id)
+    meta["ai_singer_id"] = body.singer_id
+    meta["ai_singer_label"] = tpl.get("label")
+    meta["status"] = "style"
+    store.save_meta(journey_id, meta)
+    return {"ok": True, "singer": tpl, "meta": meta}
+
+
+@router.post("/api/journey/{journey_id}/voiceprint/consent")
+def voiceprint_consent(journey_id: str, body: ConsentBody):
+    from datetime import datetime, timezone
+
+    meta = _meta_or_404(journey_id)
+    if not body.accepted:
+        raise HTTPException(status_code=400, detail="需同意個資說明才能使用自己的聲音")
+    if not meta.get("final_file"):
+        raise HTTPException(status_code=400, detail="請先完成 AI 歌手版本")
+    meta["voiceprint_consent"] = {
+        "accepted": True,
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    meta["status"] = "voicing"
+    store.save_meta(journey_id, meta)
+    return {"ok": True, "voiceprint_consent": meta["voiceprint_consent"]}
+
+
 @router.post("/api/journey/{journey_id}/finalize")
 def finalize_journey(
     journey_id: str,
@@ -461,20 +530,49 @@ def finalize_journey(
     if not quota.get("allowed"):
         raise HTTPException(
             status_code=402,
-            detail="本月免費次數已用完，升級後可繼續用自己的聲音完成歌曲",
+            detail="本月免費次數已用完，升級後可繼續完成歌曲",
         )
 
     try:
-        meta = service.run_finalize(journey_id)
+        meta = service.run_finalize_ai(journey_id)
         ops_accounts.consume_finalize(account_id)
         return {
             "ok": True,
             "status": meta["status"],
             "final_url": f"/api/journey/{journey_id}/audio/final",
+            "final_voice_url": (
+                f"/api/journey/{journey_id}/audio/final-voice"
+                if meta.get("final_voice_file") else None
+            ),
             "share_path": f"/s/{meta['slug']}",
             "slug": meta["slug"],
             "lyrics": meta.get("lyrics"),
+            "ai_singer_id": meta.get("ai_singer_id"),
+            "ai_singer_label": meta.get("ai_singer_label"),
             "quota": ops_accounts.check_finalize_quota(account_id),
+        }
+    except Exception as e:
+        meta = store.load_meta(journey_id)
+        meta["status"] = "error"
+        meta["error"] = _friendly(e)
+        store.save_meta(journey_id, meta)
+        raise HTTPException(status_code=500, detail=_friendly(e))
+
+
+@router.post("/api/journey/{journey_id}/finalize-voice")
+def finalize_voice_journey(journey_id: str):
+    """同旅程加值：製作聲紋版，不另扣額度。"""
+    _meta_or_404(journey_id)
+    try:
+        meta = service.run_finalize_voice(journey_id)
+        return {
+            "ok": True,
+            "status": meta["status"],
+            "final_url": f"/api/journey/{journey_id}/audio/final",
+            "final_voice_url": f"/api/journey/{journey_id}/audio/final-voice",
+            "share_path": f"/s/{meta['slug']}",
+            "slug": meta["slug"],
+            "lyrics": meta.get("lyrics"),
         }
     except Exception as e:
         meta = store.load_meta(journey_id)
@@ -491,6 +589,8 @@ def get_audio(journey_id: str, kind: str):
         name = meta.get("preview_file")
     elif kind == "final":
         name = meta.get("final_file")
+    elif kind in ("final-voice", "final_voice"):
+        name = meta.get("final_voice_file")
     else:
         raise HTTPException(status_code=404, detail="無此音檔")
     if not name:
@@ -512,9 +612,10 @@ def share_payload(slug: str):
     dest = load_destination(meta.get("destination") or "suao") or {}
     brand = dest.get("brand", {})
     lyrics = meta.get("lyrics") or {}
+    has_voice = bool(meta.get("final_voice_file"))
     return {
         "slug": slug,
-        "title": lyrics.get("title") or "我的旅行歌曲",
+        "title": lyrics.get("title") or meta.get("title") or "我的旅行歌曲",
         "nickname": meta.get("nickname") or "旅人",
         "place": brand.get("place") or meta.get("destination"),
         "destination": meta.get("destination"),
@@ -526,6 +627,9 @@ def share_payload(slug: str):
         "verse": lyrics.get("verse"),
         "chorus": lyrics.get("chorus"),
         "audio_url": f"/api/share/{slug}/audio",
+        "audio_voice_url": f"/api/share/{slug}/audio-voice" if has_voice else None,
+        "has_voice_final": has_voice,
+        "ai_singer_label": meta.get("ai_singer_label"),
         "core_line": brand.get("coreLine"),
         "cta_path": "/",
     }
@@ -544,6 +648,21 @@ def share_audio(slug: str):
         raise HTTPException(status_code=404, detail="音檔不存在")
     media = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
     return FileResponse(path, media_type=media, filename=f"{slug}{path.suffix}")
+
+
+@router.get("/api/share/{slug}/audio-voice")
+def share_audio_voice(slug: str):
+    meta = store.find_by_slug(slug)
+    if not meta:
+        raise HTTPException(status_code=404, detail="找不到這首歌")
+    name = meta.get("final_voice_file")
+    if not name:
+        raise HTTPException(status_code=404, detail="聲紋版尚未準備好")
+    path = store.output_dir(meta["id"]) / name
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="音檔不存在")
+    media = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
+    return FileResponse(path, media_type=media, filename=f"{slug}-voice{path.suffix}")
 
 
 # ---------- 帳號／額度（Phase 3） ----------

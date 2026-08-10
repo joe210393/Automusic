@@ -282,7 +282,7 @@
       </div>
     </section>
 
-    <!-- 7 聲紋 -->
+    <!-- 7 AI 歌手 -->
     <section class="screen" id="screen-voice">
       <div class="flow-scene" data-bg="market">
         <picture class="flow-photo" aria-hidden="true">
@@ -292,12 +292,24 @@
         <div class="flow-veil" aria-hidden="true"></div>
         <div class="flow-body">
           <div class="panel">
-            <h2>讓這首歌用你的聲音唱出來</h2>
-            <p class="lead">跟著句子，用自然的說話方式念出來。錄完幾句就夠了。</p>
-            <div id="voiceLines"></div>
+            <h2>選一位 AI 歌手來唱</h2>
+            <p class="lead">先聽 AI 把整首歌唱出來。之後若想換成自己的聲音，可以在下載頁再開啟。</p>
+            <div class="gender-row" id="genderRow" role="group" aria-label="選擇性別">
+              <button type="button" class="choice gender-choice selected" data-gender="female">女聲</button>
+              <button type="button" class="choice gender-choice" data-gender="male">男聲</button>
+            </div>
+            <div class="grid two stagger" id="singerList"></div>
+            <div id="finalizeProgress" class="finalize-progress" hidden>
+              <div class="pct-row">
+                <span id="finalizePctLabel">製作中</span>
+                <strong id="finalizePct">0%</strong>
+              </div>
+              <div class="pct-bar" aria-hidden="true"><i id="finalizePctBar"></i></div>
+              <ul class="progress-list" id="finalizeSteps"></ul>
+            </div>
             <div class="nav-row">
-              <button class="secondary" data-back="compose">返回</button>
-              <button class="primary" id="btnFinalize" disabled>製作我的旅行歌曲</button>
+              <button class="secondary" data-back="compose" id="btnVoiceBack">返回</button>
+              <button class="primary" id="btnFinalize" disabled>用這位歌手製作</button>
             </div>
             <p class="status" id="voiceStatus"></p>
           </div>
@@ -318,12 +330,61 @@
             <p class="station-name">我的旅行歌曲</p>
             <h2 id="finalTitle">《旅行之歌》</h2>
             <p class="meta-line" id="finalMeta"></p>
-            <audio id="finalAudio" controls></audio>
-            <div class="actions">
-              <a class="btn btn-primary" id="btnDownload" href="#" download>下載歌曲</a>
-              <button class="secondary" id="btnCopyShare">分享給朋友</button>
-              <button class="secondary" id="btnNewTrip">再做一趟</button>
+
+            <div class="version-block">
+              <h3 class="version-label">AI 歌手版</h3>
+              <p class="meta-line" id="aiSingerMeta"></p>
+              <audio id="finalAudio" controls></audio>
+              <div class="actions">
+                <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 版</a>
+                <button class="secondary" id="btnCopyShare">分享給朋友</button>
+                <button class="secondary" id="btnNewTrip">再做一趟</button>
+              </div>
             </div>
+
+            <div class="version-block" id="voiceVersionBlock" hidden>
+              <h3 class="version-label">我的聲音版</h3>
+              <audio id="finalVoiceAudio" controls></audio>
+              <div class="actions">
+                <a class="btn btn-primary" id="btnDownloadVoice" href="#" download>下載我的聲音版</a>
+              </div>
+            </div>
+
+            <div class="voiceprint-upgrade" id="voiceprintUpgrade">
+              <h3>想用自己的聲音再唱一版？</h3>
+              <p class="lead">同意個資說明後，錄幾句歌詞，就能另外做出第二首「我的聲音版」。AI 版會保留。</p>
+              <div id="consentBox" class="consent-box">
+                <div class="consent-text">
+                  <p>為了用你的聲音製作紀念歌曲，我們會：</p>
+                  <ul>
+                    <li>收集你念出的幾句歌詞錄音（聲紋參考）</li>
+                    <li>僅用於本趟旅程的音色轉換與歌曲合成</li>
+                    <li>錄音存在本旅程資料中，可隨時重錄覆蓋</li>
+                    <li>若不同意，你仍可下載與分享 AI 歌手版</li>
+                  </ul>
+                </div>
+                <label class="consent-check">
+                  <input type="checkbox" id="consentCheck" />
+                  <span>我已閱讀並同意上述說明</span>
+                </label>
+                <button class="primary" id="btnConsentStart" disabled>開始用我的聲音</button>
+              </div>
+              <div id="voiceRecPanel" hidden>
+                <p class="lead">跟著句子，用自然的說話方式念出來。錄完可以聽看看，不滿意就重錄。</p>
+                <div id="voiceLines"></div>
+                <div id="voiceFinalizeProgress" class="finalize-progress" hidden>
+                  <div class="pct-row">
+                    <span id="voiceFinalizePctLabel">製作中</span>
+                    <strong id="voiceFinalizePct">0%</strong>
+                  </div>
+                  <div class="pct-bar" aria-hidden="true"><i id="voiceFinalizePctBar"></i></div>
+                  <ul class="progress-list" id="voiceFinalizeSteps"></ul>
+                </div>
+                <button class="primary" id="btnFinalizeVoice" disabled>製作我的聲音版</button>
+                <p class="status" id="resultVoiceStatus"></p>
+              </div>
+            </div>
+
             <p class="status" id="resultStatus"></p>
             <div class="account-box">
               <h3>收藏到我的旅程</h3>

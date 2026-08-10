@@ -187,6 +187,7 @@ def build_svs_vocal_track(
     lyrics: Optional[dict],
     total_samples: int,
     fs: int = 44100,
+    speaker_midi: float = 64.0,
 ) -> Optional[np.ndarray]:
     """
     依歌曲結構生成整軌代唱乾聲（主歌段唱 verse、副歌段唱 chorus）。
@@ -204,8 +205,8 @@ def build_svs_vocal_track(
     if not chorus_chars:
         chorus_chars = verse_chars
 
-    # DiffSinger Opencpop 女聲音域偏高；仍做八度折疊避免極端
-    notes = fold_notes_to_speaker_range(notes, speaker_midi=64.0)
+    # DiffSinger Opencpop 女聲音域偏高；依模板 speaker_midi 折疊
+    notes = fold_notes_to_speaker_range(notes, speaker_midi=float(speaker_midi))
     quantized = quantize_notes(notes, bpm, grid="1/8")
     if not quantized:
         return None

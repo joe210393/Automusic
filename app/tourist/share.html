@@ -23,7 +23,14 @@
         <div id="shareBy">旅人的旅行歌</div>
       </div>
       <p class="lead" id="shareMemory"></p>
-      <audio id="shareAudio" controls style="width:100%"></audio>
+      <div class="version-block">
+        <h3 class="version-label" id="shareAiLabel">AI 歌手版</h3>
+        <audio id="shareAudio" controls style="width:100%"></audio>
+      </div>
+      <div class="version-block" id="shareVoiceBlock" hidden>
+        <h3 class="version-label">我的聲音版</h3>
+        <audio id="shareVoiceAudio" controls style="width:100%"></audio>
+      </div>
       <div class="lyrics-block" style="margin-top:14px;">
         <h3>副歌</h3>
         <div id="shareChorus"></div>
@@ -57,7 +64,14 @@
       document.getElementById('shareChorus').textContent = data.chorus || '';
       document.getElementById('shareCore').textContent =
         data.core_line || '這首歌，是在旅行時創作的。';
+      if (data.ai_singer_label) {
+        document.getElementById('shareAiLabel').textContent = 'AI 歌手版・' + data.ai_singer_label;
+      }
       document.getElementById('shareAudio').src = data.audio_url;
+      if (data.audio_voice_url) {
+        document.getElementById('shareVoiceBlock').hidden = false;
+        document.getElementById('shareVoiceAudio').src = data.audio_voice_url;
+      }
     })();
   </script>
 </body>

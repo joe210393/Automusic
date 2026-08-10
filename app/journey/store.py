@@ -112,6 +112,9 @@ def create_journey(destination: str = "suao", account_id: Optional[str] = None) 
         "compose_steps": [],
         "preview_file": None,
         "final_file": None,
+        "final_voice_file": None,
+        "ai_singer_id": None,
+        "voiceprint_consent": None,
         "title": "",
         "cover_file": f"{STOCK_COVER_PREFIX}{secrets.choice(DEFAULT_COVERS)}",
         "share_public": False,
@@ -234,8 +237,10 @@ def resume_screen(status: str) -> str:
     if s in ("done", "finalized"):
         return "result"
     if s in ("voicing", "finalizing"):
+        return "result"
+    if s == "style":
         return "voice"
-    if s in ("preview", "composing", "style", "error"):
+    if s in ("preview", "composing", "error"):
         return "compose"
     if s == "story":
         return "mood"
@@ -264,7 +269,10 @@ def account_journey_card(meta: Dict[str, Any]) -> Dict[str, Any]:
         "resume_screen": resume_screen(meta.get("status") or ""),
         "share_public": meta.get("share_public"),
         "has_final": bool(meta.get("final_file")),
+        "has_voice_final": bool(meta.get("final_voice_file")),
         "has_preview": bool(meta.get("preview_file")),
+        "ai_singer_id": meta.get("ai_singer_id"),
+        "voiceprint_consent": bool((meta.get("voiceprint_consent") or {}).get("accepted")),
         "sound_count": len(meta.get("sounds") or []),
         "cover_url": cover["cover_url"],
         "cover_url_webp": cover.get("cover_url_webp"),
@@ -295,8 +303,13 @@ def account_journey_detail(meta: Dict[str, Any]) -> Dict[str, Any]:
         "sounds": sounds,
         "preview_url": f"/api/journey/{jid}/audio/preview" if meta.get("preview_file") else None,
         "final_url": f"/api/journey/{jid}/audio/final" if meta.get("final_file") else None,
+        "final_voice_url": f"/api/journey/{jid}/audio/final-voice" if meta.get("final_voice_file") else None,
         "share_path": f"/s/{meta.get('slug')}" if meta.get("share_public") and meta.get("slug") else None,
         "error": meta.get("error"),
+        "versions": {
+            "has_ai_final": bool(meta.get("final_file")),
+            "has_voice_final": bool(meta.get("final_voice_file")),
+        },
     })
     return card
 

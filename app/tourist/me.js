@@ -5,11 +5,11 @@
     route: "已選旅程",
     collecting: "錄音中",
     story: "已填關鍵字",
-    style: "已選心情",
+    style: "選歌手",
     composing: "作曲中",
     preview: "已有預覽",
     composed: "已作曲",
-    voicing: "錄聲紋",
+    voicing: "錄自己的聲音",
     finalizing: "製作成品中",
     finalized: "已完成",
     done: "已完成",
@@ -193,8 +193,12 @@
       const outs = [];
       if (j.preview_url) outs.push(`<div class="me-audio-row"><span>預覽伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
       if (j.final_url) {
-        outs.push(`<div class="me-audio-row"><span>成品歌曲</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
+        outs.push(`<div class="me-audio-row"><span>AI 歌手版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
           <a class="me-btn" href="${esc(j.final_url)}" download>下載</a></div>`);
+      }
+      if (j.final_voice_url) {
+        outs.push(`<div class="me-audio-row"><span>我的聲音版</span><audio controls preload="none" src="${esc(j.final_voice_url)}"></audio>
+          <a class="me-btn" href="${esc(j.final_voice_url)}" download>下載</a></div>`);
       }
       $("meOutputs").innerHTML = outs.length ? outs.join("") : `<p class="me-empty">尚未產出音樂檔</p>`;
 
