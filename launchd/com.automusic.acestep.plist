@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.automusic.acestep</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/hung-weichen/Automusic/scripts/start-acestep-api.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/hung-weichen/ACE-Step-1.5</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/Users/hung-weichen/.local/bin:/Users/hung-weichen/.cargo/bin</string>
+        <key>HOME</key>
+        <string>/Users/hung-weichen</string>
+        <key>ACESTEP_DIR</key>
+        <string>/Users/hung-weichen/ACE-Step-1.5</string>
+        <key>ACESTEP_LM_BACKEND</key>
+        <string>mlx</string>
+        <key>ACESTEP_INIT_LLM</key>
+        <string>false</string>
+        <key>ACESTEP_NO_INIT</key>
+        <string>true</string>
+        <key>ACESTEP_CONFIG_PATH</key>
+        <string>acestep-v15-turbo</string>
+        <key>ACESTEP_API_HOST</key>
+        <string>127.0.0.1</string>
+        <key>ACESTEP_API_PORT</key>
+        <string>8001</string>
+        <key>TOKENIZERS_PARALLELISM</key>
+        <string>false</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+    <key>StandardOutPath</key>
+    <string>/tmp/acestep.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/acestep.err.log</string>
+</dict>
+</plist>

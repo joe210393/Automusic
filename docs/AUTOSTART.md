@@ -5,6 +5,7 @@
 | 服務 | LaunchAgent | 作用 |
 |------|-------------|------|
 | Automusic FastAPI | `com.automusic.server` | `:8080`（含 DiffSinger / Seed-VC / 原聲 `/render-midi`） |
+| ACE-Step API | `com.automusic.acestep` | `:8001`（AI 整曲人聲，MLX） |
 | ngrok | `com.automusic.ngrok` | 公開網域 → 本機 8080（給 Zeabur 打） |
 
 掛掉會自動重開（`KeepAlive`）。
@@ -13,7 +14,7 @@
 
 ```bash
 cd ~/Automusic
-chmod +x scripts/install-autostart.sh scripts/automusic-healthcheck.sh
+chmod +x scripts/install-autostart.sh scripts/automusic-healthcheck.sh scripts/start-acestep-api.sh
 ./scripts/install-autostart.sh
 ```
 
@@ -31,14 +32,18 @@ curl -s http://127.0.0.1:8080/health | python3 -m json.tool
 
 **LM Studio**（步驟 4 AI 作詞）不會由 LaunchAgent 啟動。請在 LM Studio 設定裡打開「登入時啟動／Load on startup」，並讓 server 聽 `1234`。沒開也能用模板備援歌詞。
 
+**第一次**啟動 ACE-Step 會下載模型（約數 GB～10GB+），之後登入即可用。日誌見 `/tmp/acestep.err.log`。
+
 ## 日誌
 
 - Automusic：`/tmp/automusic.log`、`/tmp/automusic.err.log`
+- ACE-Step：`/tmp/acestep.log`、`/tmp/acestep.err.log`
 - ngrok：`/tmp/ngrok.log`、`/tmp/ngrok.out`
 
 ## 手動重啟
 
 ```bash
 launchctl kickstart -k "gui/$(id -u)/com.automusic.server"
+launchctl kickstart -k "gui/$(id -u)/com.automusic.acestep"
 launchctl kickstart -k "gui/$(id -u)/com.automusic.ngrok"
 ```

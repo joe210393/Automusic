@@ -125,14 +125,14 @@ def run_finalize(journey_id: str) -> dict:
 
 
 def run_finalize_ai(journey_id: str) -> dict:
-    """用選定的 AI 演奏風格合成最終成品（完整編曲＋主旋律，暫不用 DiffSinger 人聲）。"""
+    """用選定的 AI 歌手風格合成最終成品（優先 ACE-Step 整曲人聲；失敗則編曲＋主旋律）。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
         raise RuntimeError("請先完成創作")
     if not is_valid_singer_id(meta.get("ai_singer_id")):
-        raise RuntimeError("請先選擇 AI 演奏風格")
+        raise RuntimeError("請先選擇 AI 歌手")
 
     meta["status"] = "finalizing"
     meta["error"] = None
@@ -142,11 +142,45 @@ def run_finalize_ai(journey_id: str) -> dict:
     store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 8, "準備製作")
 
-    final_path = _render_arrangement(meta, vocal_mode="ai")
+    final_path = None
+    engine = "arrangement"
+    try:
+        from app.voice import acestep as _ace
+
+        if _ace.is_available():
+            out = store.output_dir(journey_id) / "final.mp3"
+
+            def _prog(pct: int, label: str) -> None:
+                _set_finalize_progress(meta, pct, label)
+
+            _ace.generate_to_file(
+                lyrics=meta["lyrics"],
+                bpm=float(meta.get("bpm") or 100),
+                key=meta.get("key"),
+                singer_id=meta.get("ai_singer_id"),
+                engine_style=meta.get("engine_style"),
+                duration_sec=45.0,
+                out_path=out,
+                progress=_prog,
+            )
+            final_path = str(out)
+            engine = "acestep"
+        else:
+            print("[journey] ACE-Step unavailable, fallback arrangement")
+    except Exception as e:
+        print(f"[journey] ACE-Step failed, fallback arrangement: {e}")
+        final_path = None
+
+    if not final_path:
+        final_path = _render_arrangement(meta, vocal_mode="ai")
+        engine = "arrangement"
+
     out_name = "final" + Path(final_path).suffix
     dest_file = store.output_dir(journey_id) / out_name
-    shutil.copyfile(final_path, dest_file)
+    if Path(final_path).resolve() != dest_file.resolve():
+        shutil.copyfile(final_path, dest_file)
     meta["final_file"] = out_name
+    meta["final_engine"] = engine
     meta["status"] = "done"
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")

@@ -393,7 +393,7 @@
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你的 AI 演奏版。想用人聲再做一版，可在下方開啟自己的聲音。");
+    setStatus($("resultStatus"), "這是你的 AI 唱歌版。想用人聲再做一版，可在下方開啟自己的聲音。");
   }
 
   async function resumeJourney(id) {
@@ -1103,8 +1103,9 @@
 
   const AI_FINALIZE_STEPS = [
     "準備製作",
-    "編排伴奏",
-    "套用演奏風格",
+    "連線 AI 唱歌引擎",
+    "AI 正在作曲唱歌",
+    "下載成品",
     "輸出成品",
     "完成",
   ];
@@ -1120,6 +1121,9 @@
 
   const STEP_PCT = {
     "準備製作": 8,
+    "連線 AI 唱歌引擎": 20,
+    "AI 正在作曲唱歌": 55,
+    "下載成品": 85,
     "編排伴奏": 25,
     "套用演奏風格": 55,
     "AI 底稿代唱": 40,
@@ -1163,7 +1167,7 @@
       list.appendChild(btn);
     });
     $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
-    if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一種風格。");
+    if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一位 AI 歌手。");
   }
 
   function syncVoiceVersionUi() {
@@ -1289,7 +1293,7 @@
 
   async function finalize() {
     if (!selectedSinger) {
-      setStatus($("voiceStatus"), "請先選擇演奏風格", true);
+      setStatus($("voiceStatus"), "請先選擇 AI 歌手", true);
       return;
     }
     await runProgressJob({
@@ -1323,7 +1327,7 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "AI 演奏版完成！可以下載，或在下方用自己的聲音再做一版。");
+        setStatus($("resultStatus"), "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。");
       },
     });
   }

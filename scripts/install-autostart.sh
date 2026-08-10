@@ -8,7 +8,7 @@ AGENTS="$HOME/Library/LaunchAgents"
 
 mkdir -p "$AGENTS"
 
-for name in com.automusic.server com.automusic.ngrok; do
+for name in com.automusic.server com.automusic.ngrok com.automusic.acestep; do
   src="$ROOT/launchd/${name}.plist"
   dst="$AGENTS/${name}.plist"
   # 依目前使用者路徑改寫（避免換電腦後路徑錯）

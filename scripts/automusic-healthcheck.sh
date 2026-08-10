@@ -19,9 +19,12 @@ check() {
 echo "=== Automusic health ==="
 check "LaunchAgent server loaded" launchctl print "gui/$(id -u)/com.automusic.server"
 check "LaunchAgent ngrok loaded" launchctl print "gui/$(id -u)/com.automusic.ngrok"
+check "LaunchAgent acestep loaded" launchctl print "gui/$(id -u)/com.automusic.acestep"
 check "FastAPI :8080" curl -sf -o /dev/null -w '' http://127.0.0.1:8080/docs
 check "Health API" curl -sf http://127.0.0.1:8080/health
+check "ACE-Step API :8001" curl -sf http://127.0.0.1:8001/health
 check "ngrok local API" curl -sf http://127.0.0.1:4040/api/tunnels
+check "ACE-Step dir" test -d "$HOME/ACE-Step-1.5/.venv"
 check "DiffSinger dir" test -f "$HOME/diffsinger/infer_cli.py"
 check "DiffSinger venv" test -x "$HOME/diffsinger/.venv/bin/python"
 check "Seed-VC dir" test -f "$HOME/seed-vc/inference.py"

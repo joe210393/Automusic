@@ -299,9 +299,10 @@ async def api_info():
 
 @app.get("/health")
 async def health():
-    """開機就緒檢查：DiffSinger / Seed-VC / LM Studio / 原聲渲染。"""
+    """開機就緒檢查：DiffSinger / Seed-VC / ACE-Step / LM Studio / 原聲渲染。"""
     from app.voice import svs as _svs
     from app.voice import neural_vc as _vc
+    from app.voice import acestep as _ace
     from app.audio.soundfont_render import can_render_acoustic_locally, acoustic_lead_programs
 
     lm_ok = False
@@ -312,9 +313,11 @@ async def health():
         pass
 
     acoustic = can_render_acoustic_locally()
-    ready = _svs.is_available() and _vc.is_available() and acoustic
+    ace_ok = _ace.is_available()
+    ready = (_svs.is_available() and _vc.is_available() and acoustic) or ace_ok
     return {
         "ok": ready,
+        "acestep": ace_ok,
         "diffsinger": _svs.is_available(),
         "seed_vc": _vc.is_available(),
         "lm_studio": lm_ok,

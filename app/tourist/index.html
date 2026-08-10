@@ -292,9 +292,9 @@
         <div class="flow-veil" aria-hidden="true"></div>
         <div class="flow-body">
           <div class="panel">
-            <h2>選一個 AI 演奏風格</h2>
-            <p class="lead">先做出完整演奏版（含主旋律）。真的人聲之後可用「自己的聲音」再做一版；更好的 AI 人聲方案我們正在評估。</p>
-            <div class="gender-row" id="genderRow" role="group" aria-label="選擇風格群組">
+            <h2>選一個 AI 歌手</h2>
+            <p class="lead">選擇明亮系或沉穩系風格，AI 會為你唱出完整旅行歌曲（含人聲與編曲）。</p>
+            <div class="gender-row" id="genderRow" role="group" aria-label="選擇聲線群組">
               <button type="button" class="choice gender-choice selected" data-gender="female">明亮系</button>
               <button type="button" class="choice gender-choice" data-gender="male">沉穩系</button>
             </div>
@@ -309,7 +309,7 @@
             </div>
             <div class="nav-row">
               <button class="secondary" data-back="compose" id="btnVoiceBack">返回</button>
-              <button class="primary" id="btnFinalize" disabled>製作 AI 演奏版</button>
+              <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌版</button>
             </div>
             <p class="status" id="voiceStatus"></p>
           </div>
@@ -332,11 +332,11 @@
             <p class="meta-line" id="finalMeta"></p>
 
             <div class="version-block">
-              <h3 class="version-label">AI 演奏版</h3>
+              <h3 class="version-label">AI 唱歌版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
               <audio id="finalAudio" controls></audio>
               <div class="actions">
-                <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 演奏版</a>
+                <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 唱歌版</a>
                 <button class="secondary" id="btnCopyShare">分享給朋友</button>
                 <button class="secondary" id="btnNewTrip">再做一趟</button>
               </div>
@@ -360,7 +360,7 @@
                     <li>收集你念出的幾句歌詞錄音（聲紋參考）</li>
                     <li>僅用於本趟旅程的音色轉換與歌曲合成</li>
                     <li>錄音存在本旅程資料中，可隨時重錄覆蓋</li>
-                    <li>若不同意，你仍可下載與分享 AI 演奏版</li>
+                    <li>若不同意，你仍可下載與分享 AI 唱歌版</li>
                   </ul>
                 </div>
                 <label class="consent-check">
