@@ -172,6 +172,38 @@ def _high_shelf(x: np.ndarray, amount: float) -> np.ndarray:
     return smooth + high * float(amount)
 
 
+def apply_arrangement_color(audio: np.ndarray, singer_id: Optional[str]) -> np.ndarray:
+    """
+    對完整編曲（可 stereo）套輕量音色差異，讓六種模板可區分，
+    但不做人聲合成（避免 DiffSinger 鬼聲）。
+    """
+    tpl = get_template(singer_id)
+    x = np.asarray(audio, dtype=np.float64)
+    if x.size == 0:
+        return x
+    mono = False
+    if x.ndim == 1:
+        mono = True
+        x = x[:, None]
+    out = []
+    shelf = float(tpl.get("high_shelf") or 1.0)
+    gain = float(tpl.get("gain") or 1.0)
+    # 男聲模板：略降「明亮感」、略加厚度；女聲相反
+    if tpl.get("gender") == "male":
+        shelf = min(shelf, 0.96)
+        gain *= 1.03
+    for ch in range(x.shape[1]):
+        c = _high_shelf(x[:, ch], shelf) * gain
+        out.append(c)
+    y = np.stack(out, axis=1)
+    peak = float(np.max(np.abs(y))) if y.size else 0.0
+    if peak > 0.99:
+        y *= 0.99 / peak
+    if mono:
+        return y[:, 0]
+    return y
+
+
 def apply_template_color(vocal: np.ndarray, singer_id: Optional[str], fs: int = 44100) -> np.ndarray:
     """合成後套用模板：變調（男聲）＋輕量音色，避免破壞 DiffSinger 音質。"""
     tpl = get_template(singer_id)

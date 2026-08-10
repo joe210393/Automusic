@@ -193,7 +193,7 @@
       const outs = [];
       if (j.preview_url) outs.push(`<div class="me-audio-row"><span>預覽伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
       if (j.final_url) {
-        outs.push(`<div class="me-audio-row"><span>AI 歌手版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
+        outs.push(`<div class="me-audio-row"><span>AI 演奏版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
           <a class="me-btn" href="${esc(j.final_url)}" download>下載</a></div>`);
       }
       if (j.final_voice_url) {

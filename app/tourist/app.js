@@ -393,7 +393,7 @@
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你的 AI 歌手版。想換成自己的聲音，可在下方開啟。");
+    setStatus($("resultStatus"), "這是你的 AI 演奏版。想用人聲再做一版，可在下方開啟自己的聲音。");
   }
 
   async function resumeJourney(id) {
@@ -1104,21 +1104,30 @@
   const AI_FINALIZE_STEPS = [
     "準備製作",
     "編排伴奏",
-    "AI 歌手代唱",
-    "套用模板音色",
-    "混音處理",
+    "套用演奏風格",
     "輸出成品",
     "完成",
   ];
   const VOICE_FINALIZE_STEPS = [
     "準備製作",
     "編排伴奏",
-    "AI 歌手代唱",
+    "AI 底稿代唱",
     "套用你的聲音",
     "混音處理",
     "輸出成品",
     "完成",
   ];
+
+  const STEP_PCT = {
+    "準備製作": 8,
+    "編排伴奏": 25,
+    "套用演奏風格": 55,
+    "AI 底稿代唱": 40,
+    "套用你的聲音": 60,
+    "混音處理": 80,
+    "輸出成品": 90,
+    "完成": 100,
+  };
 
   async function loadSingerCatalog() {
     if (singerCatalog.length) return singerCatalog;
@@ -1154,7 +1163,7 @@
       list.appendChild(btn);
     });
     $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
-    if (!selectedSinger) setStatus($("voiceStatus"), "先選女聲或男聲，再挑一種模板。");
+    if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一種風格。");
   }
 
   function syncVoiceVersionUi() {
@@ -1216,7 +1225,12 @@
     if (!ul) return;
     let activeIdx = steps.findIndex((s) => s === label);
     if (activeIdx < 0) {
-      activeIdx = Math.min(steps.length - 1, Math.floor(safePct / (100 / (steps.length - 1))));
+      // 依百分比找最近步驟，但不亂跳：取不大於目前 pct 的最大步驟
+      activeIdx = 0;
+      steps.forEach((t, i) => {
+        const p = STEP_PCT[t];
+        if (p != null && p <= safePct) activeIdx = i;
+      });
     }
     ul.innerHTML = steps.map((t, i) => {
       const cls = i < activeIdx ? "done" : (i === activeIdx ? "active" : "");
@@ -1224,60 +1238,50 @@
     }).join("");
   }
 
-  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl, fallbackLabels }) {
+  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl }) {
     setFinalizeBusy(true, { panelId, enableBtn });
-    renderProgress(panelPrefix, steps, 3, steps[0]);
+    renderProgress(panelPrefix, steps, STEP_PCT[steps[0]] || 8, steps[0]);
     setStatus(statusEl, "正在製作，請稍候…");
 
     let stopPoll = false;
-    let lastPct = 3;
-    let serverSeen = false;
-    let fallbackPct = 3;
+    let lastPct = 0;
+    let lastLabel = steps[0];
 
-    function bumpProgress(pct, label) {
-      const next = Math.max(0, Math.min(99, Math.round(pct || 0)));
-      // 只允許往前，避免假進度與伺服器進度互搶橫跳
-      if (next < lastPct) return;
+    function applyServerProgress(fp) {
+      if (!fp || fp.pct == null) return;
+      const label = fp.label || lastLabel;
+      // 百分比以步驟表為準，避免伺服器與前端兩套數字互搶
+      const mapped = STEP_PCT[label] != null ? STEP_PCT[label] : Number(fp.pct);
+      const next = Math.max(lastPct, Math.min(99, Math.round(mapped)));
+      if (next === lastPct && label === lastLabel) return;
       lastPct = next;
-      renderProgress(panelPrefix, steps, lastPct, label || "製作中");
+      lastLabel = label;
+      renderProgress(panelPrefix, steps, lastPct, label);
     }
-
-    const fallbackTimer = setInterval(() => {
-      if (stopPoll || serverSeen) return;
-      fallbackPct = Math.min(40, fallbackPct + 1);
-      const idx = Math.min(steps.length - 2, Math.floor(fallbackPct / (100 / (steps.length - 1))));
-      bumpProgress(fallbackPct, fallbackLabels?.[idx] || steps[idx]);
-    }, 2200);
 
     const poll = (async () => {
       while (!stopPoll) {
         try {
           const meta = await api(`/api/journey/${journey.id}`);
-          const fp = meta.finalize_progress || {};
-          // 只採信這次製作中的進度，避免讀到上一輪殘留的 100%
-          if (meta.status === "finalizing" && fp.pct != null) {
-            serverSeen = true;
-            bumpProgress(fp.pct, fp.label || "製作中");
+          if (meta.status === "finalizing") {
+            applyServerProgress(meta.finalize_progress || {});
           }
         } catch (_) { /* ignore */ }
-        await new Promise((r) => setTimeout(r, 900));
+        await new Promise((r) => setTimeout(r, 700));
       }
     })();
 
     try {
       const data = await request();
       stopPoll = true;
-      clearInterval(fallbackTimer);
       lastPct = 100;
       renderProgress(panelPrefix, steps, 100, "完成");
       await onDone(data);
     } catch (e) {
       stopPoll = true;
-      clearInterval(fallbackTimer);
       setStatus(statusEl, e.message, true);
     } finally {
       stopPoll = true;
-      clearInterval(fallbackTimer);
       try { await poll; } catch (_) { /* ignore */ }
       setFinalizeBusy(false, { panelId, enableBtn });
     }
@@ -1285,7 +1289,7 @@
 
   async function finalize() {
     if (!selectedSinger) {
-      setStatus($("voiceStatus"), "請先選擇 AI 歌手", true);
+      setStatus($("voiceStatus"), "請先選擇演奏風格", true);
       return;
     }
     await runProgressJob({
@@ -1319,7 +1323,7 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "AI 歌手版完成！可以下載，或在下方用自己的聲音再做一版。");
+        setStatus($("resultStatus"), "AI 演奏版完成！可以下載，或在下方用自己的聲音再做一版。");
       },
     });
   }

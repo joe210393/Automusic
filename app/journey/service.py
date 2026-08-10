@@ -125,14 +125,14 @@ def run_finalize(journey_id: str) -> dict:
 
 
 def run_finalize_ai(journey_id: str) -> dict:
-    """用選定的 AI 歌手模板合成最終成品（不需使用者聲紋）。"""
+    """用選定的 AI 演奏風格合成最終成品（完整編曲＋主旋律，暫不用 DiffSinger 人聲）。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
         raise RuntimeError("請先完成創作")
     if not is_valid_singer_id(meta.get("ai_singer_id")):
-        raise RuntimeError("請先選擇 AI 歌手")
+        raise RuntimeError("請先選擇 AI 演奏風格")
 
     meta["status"] = "finalizing"
     meta["error"] = None
@@ -140,7 +140,7 @@ def run_finalize_ai(journey_id: str) -> dict:
     meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
     tpl = get_template(meta.get("ai_singer_id"))
     store.save_meta(journey_id, meta)
-    _set_finalize_progress(meta, 5, "準備製作")
+    _set_finalize_progress(meta, 8, "準備製作")
 
     final_path = _render_arrangement(meta, vocal_mode="ai")
     out_name = "final" + Path(final_path).suffix
@@ -160,7 +160,7 @@ def run_finalize_voice(journey_id: str) -> dict:
     if not meta.get("notes") or not meta.get("lyrics"):
         raise RuntimeError("請先完成創作")
     if not meta.get("final_file"):
-        raise RuntimeError("請先完成 AI 歌手版本")
+        raise RuntimeError("請先完成 AI 版本")
     consent = meta.get("voiceprint_consent") or {}
     if not consent.get("accepted"):
         raise RuntimeError("請先同意個資說明後再錄製自己的聲音")
@@ -173,7 +173,9 @@ def run_finalize_voice(journey_id: str) -> dict:
     meta["compose_steps"] = []
     meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
     store.save_meta(journey_id, meta)
-    _set_finalize_progress(meta, 5, "準備製作")
+    _set_finalize_progress(meta, 8, "準備製作")
+
+    final_path = _render_arrangement(meta, vocal_mode="voiceprint")
     out_name = "final-voice" + Path(final_path).suffix
     dest_file = store.output_dir(journey_id) / out_name
     shutil.copyfile(final_path, dest_file)
@@ -311,7 +313,10 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
     style = meta.get("engine_style")
     seed = abs(hash(meta["id"] + f"-{vocal_mode}")) % (10**9)
     duration = 60
-    with_vocals = vocal_mode in ("ai", "voiceprint")
+    # AI 版：完整編曲＋主旋律（暫不走 DiffSinger，避免鬼聲）
+    # voiceprint 版：關主旋律 MIDI，改混入人聲
+    with_user_vocals = vocal_mode == "voiceprint"
+    is_ai_final = vocal_mode == "ai"
 
     fluidsynth_bin = find_fluidsynth()
     if not fluidsynth_bin:
@@ -325,8 +330,8 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
     ]
     lyrics_obj = {"verse": lyrics["verse"], "chorus": lyrics["chorus"]}
 
-    if with_vocals:
-        _set_finalize_progress(meta, 15, "編排伴奏")
+    if is_ai_final or with_user_vocals:
+        _set_finalize_progress(meta, 25, "編排伴奏")
 
     midi_path = generate_full_midi(
         notes=notes_list,
@@ -335,13 +340,13 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
         lyrics=lyrics_obj,
         chord_overrides=meta.get("chords"),
         seed=seed,
-        melody_gain=0.0 if with_vocals else 1.0,
+        melody_gain=0.0 if with_user_vocals else 1.0,
         style=style,
         duration_seconds=duration,
     )
 
     wav_path = tempfile.mktemp(prefix="journey_render_", suffix=".wav")
-    use_lead = not with_vocals
+    use_lead = not with_user_vocals
     if not can_render_acoustic_locally() and RENDER_REMOTE_URLS:
         remote = _render_midi_via_remote(midi_path, use_lead_overlay=use_lead)
         if remote:
@@ -355,39 +360,45 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
     else:
         render_midi_to_wav(fluidsynth_bin, midi_path, wav_path, use_lead_overlay=use_lead)
 
-    if not with_vocals:
+    if is_ai_final:
+        from app.voice.singer_templates import apply_arrangement_color, get_template
+
+        _set_finalize_progress(meta, 55, "套用演奏風格")
+        singer_id = meta.get("ai_singer_id") or get_template(None)["id"]
+        try:
+            audio, sr = sf.read(wav_path)
+            colored = apply_arrangement_color(audio, singer_id)
+            sf.write(wav_path, colored, sr)
+        except Exception as e:
+            print(f"[journey] arrangement color skip: {e}")
+        _set_finalize_progress(meta, 85, "輸出成品")
+        mp3 = compress_to_mp3(wav_path)
+        return mp3 or wav_path
+
+    if not with_user_vocals:
         mp3 = compress_to_mp3(wav_path)
         return mp3 or wav_path
 
     from app.voice.sing import build_vocal_track, apply_reverb, load_mono
     from app.voice import neural_vc, svs
-    from app.voice.singer_templates import apply_template_color, get_template, ref_wav_path
+    from app.voice.singer_templates import DIFFSINGER_NATIVE_MIDI
 
     jid = meta["id"]
     vp_dir = store.voiceprint_dir(jid)
     manifest = store.load_voiceprint_manifest(jid)
-    tpl = get_template(meta.get("ai_singer_id"))
 
     acc, _ = sf.read(wav_path)
     if acc.ndim == 1:
         acc = np.stack([acc, acc], axis=1)
     structure = compute_song_structure(notes_list, bpm, target_seconds=duration)
 
-    _set_finalize_progress(meta, 35, "AI 歌手代唱")
+    _set_finalize_progress(meta, 40, "AI 底稿代唱")
     vocal = None
-    from app.voice.singer_templates import DIFFSINGER_NATIVE_MIDI
-
-    # AI 版一律用 DiffSinger 原生女聲音域合成；男聲之後再變調
-    # 聲紋版可用使用者音高估計，但仍夾在合理範圍避免鬼聲
-    if vocal_mode == "ai":
-        speaker_midi = float(DIFFSINGER_NATIVE_MIDI)
-    else:
-        speaker_midi = float(DIFFSINGER_NATIVE_MIDI)
-        from app.voice.sing import estimate_speaker_midi
-        est = estimate_speaker_midi(vp_dir, manifest)
-        if est is not None:
-            # 夾在 58–70：接近 Opencpop，再靠 Seed-VC 換音色
-            speaker_midi = float(max(58.0, min(70.0, est)))
+    speaker_midi = float(DIFFSINGER_NATIVE_MIDI)
+    from app.voice.sing import estimate_speaker_midi
+    est = estimate_speaker_midi(vp_dir, manifest)
+    if est is not None:
+        speaker_midi = float(max(58.0, min(70.0, est)))
 
     if svs.is_available() or svs.SVS_REMOTE_URLS:
         vocal = svs.build_svs_vocal_track(
@@ -399,7 +410,7 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
             speaker_midi=speaker_midi,
         )
 
-    if vocal is None and vocal_mode == "voiceprint":
+    if vocal is None:
         vocal = build_vocal_track(
             notes=notes_list,
             bpm=bpm,
@@ -411,43 +422,24 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
         )
 
     if vocal is None:
-        raise RuntimeError(
-            "還無法唱出這首歌，請稍後再試"
-            if vocal_mode == "ai"
-            else "還無法唱出這首歌，請確認已錄完幾句聲音"
-        )
+        raise RuntimeError("還無法唱出這首歌，請確認已錄完幾句聲音")
 
-    if vocal_mode == "ai":
-        _set_finalize_progress(meta, 55, "套用模板音色")
-        singer_id = meta.get("ai_singer_id") or tpl["id"]
-        ref = ref_wav_path(singer_id)
-        if ref.exists() and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
-            src_path = tempfile.mktemp(prefix="journey_ai_vocal_", suffix=".wav")
-            sf.write(src_path, vocal, 44100)
-            converted = neural_vc.convert_voice(src_path, str(ref))
-            if converted:
-                v = load_mono(converted, 44100)
-                if len(v) < len(vocal):
-                    v = np.pad(v, (0, len(vocal) - len(v)))
-                vocal = v[: len(vocal)]
-        vocal = apply_template_color(vocal, singer_id)
-    else:
-        _set_finalize_progress(meta, 55, "套用你的聲音")
-        ref_path = neural_vc.build_reference_wav(vp_dir, manifest)
-        if ref_path and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
-            src_path = tempfile.mktemp(prefix="journey_vocal_", suffix=".wav")
-            sf.write(src_path, vocal, 44100)
-            converted = neural_vc.convert_voice(src_path, ref_path)
-            if converted:
-                v = load_mono(converted, 44100)
-                if len(v) < len(vocal):
-                    v = np.pad(v, (0, len(vocal) - len(v)))
-                vocal = v[: len(vocal)]
+    _set_finalize_progress(meta, 60, "套用你的聲音")
+    ref_path = neural_vc.build_reference_wav(vp_dir, manifest)
+    if ref_path and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
+        src_path = tempfile.mktemp(prefix="journey_vocal_", suffix=".wav")
+        sf.write(src_path, vocal, 44100)
+        converted = neural_vc.convert_voice(src_path, ref_path)
+        if converted:
+            v = load_mono(converted, 44100)
+            if len(v) < len(vocal):
+                v = np.pad(v, (0, len(vocal) - len(v)))
+            vocal = v[: len(vocal)]
 
-    _set_finalize_progress(meta, 75, "混音處理")
+    _set_finalize_progress(meta, 80, "混音處理")
     mix = _mix_vocal_into_acc(acc, vocal, apply_reverb)
 
-    _set_finalize_progress(meta, 90, "輸出成品")
+    _set_finalize_progress(meta, 92, "輸出成品")
     sung = tempfile.mktemp(prefix="journey_sung_", suffix=".wav")
     sf.write(sung, mix, 44100)
     mp3 = compress_to_mp3(sung)

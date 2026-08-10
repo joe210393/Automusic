@@ -24,7 +24,7 @@
       </div>
       <p class="lead" id="shareMemory"></p>
       <div class="version-block">
-        <h3 class="version-label" id="shareAiLabel">AI 歌手版</h3>
+        <h3 class="version-label" id="shareAiLabel">AI 演奏版</h3>
         <audio id="shareAudio" controls style="width:100%"></audio>
       </div>
       <div class="version-block" id="shareVoiceBlock" hidden>
@@ -65,7 +65,7 @@
       document.getElementById('shareCore').textContent =
         data.core_line || '這首歌，是在旅行時創作的。';
       if (data.ai_singer_label) {
-        document.getElementById('shareAiLabel').textContent = 'AI 歌手版・' + data.ai_singer_label;
+        document.getElementById('shareAiLabel').textContent = 'AI 演奏版・' + data.ai_singer_label;
       }
       document.getElementById('shareAudio').src = data.audio_url;
       if (data.audio_voice_url) {
