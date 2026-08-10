@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 import shutil
 import tempfile
 from pathlib import Path
@@ -59,7 +60,7 @@ def run_compose(journey_id: str) -> dict:
 
     _step(meta, "創作旋律")
     store.save_meta(journey_id, meta)
-    seed = abs(hash(journey_id)) % (10**9)
+    seed = secrets.randbelow(10**9)
     melody = generate_melody_from_material(
         str(sound), style=engine_style, seed=seed
     )
@@ -67,6 +68,8 @@ def run_compose(journey_id: str) -> dict:
     meta["bpm"] = melody["bpm"]
     meta["key"] = melody["key"]
     meta["chords"] = melody.get("chords")
+    meta["material"] = melody.get("material") or {}
+    meta["compose_seed"] = seed
     style_id = (melody.get("material") or {}).get("style_id")
     if style_id:
         meta["engine_style"] = style_id

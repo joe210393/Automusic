@@ -229,12 +229,13 @@
         <div class="flow-body">
           <div class="panel">
             <h2>今天的旅行聽起來像什麼？</h2>
-            <p class="lead">選一個感覺就好，不用懂音樂。</p>
+            <p class="lead" id="moodLead">選一個感覺就好，不用懂音樂。</p>
             <div class="grid two stagger" id="moodList"></div>
             <div class="nav-row">
-              <button class="secondary" data-back="story">返回</button>
+              <button class="secondary" data-back="story" id="btnMoodBack">返回</button>
               <button class="primary" id="btnMoodNext" disabled>開始創作</button>
             </div>
+            <p class="status" id="moodStatus"></p>
           </div>
         </div>
       </div>
@@ -256,6 +257,17 @@
             <div id="composeResult" style="display:none;">
               <p class="station-name">你的旅行歌曲誕生了</p>
               <h2 id="songTitle" class="song-title"></h2>
+              <div class="edu-panel" id="eduPanel" aria-label="音樂小教室">
+                <p class="edu-title">音樂小教室</p>
+                <ul class="edu-list">
+                  <li><span>旅行聲音調性</span><strong id="eduMood">—</strong></li>
+                  <li><span>旋律調名</span><strong id="eduKey">—</strong></li>
+                  <li><span>旋律速度</span><strong id="eduBpm">—</strong></li>
+                  <li><span>編排伴奏風格</span><strong id="eduStyle">—</strong></li>
+                  <li><span>素材輪廓</span><strong id="eduContour">—</strong></li>
+                </ul>
+                <p class="edu-note" id="eduNote"></p>
+              </div>
               <div class="lyrics-block"><h3>主歌</h3><div id="verseText"></div></div>
               <div class="lyrics-block"><h3>副歌</h3><div id="chorusText"></div></div>
               <audio id="previewAudio" controls></audio>

@@ -315,6 +315,35 @@
     selectedMood = (destination.moodStyles || []).find((m) => m.id === journey.mood_id) || null;
   }
 
+  function fillEduPanel(meta) {
+    const m = (meta && meta.material) || {};
+    if ($("eduMood")) $("eduMood").textContent = m.mood || "—";
+    if ($("eduKey")) $("eduKey").textContent = (meta && meta.key) || "—";
+    if ($("eduBpm")) {
+      $("eduBpm").textContent = meta && meta.bpm != null
+        ? `${Math.round(meta.bpm)} BPM`
+        : "—";
+    }
+    if ($("eduStyle")) {
+      $("eduStyle").textContent = m.style || (meta && meta.engine_style) || "—";
+    }
+    if ($("eduContour")) {
+      const bits = [];
+      if (m.contour) bits.push(m.contour);
+      if (m.energy != null) bits.push(`能量 ${m.energy} 音/秒`);
+      $("eduContour").textContent = bits.length ? bits.join(" · ") : "—";
+    }
+    if ($("eduNote")) {
+      const parts = [];
+      const moodLabel = selectedMood?.label
+        || (destination?.moodStyles || []).find((x) => x.id === meta?.mood_id)?.label;
+      if (moodLabel) parts.push(`你選的感覺：${moodLabel}`);
+      if (m.progression) parts.push(`和弦進行：${m.progression}`);
+      parts.push("這些來自你的旅行聲音與感覺選擇，決定旋律與伴奏的走向。");
+      $("eduNote").textContent = parts.join(" ");
+    }
+  }
+
   function showComposeFromMeta() {
     const ly = journey.lyrics || {};
     show("compose");
@@ -323,13 +352,14 @@
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
       $("verseText").textContent = ly.verse || "";
       $("chorusText").textContent = ly.chorus || "";
+      fillEduPanel(journey);
       if (journey.preview_file) {
         $("previewAudio").src = `/api/journey/${journey.id}/audio/preview?t=${Date.now()}`;
       }
       setupVoiceLines(ly);
       setStatus($("composeStatus"), journey.status === "error"
         ? (journey.error || "上次創作失敗，可再試一次")
-        : "這是你上次的創作，可繼續或重製歌詞。");
+        : "這是你上次的創作。想換感覺可按「換一個版本」。");
     } else {
       $("composeResult").style.display = "none";
       setStatus($("composeStatus"), "尚未完成創作。請選心情後再生成。");
@@ -752,12 +782,20 @@
     };
   }
 
-  function renderMoods() {
+  function renderMoods(opts = {}) {
     const list = $("moodList");
     list.innerHTML = "";
     selectedMood = null;
     $("btnMoodNext").disabled = true;
-    (destination.moodStyles || []).forEach((m) => {
+    if ($("moodLead")) {
+      $("moodLead").textContent = opts.regen
+        ? "請重新選一個感覺，我們會換一版旋律、歌詞與伴奏。"
+        : "選一個感覺就好，不用懂音樂。";
+    }
+    if ($("btnMoodNext")) {
+      $("btnMoodNext").textContent = opts.regen ? "換一版創作" : "開始創作";
+    }
+    (destination?.moodStyles || []).forEach((m) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "choice";
@@ -768,30 +806,47 @@
         btn.classList.add("selected");
         selectedMood = m;
         $("btnMoodNext").disabled = false;
+        setStatus($("moodStatus"), `已選「${m.label}」，按下按鈕開始換版創作。`);
       });
       list.appendChild(btn);
     });
+    setStatus($("moodStatus"), opts.regen ? "選好感覺後，創作大約需要一兩分鐘。" : "");
+  }
+
+  function setComposeBusy(busy) {
+    document.body.classList.toggle("compose-busy", !!busy);
+    if ($("btnMoodNext")) $("btnMoodNext").disabled = busy || !selectedMood;
+    if ($("btnRegenLyrics")) $("btnRegenLyrics").disabled = !!busy;
+    if ($("btnToVoice")) $("btnToVoice").disabled = !!busy;
   }
 
   async function runCompose() {
+    if (!selectedMood) {
+      setStatus($("moodStatus"), "請先選一個感覺", true);
+      return;
+    }
     show("compose");
     $("composeResult").style.display = "none";
+    setComposeBusy(true);
     const ul = $("composeProgress");
+    ul.style.display = "";
     ul.innerHTML = ["整理旅行聲音", "創作旋律", "完成歌詞", "編排伴奏", "旅行歌曲誕生了"]
       .map((t) => `<li>${t}</li>`).join("");
-    setStatus($("composeStatus"), "創作中，可能需要一兩分鐘…");
+    const first = ul.querySelector("li");
+    if (first) first.classList.add("active");
+    setStatus($("composeStatus"), "創作中，請稍候…（大約一兩分鐘，畫面會逐步打勾）");
 
+    let stepIdx = 0;
     const tick = setInterval(() => {
       const items = ul.querySelectorAll("li");
-      const done = [...items].filter((li) => li.classList.contains("done")).length;
-      if (done < items.length) {
+      if (stepIdx < items.length) {
         items.forEach((li, i) => {
-          li.classList.toggle("done", i < done);
-          li.classList.toggle("active", i === done);
+          li.classList.toggle("done", i < stepIdx);
+          li.classList.toggle("active", i === stepIdx);
         });
-        if (items[done]) items[done].classList.add("done");
+        stepIdx += 1;
       }
-    }, 1200);
+    }, 1400);
 
     try {
       await api(`/api/journey/${journey.id}/mood`, {
@@ -801,20 +856,36 @@
       const data = await api(`/api/journey/${journey.id}/compose`, { method: "POST", body: "{}" });
       clearInterval(tick);
       ul.querySelectorAll("li").forEach((li) => { li.classList.add("done"); li.classList.remove("active"); });
-      journey = data.meta;
+      journey = data.meta || data;
       persistJourney();
-      const ly = data.lyrics || {};
+      const ly = journey.lyrics || data.lyrics || {};
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
       $("verseText").textContent = ly.verse || "";
       $("chorusText").textContent = ly.chorus || "";
-      $("previewAudio").src = data.preview_url + "?t=" + Date.now();
+      fillEduPanel(journey);
+      const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
+      $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
       $("composeResult").style.display = "block";
-      setStatus($("composeStatus"), "完成！先聽聽伴奏版，確認歌詞後再用你的聲音唱。");
+      setStatus($("composeStatus"), "完成！先聽聽伴奏版，確認歌詞後再用你的聲音唱。想再換感覺可按「換一個版本」。");
       setupVoiceLines(ly);
     } catch (e) {
       clearInterval(tick);
       setStatus($("composeStatus"), e.message, true);
+    } finally {
+      setComposeBusy(false);
     }
+  }
+
+  function startRegenVersion() {
+    const audio = $("previewAudio");
+    if (audio) {
+      try { audio.pause(); } catch (_) {}
+      audio.removeAttribute("src");
+    }
+    $("composeResult").style.display = "none";
+    setStatus($("composeStatus"), "");
+    renderMoods({ regen: true });
+    show("mood");
   }
 
   function setupVoiceLines(lyrics) {
@@ -966,17 +1037,7 @@
   $("btnKeep").addEventListener("click", () => keepRecording());
   $("btnCollectNext").addEventListener("click", () => show("story"));
   $("btnMoodNext").addEventListener("click", () => runCompose());
-  $("btnRegenLyrics").addEventListener("click", async () => {
-    try {
-      const data = await api(`/api/journey/${journey.id}/lyrics/regenerate`, { method: "POST", body: "{}" });
-      $("songTitle").textContent = `《${data.lyrics.title}》`;
-      $("verseText").textContent = data.lyrics.verse;
-      $("chorusText").textContent = data.lyrics.chorus;
-      setupVoiceLines(data.lyrics);
-    } catch (e) {
-      setStatus($("composeStatus"), e.message, true);
-    }
-  });
+  $("btnRegenLyrics").addEventListener("click", () => startRegenVersion());
   $("btnToVoice").addEventListener("click", () => show("voice"));
   $("btnFinalize").addEventListener("click", () => finalize());
   $("btnCopyShare").addEventListener("click", async () => {
@@ -1018,10 +1079,12 @@
 
   function setAuthVisibility(loggedIn) {
     document.querySelectorAll("[data-auth='guest']").forEach((el) => {
-      el.hidden = loggedIn;
+      if (loggedIn) el.setAttribute("hidden", "");
+      else el.removeAttribute("hidden");
     });
     document.querySelectorAll("[data-auth='user']").forEach((el) => {
-      el.hidden = !loggedIn;
+      if (loggedIn) el.removeAttribute("hidden");
+      else el.setAttribute("hidden", "");
     });
   }
 
@@ -1037,6 +1100,12 @@
   }
 
   function clearUserChips() {
+    ["hubUserName", "flowUserName"].forEach((id) => {
+      if ($(id)) $(id).textContent = "旅人";
+    });
+    ["hubUserEmail", "flowUserEmail"].forEach((id) => {
+      if ($(id)) $(id).textContent = "";
+    });
     setAuthVisibility(false);
   }
 
@@ -1063,6 +1132,10 @@
   function logout() {
     localStorage.removeItem(TOKEN_KEY);
     clearUserChips();
+    // 立刻回到訪客首頁狀態，避免畫面仍顯示登入中
+    if (document.body.classList.contains("is-flow")) {
+      show("hub");
+    }
   }
 
   $("btnLogoutHub")?.addEventListener("click", logout);
