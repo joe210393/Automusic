@@ -1,0 +1,345 @@
+"""
+旅程編曲管線：直接呼叫現有引擎函式（不改引擎實作）。
+"""
+from __future__ import annotations
+
+import os
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from app.content.loader import load_destination, resolve_engine_style, story_to_keywords
+from app.journey import store
+
+
+def _step(meta: dict, label: str) -> None:
+    steps = meta.setdefault("compose_steps", [])
+    if label not in steps:
+        steps.append(label)
+
+
+def primary_sound_path(meta: dict) -> Optional[Path]:
+    sounds = meta.get("sounds") or []
+    if not sounds:
+        return None
+    # 優先第一個槽，否則任意
+    jid = meta["id"]
+    for s in sounds:
+        p = store.sounds_dir(jid) / s["filename"]
+        if p.exists():
+            return p
+    return None
+
+
+def run_compose(journey_id: str) -> dict:
+    """素材→旋律→歌詞→伴奏預覽。"""
+    meta = store.load_meta(journey_id)
+    dest = load_destination(meta.get("destination") or "suao")
+    if not dest:
+        raise RuntimeError("找不到目的地內容包")
+
+    sound = primary_sound_path(meta)
+    if not sound:
+        raise RuntimeError("請先收集至少一個旅行聲音")
+
+    mood_id = meta.get("mood_id")
+    engine_style = meta.get("engine_style") or resolve_engine_style(dest, mood_id or "")
+    meta["engine_style"] = engine_style
+    meta["status"] = "composing"
+    meta["error"] = None
+    meta["compose_steps"] = []
+    store.save_meta(journey_id, meta)
+
+    _step(meta, "整理旅行聲音")
+    store.save_meta(journey_id, meta)
+
+    # 1) 旋律
+    from app.melody.from_audio import generate_melody_from_material
+
+    _step(meta, "創作旋律")
+    store.save_meta(journey_id, meta)
+    seed = abs(hash(journey_id)) % (10**9)
+    melody = generate_melody_from_material(
+        str(sound), style=engine_style, seed=seed
+    )
+    meta["notes"] = melody["notes"]
+    meta["bpm"] = melody["bpm"]
+    meta["key"] = melody["key"]
+    meta["chords"] = melody.get("chords")
+    style_id = (melody.get("material") or {}).get("style_id")
+    if style_id:
+        meta["engine_style"] = style_id
+        engine_style = style_id
+    store.save_meta(journey_id, meta)
+
+    # 2) 歌詞
+    _step(meta, "完成歌詞")
+    store.save_meta(journey_id, meta)
+    story = {
+        "keywords": meta.get("keywords") or [],
+        "place": meta.get("place") or "",
+        "companions": meta.get("companions") or "",
+        "feeling": meta.get("feeling") or "",
+        "memory": meta.get("memory") or "",
+    }
+    keywords = story_to_keywords(story, dest)
+    if not keywords:
+        raise RuntimeError("請先填寫歌詞關鍵字")
+
+    lyrics = _generate_lyrics(keywords, engine_style)
+    meta["lyrics"] = lyrics
+    if lyrics.get("title") and not str(meta.get("title") or "").strip():
+        meta["title"] = str(lyrics["title"]).strip()[:40]
+    store.save_meta(journey_id, meta)
+
+    # 3) 伴奏預覽（無人聲）
+    _step(meta, "編排伴奏")
+    store.save_meta(journey_id, meta)
+    preview_path = _render_arrangement(meta, use_voiceprint=False)
+    out_name = Path(preview_path).name
+    dest_file = store.output_dir(journey_id) / out_name
+    shutil.copyfile(preview_path, dest_file)
+    meta["preview_file"] = out_name
+    meta["status"] = "preview"
+    _step(meta, "旅行歌曲誕生了")
+    store.save_meta(journey_id, meta)
+    return meta
+
+
+def run_finalize(journey_id: str) -> dict:
+    """用旅程聲紋合成最終成品。"""
+    meta = store.load_meta(journey_id)
+    if not meta.get("notes") or not meta.get("lyrics"):
+        raise RuntimeError("請先完成創作")
+    vp = store.load_voiceprint_manifest(journey_id)
+    if not vp.get("lines"):
+        raise RuntimeError("請先錄下幾句你的聲音")
+
+    meta["status"] = "finalizing"
+    meta["error"] = None
+    _step(meta, "正在用你的聲音演唱")
+    store.save_meta(journey_id, meta)
+
+    final_path = _render_arrangement(meta, use_voiceprint=True)
+    out_name = "final" + Path(final_path).suffix
+    dest_file = store.output_dir(journey_id) / out_name
+    shutil.copyfile(final_path, dest_file)
+    meta["final_file"] = out_name
+    meta["status"] = "done"
+    meta["share_public"] = True
+    _step(meta, "完成")
+    store.save_meta(journey_id, meta)
+    return meta
+
+
+def _route_label(dest: dict, route_id: Optional[str]) -> str:
+    for r in dest.get("routes", []):
+        if r.get("id") == route_id:
+            return r.get("label") or ""
+    return ""
+
+
+def _generate_lyrics(keywords: List[str], style: str) -> dict:
+    """複用 LM／模板作詞邏輯（與 /generate-lyrics-ai 相同策略）。"""
+    import requests
+    from app.lyrics.ai_writer import build_lyrics_prompts, parse_lyrics_from_message
+
+    # 旅行語氣：在 keywords 已含地點／故事
+    system_prompt, user_prompt = build_lyrics_prompts(keywords, style)
+    system_prompt = (
+        "你正在為一趟真實的蘇澳／台灣海岸旅行寫專屬歌曲。\n"
+        "歌詞要像遊客會帶走的紀念，溫暖、有畫面，不要科技詞彙。\n\n"
+        + system_prompt
+    )
+
+    lm_urls = []
+    if os.getenv("LM_STUDIO_URL"):
+        lm_urls = [os.getenv("LM_STUDIO_URL")]
+    elif os.getenv("LM_STUDIO_URLS"):
+        lm_urls = [u.strip() for u in os.getenv("LM_STUDIO_URLS").split(",") if u.strip()]
+    else:
+        lm_urls = [
+            "http://127.0.0.1:1234/v1/chat/completions",
+            "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions",
+        ]
+    model = os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
+
+    for url in lm_urls:
+        try:
+            resp = requests.post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "ngrok-skip-browser-warning": "1",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    "temperature": 0.9,
+                    "max_tokens": 2048,
+                },
+                timeout=(4, 300),
+            )
+            if resp.status_code != 200:
+                continue
+            message = resp.json()["choices"][0]["message"]
+            parsed = parse_lyrics_from_message(message)
+            if parsed:
+                return {
+                    "title": parsed["title"],
+                    "verse": parsed["verse"],
+                    "chorus": parsed["chorus"],
+                    "source": "lm_studio",
+                }
+        except Exception as e:
+            print(f"[journey] lyrics LM fail ({url}): {e}")
+            continue
+
+    from app.lyrics.generator import generate_lyrics as gen_lyrics
+
+    result = gen_lyrics(keywords, "溫暖")
+    return {
+        "title": (keywords[0] if keywords else "旅行") + "之歌",
+        "verse": result["verse"],
+        "chorus": result["chorus"],
+        "source": "template",
+    }
+
+
+def _render_arrangement(meta: dict, *, use_voiceprint: bool) -> str:
+    """
+    呼叫與 /render-audio 相同的核心路徑，但聲紋讀旅程目錄。
+    回傳產出的本機音檔路徑（wav 或 mp3）。
+    """
+    from app.main import (
+        find_fluidsynth,
+        find_soundfont,
+        compress_to_mp3,
+        _render_midi_via_remote,
+        RENDER_REMOTE_URLS,
+    )
+    from app.midi.generate_midi import generate_full_midi, compute_song_structure
+    from app.audio.soundfont_render import (
+        can_render_acoustic_locally,
+        render_midi_to_wav,
+    )
+    import soundfile as sf
+    import numpy as np
+
+    lyrics = meta["lyrics"]
+    notes = meta["notes"]
+    bpm = float(meta["bpm"])
+    key = meta["key"]
+    style = meta.get("engine_style")
+    seed = abs(hash(meta["id"] + ("-final" if use_voiceprint else "-preview"))) % (10**9)
+    duration = 60
+
+    fluidsynth_bin = find_fluidsynth()
+    if not fluidsynth_bin:
+        raise RuntimeError("製作服務暫時忙碌，請稍後再試")
+    if not find_soundfont():
+        raise RuntimeError("製作服務暫時忙碌，請稍後再試")
+
+    notes_list = [
+        {"start": n["start"], "end": n["end"], "midi": n["midi"], "velocity": n.get("velocity", 90)}
+        for n in notes
+    ]
+    lyrics_obj = {"verse": lyrics["verse"], "chorus": lyrics["chorus"]}
+
+    midi_path = generate_full_midi(
+        notes=notes_list,
+        bpm=bpm,
+        key=key,
+        lyrics=lyrics_obj,
+        chord_overrides=meta.get("chords"),
+        seed=seed,
+        melody_gain=0.0 if use_voiceprint else 1.0,
+        style=style,
+        duration_seconds=duration,
+    )
+
+    wav_path = tempfile.mktemp(prefix="journey_render_", suffix=".wav")
+    use_lead = not use_voiceprint
+    if not can_render_acoustic_locally() and RENDER_REMOTE_URLS:
+        remote = _render_midi_via_remote(midi_path, use_lead_overlay=use_lead)
+        if remote:
+            shutil.copyfile(remote, wav_path)
+            try:
+                os.unlink(remote)
+            except OSError:
+                pass
+        else:
+            render_midi_to_wav(fluidsynth_bin, midi_path, wav_path, use_lead_overlay=use_lead)
+    else:
+        render_midi_to_wav(fluidsynth_bin, midi_path, wav_path, use_lead_overlay=use_lead)
+
+    if not use_voiceprint:
+        mp3 = compress_to_mp3(wav_path)
+        return mp3 or wav_path
+
+    # 聲紋演唱
+    from app.voice.sing import build_vocal_track, apply_reverb, load_mono
+    from app.voice import neural_vc, svs
+
+    jid = meta["id"]
+    vp_dir = store.voiceprint_dir(jid)
+    manifest = store.load_voiceprint_manifest(jid)
+
+    acc, _ = sf.read(wav_path)
+    if acc.ndim == 1:
+        acc = np.stack([acc, acc], axis=1)
+    structure = compute_song_structure(notes_list, bpm, target_seconds=duration)
+
+    vocal = None
+    if svs.is_available() or svs.SVS_REMOTE_URLS:
+        vocal = svs.build_svs_vocal_track(
+            notes=notes_list,
+            bpm=bpm,
+            structure=structure,
+            lyrics=lyrics_obj,
+            total_samples=len(acc),
+        )
+    if vocal is None:
+        vocal = build_vocal_track(
+            notes=notes_list,
+            bpm=bpm,
+            structure=structure,
+            voiceprint_dir=vp_dir,
+            manifest=manifest,
+            total_samples=len(acc),
+            lyrics=lyrics_obj,
+        )
+    if vocal is None:
+        raise RuntimeError("還無法唱出這首歌，請確認已錄完幾句聲音")
+
+    ref_path = neural_vc.build_reference_wav(vp_dir, manifest)
+    if ref_path and (neural_vc.is_available() or neural_vc.VC_REMOTE_URLS):
+        src_path = tempfile.mktemp(prefix="journey_vocal_", suffix=".wav")
+        sf.write(src_path, vocal, 44100)
+        converted = neural_vc.convert_voice(src_path, ref_path)
+        if converted:
+            v = load_mono(converted, 44100)
+            if len(v) < len(vocal):
+                v = np.pad(v, (0, len(vocal) - len(v)))
+            vocal = v[: len(vocal)]
+
+    vocal = apply_reverb(vocal)
+    acc_rms = float(np.sqrt(np.mean(acc ** 2)))
+    voc_rms = float(np.sqrt(np.mean(vocal[vocal != 0] ** 2))) if np.any(vocal != 0) else 0.0
+    if voc_rms > 1e-6:
+        vocal = vocal * (acc_rms * 1.25 / voc_rms)
+    mix = acc * 0.8
+    mix[:, 0] += vocal
+    mix[:, 1] += vocal
+    m = float(np.max(np.abs(mix)))
+    if m > 0.99:
+        mix = mix * (0.99 / m)
+
+    sung = tempfile.mktemp(prefix="journey_sung_", suffix=".wav")
+    sf.write(sung, mix, 44100)
+    mp3 = compress_to_mp3(sung)
+    return mp3 or sung

@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>把旅行變成一首歌</title>
+  <meta name="description" content="收集旅途聲音與故事，帶走一首屬於你的旅行歌曲。" />
+  <meta name="theme-color" content="#1a2b4a" />
+  <link rel="stylesheet" href="/trip/styles.css" />
+</head>
+<body>
+  <!--
+    Automusic Travel — Sound Journey
+    THESIS: full-bleed place photos with CTAs sitting in the image's quiet zones (water / sky / pier), not a card stack.
+    OWN-WORLD: navy + warm paper + serif display over real Su'ao-style photography.
+    STORY: pick a station on the vista → enter station hero → start the song journey.
+    FIRST VIEWPORT: train/coast photo, brand top-left, headline mid-left, station pins lower-left over water.
+    FORM: brief-pinned photo landing from user comps.
+    FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
+  -->
+  <div class="app-shell">
+    <div class="topbar" id="flowTopbar">
+      <div class="brand-mark" id="brandMark">蘇澳 · 聲之旅</div>
+      <nav class="topbar-links" id="flowAuthNav">
+        <a class="lab-link" href="/login" data-auth="guest">登入</a>
+        <a class="lab-link" href="/register" data-auth="guest">註冊</a>
+        <a class="user-chip" id="flowUserChip" href="/me" data-auth="user" hidden>
+          <strong id="flowUserName">旅人</strong>
+          <span id="flowUserEmail"></span>
+        </a>
+        <a class="lab-link" href="/me" data-auth="user" hidden>我的旅程</a>
+        <button type="button" class="lab-link" id="btnLogoutFlow" data-auth="user" hidden>登出</button>
+        <a class="lab-link" href="/web/" title="工程實驗室">Lab</a>
+      </nav>
+    </div>
+
+    <ol class="step-rail" id="stepRail" aria-hidden="true">
+      <li data-step="route"><span></span></li>
+      <li data-step="collect"><span></span></li>
+      <li data-step="story"><span></span></li>
+      <li data-step="mood"><span></span></li>
+      <li data-step="compose"><span></span></li>
+      <li data-step="voice"><span></span></li>
+      <li data-step="result"><span></span></li>
+    </ol>
+
+    <!-- 0 主首頁：全幅風景＋站點按鈕落在水面負空間 -->
+    <section class="screen active" id="screen-hub">
+      <div class="scene scene--hub">
+        <picture class="scene-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-train.webp" type="image/webp" />
+          <img src="/trip/media/hero-train.png" alt="" width="1024" height="576" fetchpriority="high" />
+        </picture>
+        <div class="scene-veil scene-veil--left" aria-hidden="true"></div>
+        <header class="scene-nav">
+          <div class="brand-lockup">
+            <svg class="brand-wave" viewBox="0 0 32 20" aria-hidden="true">
+              <path d="M2 12c3-5 5 5 8 0s5 5 8 0 5 5 8 0" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <div>
+              <strong>聲之旅</strong>
+              <span>SOUND JOURNEY</span>
+            </div>
+          </div>
+          <div class="scene-nav-links" id="hubAuthNav">
+            <a class="lab-link scene-lab" href="/login" data-auth="guest">登入</a>
+            <a class="lab-link scene-lab" href="/register" data-auth="guest">註冊</a>
+            <a class="user-chip scene-lab" id="hubUserChip" href="/me" data-auth="user" hidden>
+              <strong id="hubUserName">旅人</strong>
+              <span id="hubUserEmail"></span>
+            </a>
+            <a class="lab-link scene-lab" href="/me" data-auth="user" hidden>我的旅程</a>
+            <button type="button" class="lab-link scene-lab" id="btnLogoutHub" data-auth="user" hidden>登出</button>
+            <a class="lab-link scene-lab" href="/web/">Lab</a>
+          </div>
+        </header>
+        <div class="scene-dock scene-dock--hub">
+          <h1>把今天的旅程，變成一首歌</h1>
+          <p>先選一個城鎮站。在山海與日常裡收集聲音，帶走屬於你的旋律回憶。</p>
+          <div class="station-pins" id="stationList" aria-label="選擇城鎮站"></div>
+        </div>
+      </div>
+      <section class="trail-strip" aria-label="怎麼開始">
+        <h2>三個步驟，創作你的旅行之歌</h2>
+        <ol class="trail-steps">
+          <li>
+            <span class="trail-num">1</span>
+            <strong>收集聲音</strong>
+            <p>錄下浪聲、港邊與路上的片刻。</p>
+          </li>
+          <li>
+            <span class="trail-num">2</span>
+            <strong>寫下關鍵字</strong>
+            <p>用你自己的話，留下今天的感覺。</p>
+          </li>
+          <li>
+            <span class="trail-num">3</span>
+            <strong>帶走歌曲</strong>
+            <p>生成旋律與歌詞，用你的聲音唱出來。</p>
+          </li>
+        </ol>
+      </section>
+    </section>
+
+    <!-- 1 城鎮站：港景全幅，CTA 落在水面／碼頭負空間 -->
+    <section class="screen" id="screen-station">
+      <div class="scene scene--station" id="stationScene">
+        <picture class="scene-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-lighthouse.webp" type="image/webp" />
+          <img id="stationPhoto" src="/trip/media/hero-lighthouse.png" alt="" width="1024" height="576" />
+        </picture>
+        <div class="scene-veil scene-veil--station" aria-hidden="true"></div>
+        <header class="scene-nav">
+          <button type="button" class="scene-back" id="btnBackHub">← 換一個站</button>
+          <a class="lab-link scene-lab" href="/web/">Lab</a>
+        </header>
+        <div class="scene-dock scene-dock--station">
+          <p class="station-name" id="stationPlace">蘇澳站</p>
+          <h1 id="stationHeadline">把今天的蘇澳，變成一首屬於你的歌</h1>
+          <p id="stationSubhead">在蘇澳的山海與日常裡，收集聲音，創造屬於你的旋律回憶。</p>
+          <div class="scene-cta">
+            <button class="primary scene-primary" id="btnStart">開始創作你的歌曲</button>
+          </div>
+          <p class="core-line" id="stationCore"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 選擇路線 -->
+    <section class="screen" id="screen-route">
+      <div class="flow-scene" data-bg="map">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/bg-map.webp" type="image/webp" />
+          <img src="/trip/media/bg-map.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>選擇今天的旅程</h2>
+            <p class="lead">每一條路線有不同的聲音任務。完成後，聲音會變成你的歌。</p>
+            <div class="grid stagger" id="routeList"></div>
+            <div class="nav-row">
+              <button class="secondary" data-back="station">返回</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3 收集聲音 -->
+    <section class="screen" id="screen-collect">
+      <div class="flow-scene" data-bg="spring">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-spring.webp" type="image/webp" />
+          <img src="/trip/media/hero-spring.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>收集旅行聲音</h2>
+            <p class="lead" id="collectLead">找一個最能代表「今天」的聲音。</p>
+            <div class="sound-box" id="soundBox"></div>
+            <p class="status" id="collectSlotHint">點一個空格，開始錄音</p>
+            <button class="rec-orb" id="recBtn" type="button" aria-label="開始錄音">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3"/>
+                <path d="M5 11a7 7 0 0 0 14 0"/>
+                <path d="M12 18v3"/>
+              </svg>
+              <span id="recBtnLabel">開始錄音</span>
+            </button>
+            <div class="actions">
+              <button class="secondary" id="btnPlayLast" disabled>聽聽看</button>
+              <button class="secondary" id="btnRedo" disabled>再錄一次</button>
+              <button class="primary" id="btnKeep" disabled>就用這個</button>
+            </div>
+            <audio id="collectPreview" style="display:none;width:100%;margin-top:12px;" controls></audio>
+            <div class="nav-row">
+              <button class="secondary" data-back="route">返回</button>
+              <button class="primary" id="btnCollectNext" disabled>下一步：留下故事</button>
+            </div>
+            <p class="status" id="collectStatus"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 關鍵字 -->
+    <section class="screen" id="screen-story">
+      <div class="flow-scene" data-bg="path">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-path.webp" type="image/webp" />
+          <img src="/trip/media/hero-path.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>寫下這首歌的關鍵字</h2>
+            <p class="lead">關鍵字會直接進歌詞，請用你自己的話。可打 2–6 個，用空白或逗號分開。</p>
+            <label class="field" for="nickname">你的暱稱（可選）</label>
+            <input type="text" id="nickname" maxlength="40" placeholder="例如：小美" autocomplete="nickname" />
+            <label class="field" for="keywordsInput">歌詞關鍵字</label>
+            <input type="text" id="keywordsInput" maxlength="80" placeholder="例如：冷泉、媽媽、第一次、夏天" autocomplete="off" />
+            <p class="hint-line">至少填一個關鍵字。</p>
+            <label class="field" for="memory">還想補一句嗎？（可選）</label>
+            <textarea id="memory" maxlength="120" placeholder="例如：第一次帶媽媽來南方澳。"></textarea>
+            <div class="nav-row">
+              <button class="secondary" data-back="collect">返回</button>
+              <button class="primary" id="btnStoryNext">下一步：選感覺</button>
+            </div>
+            <p class="status" id="storyStatus"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5 心情 -->
+    <section class="screen" id="screen-mood">
+      <div class="flow-scene" data-bg="stairs">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-stairs.webp" type="image/webp" />
+          <img src="/trip/media/hero-stairs.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>今天的旅行聽起來像什麼？</h2>
+            <p class="lead">選一個感覺就好，不用懂音樂。</p>
+            <div class="grid two stagger" id="moodList"></div>
+            <div class="nav-row">
+              <button class="secondary" data-back="story">返回</button>
+              <button class="primary" id="btnMoodNext" disabled>開始創作</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6 創作 -->
+    <section class="screen" id="screen-compose">
+      <div class="flow-scene" data-bg="train">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-train.webp" type="image/webp" />
+          <img src="/trip/media/hero-train.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>正在把你的旅程寫成歌…</h2>
+            <p class="lead">請稍候，我們正在整理聲音、旋律與故事。</p>
+            <ul class="progress-list" id="composeProgress"></ul>
+            <div id="composeResult" style="display:none;">
+              <p class="station-name">你的旅行歌曲誕生了</p>
+              <h2 id="songTitle" class="song-title"></h2>
+              <div class="lyrics-block"><h3>主歌</h3><div id="verseText"></div></div>
+              <div class="lyrics-block"><h3>副歌</h3><div id="chorusText"></div></div>
+              <audio id="previewAudio" controls></audio>
+              <div class="actions">
+                <button class="secondary" id="btnRegenLyrics">換一個版本</button>
+                <button class="primary" id="btnToVoice">這就是我的故事</button>
+              </div>
+            </div>
+            <p class="status" id="composeStatus"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7 聲紋 -->
+    <section class="screen" id="screen-voice">
+      <div class="flow-scene" data-bg="market">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-market.webp" type="image/webp" />
+          <img src="/trip/media/hero-market.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel">
+            <h2>讓這首歌用你的聲音唱出來</h2>
+            <p class="lead">跟著句子，用自然的說話方式念出來。錄完幾句就夠了。</p>
+            <div id="voiceLines"></div>
+            <div class="nav-row">
+              <button class="secondary" data-back="compose">返回</button>
+              <button class="primary" id="btnFinalize" disabled>製作我的旅行歌曲</button>
+            </div>
+            <p class="status" id="voiceStatus"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8 成品 -->
+    <section class="screen" id="screen-result">
+      <div class="flow-scene" data-bg="harbor">
+        <picture class="flow-photo" aria-hidden="true">
+          <source srcset="/trip/media/hero-harbor.webp" type="image/webp" />
+          <img src="/trip/media/hero-harbor.png" alt="" width="1024" height="576" loading="lazy" />
+        </picture>
+        <div class="flow-veil" aria-hidden="true"></div>
+        <div class="flow-body">
+          <div class="panel player-card">
+            <p class="station-name">我的旅行歌曲</p>
+            <h2 id="finalTitle">《旅行之歌》</h2>
+            <p class="meta-line" id="finalMeta"></p>
+            <audio id="finalAudio" controls></audio>
+            <div class="actions">
+              <a class="btn btn-primary" id="btnDownload" href="#" download>下載歌曲</a>
+              <button class="secondary" id="btnCopyShare">分享給朋友</button>
+              <button class="secondary" id="btnNewTrip">再做一趟</button>
+            </div>
+            <p class="status" id="resultStatus"></p>
+            <div class="account-box">
+              <h3>收藏到我的旅程</h3>
+              <p class="lead" style="margin-bottom:10px;">登入後可以把這趟旅程存進作品庫。</p>
+              <div class="nav-row">
+                <a class="btn btn-primary" href="/me" data-auth="user" hidden>我的旅程</a>
+                <a class="btn btn-primary" href="/login?next=/me" data-auth="guest">登入</a>
+                <a class="btn btn-secondary" href="/register?next=/me" data-auth="guest">註冊</a>
+                <button class="secondary" id="btnPayStub">升級（開發用）</button>
+              </div>
+              <div id="library" style="margin-top:14px;" hidden></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="site-footer" id="footerNote">
+      <p class="footer-copy">版權所有：來就補多媒體行銷</p>
+      <nav class="footer-links" aria-label="帳號與後台">
+        <a href="/admin">後台登入</a>
+        <a href="/register">註冊</a>
+      </nav>
+    </footer>
+  </div>
+  <script src="/trip/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>我的旅程｜聲之旅</title>
+  <meta name="theme-color" content="#1a2b4a" />
+  <link rel="stylesheet" href="/trip/styles.css" />
+  <link rel="stylesheet" href="/trip/auth.css" />
+  <link rel="stylesheet" href="/trip/me.css" />
+</head>
+<body class="auth-page me-page">
+  <div class="auth-scene">
+    <picture class="auth-photo" aria-hidden="true">
+      <source srcset="/trip/media/hero-river.webp" type="image/webp" />
+      <img src="/trip/media/hero-river.png" alt="" width="1024" height="576" fetchpriority="high" />
+    </picture>
+    <div class="auth-veil" aria-hidden="true"></div>
+    <header class="auth-nav">
+      <a class="auth-brand" href="/">聲之旅</a>
+      <div class="auth-nav-right">
+        <a class="auth-link" href="/">回首頁</a>
+        <button type="button" class="auth-link" id="btnLogout">登出</button>
+      </div>
+    </header>
+    <main class="me-dock">
+      <section class="me-card" id="meProfileCard">
+        <p class="me-eyebrow">使用者後台</p>
+        <h1 id="meName">我的旅程</h1>
+        <p class="me-email" id="meEmail"></p>
+        <p class="me-quota" id="meQuota"></p>
+      </section>
+
+      <section class="me-card" id="meListCard">
+        <div class="me-card-head">
+          <h2>旅程作品</h2>
+          <a class="auth-link" href="/">開始新旅程</a>
+        </div>
+        <div id="meJourneyList" class="me-journey-list"></div>
+        <p id="meStatus" class="status"></p>
+      </section>
+
+      <section class="me-card me-detail hidden" id="meDetailCard">
+        <button type="button" class="me-back" id="btnBackList">← 回到列表</button>
+        <div class="me-cover-wrap">
+          <img id="meCoverImg" class="me-cover" alt="旅程封面" hidden />
+          <div class="me-cover-empty" id="meCoverEmpty">預設封面，可換成自己的照片</div>
+        </div>
+        <label class="me-field" for="meTitleInput">旅程名稱</label>
+        <div class="me-title-row">
+          <input id="meTitleInput" type="text" maxlength="40" placeholder="替這趟旅程取名" />
+          <button type="button" class="auth-link" id="btnSaveTitle">儲存名稱</button>
+        </div>
+        <p class="me-meta-line" id="meDetailMeta"></p>
+        <div class="me-actions" id="meDetailActions"></div>
+
+        <div class="me-block">
+          <h3>封面照片</h3>
+          <p class="me-empty" style="margin-bottom:8px;">新建旅程會從六張風景裡隨機一張；想換成自己的照片再上傳。</p>
+          <input id="meCoverFile" type="file" accept="image/jpeg,image/png,image/webp" />
+          <button type="button" class="auth-link" id="btnUploadCover">換成我的照片</button>
+        </div>
+
+        <div class="me-block">
+          <h3>當初錄音</h3>
+          <div id="meSounds"></div>
+        </div>
+        <div class="me-block">
+          <h3>當初歌詞</h3>
+          <div id="meLyrics"></div>
+        </div>
+        <div class="me-block">
+          <h3>做好的檔案</h3>
+          <div id="meOutputs"></div>
+        </div>
+        <p id="meDetailStatus" class="status"></p>
+      </section>
+    </main>
+    <footer class="site-footer auth-footer">
+      <p class="footer-copy">版權所有：來就補多媒體行銷</p>
+      <nav class="footer-links" aria-label="帳號與後台">
+        <a href="/admin">後台登入</a>
+        <a href="/register">註冊</a>
+      </nav>
+    </footer>
+  </div>
+  <script src="/trip/me.js"></script>
+</body>
+</html>

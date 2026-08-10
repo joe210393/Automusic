@@ -16,10 +16,32 @@ import requests
 
 app = FastAPI(title="Music Education MVP", version="1.0.0")
 
-# 提供簡單前台（錄音＋編曲 demo）
+# 遊客旅程 API（薄適配層）
+from app.journey.router import router as journey_router
+from app.ops.admin_router import router as admin_router
+
+app.include_router(journey_router)
+app.include_router(admin_router)
+
+# 工程實驗室（原六步驟 Demo）— 路徑維持 /web，勿改壞
 frontend_dir = Path(__file__).parent / "frontend"
 if frontend_dir.exists():
     app.mount("/web", StaticFiles(directory=str(frontend_dir), html=True), name="web")
+
+# 遊客體驗站靜態資源
+tourist_dir = Path(__file__).parent / "tourist"
+if tourist_dir.exists():
+    app.mount("/trip", StaticFiles(directory=str(tourist_dir)), name="tourist_assets")
+
+# 內容後台（旅程／目的地 CMS）
+admin_dir = Path(__file__).parent / "admin"
+if admin_dir.exists():
+    @app.get("/admin")
+    @app.get("/admin/")
+    async def admin_home():
+        return FileResponse(admin_dir / "index.html")
+
+    app.mount("/admin-assets", StaticFiles(directory=str(admin_dir)), name="admin_assets")
 
 # LM Studio 設定：依序嘗試多個網址（區網優先、再走 ngrok），可用環境變數覆寫
 # LM_STUDIO_URLS 用逗號分隔多個網址；LM_STUDIO_URL 單一網址（優先權最高，向下相容）
@@ -220,13 +242,59 @@ class MelodyResponse(BaseModel):
 
 @app.get("/")
 async def root():
-    # 直接導向前台，手機/電腦打開網址就能用
+    """遊客體驗首頁；工程 Demo 請走 /web/。"""
+    index = tourist_dir / "index.html"
+    if index.exists():
+        return FileResponse(index)
     return RedirectResponse(url="/web/")
+
+
+@app.get("/login")
+async def tourist_login_page():
+    page = tourist_dir / "login.html"
+    if page.exists():
+        return FileResponse(page)
+    raise HTTPException(status_code=404, detail="登入頁尚未準備好")
+
+
+@app.get("/register")
+async def tourist_register_page():
+    page = tourist_dir / "register.html"
+    if page.exists():
+        return FileResponse(page)
+    raise HTTPException(status_code=404, detail="註冊頁尚未準備好")
+
+
+@app.get("/me")
+async def tourist_me_page():
+    """使用者後台：帳號與我的旅程。"""
+    page = tourist_dir / "me.html"
+    if page.exists():
+        return FileResponse(page)
+    raise HTTPException(status_code=404, detail="使用者後台尚未準備好")
+
+
+@app.get("/s/{slug}")
+async def share_page(slug: str):
+    """公開旅行音樂卡（OG／分享頁）。"""
+    page = tourist_dir / "share.html"
+    if page.exists():
+        return FileResponse(page)
+    raise HTTPException(status_code=404, detail="分享頁尚未準備好")
 
 
 @app.get("/api")
 async def api_info():
-    return {"message": "Music Education MVP API", "version": "1.0.0"}
+    return {
+        "message": "Automusic Travel + Lab API",
+        "version": "1.0.0",
+        "tourist": "/",
+        "login": "/login",
+        "register": "/register",
+        "me": "/me",
+        "lab": "/web/",
+        "admin": "/admin",
+    }
 
 
 @app.get("/health")

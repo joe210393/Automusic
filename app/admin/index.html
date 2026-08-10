@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Automusic 內容後台</title>
+  <link rel="stylesheet" href="/admin-assets/styles.css" />
+</head>
+<body>
+  <div class="admin-scene" aria-hidden="true">
+    <picture class="admin-photo">
+      <source srcset="/admin-assets/media/hero-oldstreet.webp" type="image/webp" />
+      <img src="/admin-assets/media/hero-oldstreet.png" alt="" width="1024" height="576" fetchpriority="high" />
+    </picture>
+    <div class="admin-veil"></div>
+  </div>
+  <div class="shell">
+    <header class="top">
+      <div>
+        <p class="eyebrow">Automusic Ops</p>
+        <h1 id="pageTitle">內容後台</h1>
+      </div>
+      <nav class="top-links">
+        <a class="link" href="#/" id="navHome" hidden>目的地列表</a>
+        <a class="link" href="/">遊客站</a>
+      </nav>
+    </header>
+
+    <!-- 登入 -->
+    <section id="page-login" class="page">
+      <div class="card card--auth">
+        <h2>登入</h2>
+        <p class="hint">使用環境變數 <code>ADMIN_TOKEN</code>。本機預設見 LaunchAgent。</p>
+        <label for="tokenInput">後台金鑰</label>
+        <input id="tokenInput" type="password" autocomplete="current-password" placeholder="ADMIN_TOKEN" />
+        <div class="row">
+          <button id="btnLogin" class="primary" type="button">進入後台</button>
+        </div>
+        <p id="loginStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 目的地列表 -->
+    <section id="page-home" class="page hidden">
+      <div class="card">
+        <div class="card-head">
+          <h2>目的地</h2>
+          <button id="btnGoNewDest" class="secondary" type="button">＋ 新增目的地</button>
+        </div>
+        <p class="hint">選一個目的地，再分頁編輯品牌、旅程、心情。</p>
+        <div id="destList" class="list"></div>
+        <div class="row">
+          <a class="link menu-link" href="#/activity">遊客紀錄</a>
+          <button id="btnLogout" class="ghost" type="button">登出</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 遊客活動紀錄 -->
+    <section id="page-activity" class="page hidden">
+      <p class="crumb"><a href="#/">← 目的地列表</a></p>
+      <div class="card">
+        <div class="card-head">
+          <h2>遊客紀錄</h2>
+          <button id="btnRefreshActivity" class="secondary" type="button">重新整理</button>
+        </div>
+        <p class="hint">看每位遊客玩了哪條旅程、錄了什麼聲音、產出了哪首歌。</p>
+        <div id="activityStats" class="activity-stats"></div>
+        <div id="activityList" class="activity-list"></div>
+        <p id="activityStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 目的地總覽（選要改哪一頁） -->
+    <section id="page-dest" class="page hidden">
+      <p class="crumb"><a href="#/">← 目的地列表</a></p>
+      <div class="card">
+        <h2 id="destHubTitle">目的地</h2>
+        <p class="hint" id="destHubHint">一次只改一類內容。</p>
+        <div class="menu">
+          <a class="menu-item" id="linkBrand" href="#/">品牌首頁文案</a>
+          <a class="menu-item" id="linkRoutes" href="#/">旅程路線</a>
+          <a class="menu-item" id="linkMoods" href="#/">心情風格</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 新增目的地 -->
+    <section id="page-new-dest" class="page hidden">
+      <p class="crumb"><a href="#/">← 目的地列表</a></p>
+      <div class="card">
+        <h2>新增目的地</h2>
+        <div class="grid-form">
+          <label>ID（英文）<input id="newDestId" placeholder="yilan" /></label>
+          <label>地名<input id="newDestPlace" placeholder="宜蘭" /></label>
+          <label class="span2">標題<input id="newDestHeadline" placeholder="把今天的宜蘭，變成一首歌" /></label>
+        </div>
+        <div class="row">
+          <button id="btnCreateDest" class="primary" type="button">建立</button>
+        </div>
+        <p id="newDestStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 品牌 -->
+    <section id="page-brand" class="page hidden">
+      <p class="crumb"><a id="brandBack" href="#/">← 返回</a></p>
+      <div class="card">
+        <h2>品牌首頁文案</h2>
+        <div class="grid-form">
+          <label>地名<input id="brandPlace" /></label>
+          <label>CTA 按鈕文字<input id="brandCta" /></label>
+          <label class="span2">主標<input id="brandHeadline" /></label>
+          <label class="span2">副標<textarea id="brandSubhead" rows="3"></textarea></label>
+          <label class="span2">核心句<input id="brandCore" /></label>
+          <label class="span2">給 LM 的提示（可選）<input id="brandHints" placeholder="例如：偏港邊、漁村、親子友善" /></label>
+          <label class="check"><input id="destEnabled" type="checkbox" /> 對遊客開放</label>
+        </div>
+        <div class="row">
+          <button id="btnGenerateBrand" class="secondary" type="button">LM 自動生成</button>
+          <button id="btnSaveBrand" class="primary" type="button">儲存這一頁</button>
+        </div>
+        <p id="brandStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 旅程列表 -->
+    <section id="page-routes" class="page hidden">
+      <p class="crumb"><a id="routesBack" href="#/">← 返回</a></p>
+      <div class="card">
+        <div class="card-head">
+          <h2>旅程路線</h2>
+          <button id="btnAddRoute" class="secondary" type="button">＋ 新增旅程</button>
+        </div>
+        <p class="hint">點一條旅程進去編輯。這裡的列表會出現在遊客「選擇旅程」。</p>
+        <div id="routeList" class="list"></div>
+        <p id="routeStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 單一路線編輯 -->
+    <section id="page-route-edit" class="page hidden">
+      <p class="crumb"><a id="routeEditBack" href="#/">← 旅程列表</a></p>
+      <div class="card">
+        <h2 id="routeEditTitle">編輯旅程</h2>
+        <div class="grid-form">
+          <label>ID（英文）<input id="routeId" placeholder="coldspring" /></label>
+          <label>名稱<input id="routeLabel" placeholder="蘇澳冷泉篇" /></label>
+          <label class="span2">簡介<input id="routeBlurb" placeholder="清涼的水聲與山谷回音" /></label>
+        </div>
+        <h3 class="subhead">聲音任務</h3>
+        <p class="hint">遊客要收集的聲音。至少一個。</p>
+        <div id="taskEditor" class="tasks"></div>
+        <div class="row">
+          <button id="btnAddTask" class="ghost" type="button">＋ 聲音任務</button>
+        </div>
+        <div class="row sticky-actions">
+          <button id="btnSaveRoute" class="primary" type="button">儲存這一頁</button>
+          <button id="btnDeleteRoute" class="danger" type="button">刪除旅程</button>
+        </div>
+        <p id="routeEditStatus" class="status"></p>
+      </div>
+    </section>
+
+    <!-- 心情 -->
+    <section id="page-moods" class="page hidden">
+      <p class="crumb"><a id="moodsBack" href="#/">← 返回</a></p>
+      <div class="card">
+        <div class="card-head">
+          <h2>心情風格</h2>
+          <button id="btnAddMood" class="secondary" type="button">＋ 新增心情</button>
+        </div>
+        <p class="hint">engineStyle：pop / ambient / ballad / latin / cinematic / rnb / folk 等。</p>
+        <div id="moodEditor"></div>
+        <div class="row sticky-actions">
+          <button id="btnSaveMoods" class="primary" type="button">儲存這一頁</button>
+        </div>
+        <p id="moodStatus" class="status"></p>
+      </div>
+    </section>
+  </div>
+  <script src="/admin-assets/app.js"></script>
+</body>
+</html>

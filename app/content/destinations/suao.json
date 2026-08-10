@@ -1,0 +1,124 @@
+{
+  "id": "suao",
+  "enabled": true,
+  "brand": {
+    "place": "蘇澳",
+    "headline": "把今天的蘇澳，變成一首屬於你的歌",
+    "subhead": "收集旅途中遇見的聲音、風景與故事，最後讓這首歌用你的聲音唱出這趟旅行。",
+    "cta": "開始我的音樂旅程",
+    "coreLine": "不是來這裡做一首歌，而是把這趟旅行，帶回家變成一首歌。",
+    "demoSongUrl": null
+  },
+  "routes": [
+    {
+      "id": "coldspring",
+      "label": "蘇澳冷泉篇",
+      "blurb": "清涼的水聲與山谷回音",
+      "soundTasks": [
+        { "id": "water", "label": "泉水／流水" },
+        { "id": "wind", "label": "山風" },
+        { "id": "people", "label": "笑聲或腳步" }
+      ]
+    },
+    {
+      "id": "nanfangao",
+      "label": "南方澳漁港篇",
+      "blurb": "海浪、港口與市場的節奏",
+      "soundTasks": [
+        { "id": "wave", "label": "海浪" },
+        { "id": "harbor", "label": "港口" },
+        { "id": "market", "label": "市場" }
+      ]
+    },
+    {
+      "id": "coast",
+      "label": "海岸篇",
+      "blurb": "開闊海線與風的聲音",
+      "soundTasks": [
+        { "id": "surf", "label": "拍岸" },
+        { "id": "gull", "label": "海風／鳥鳴" },
+        { "id": "pebble", "label": "腳踩砂石" }
+      ]
+    },
+    {
+      "id": "market",
+      "label": "市場篇",
+      "blurb": "叫賣、鍋鏟與人情味",
+      "soundTasks": [
+        { "id": "vendor", "label": "叫賣" },
+        { "id": "kitchen", "label": "料理聲" },
+        { "id": "crowd", "label": "人聲喧嘩" }
+      ]
+    },
+    {
+      "id": "oldstreet",
+      "label": "老街篇",
+      "blurb": "巷弄腳步與店家溫度",
+      "soundTasks": [
+        { "id": "alley", "label": "巷弄" },
+        { "id": "shop", "label": "店家" },
+        { "id": "bike", "label": "車鈴或腳步" }
+      ]
+    },
+    {
+      "id": "family",
+      "label": "親子篇",
+      "blurb": "孩子的笑聲與一起的腳步",
+      "soundTasks": [
+        { "id": "laugh", "label": "笑聲" },
+        { "id": "play", "label": "遊戲" },
+        { "id": "together", "label": "一起說話" }
+      ]
+    }
+  ],
+  "moodStyles": [
+    {
+      "id": "travel_light",
+      "label": "輕快旅行",
+      "emoji": "🎸",
+      "engineStyle": "pop",
+      "blurb": "步伐輕鬆、好哼好記"
+    },
+    {
+      "id": "seaside_chill",
+      "label": "海邊 Chill",
+      "emoji": "🌊",
+      "engineStyle": "ambient",
+      "blurb": "慢一點，像風吹過港邊"
+    },
+    {
+      "id": "warm_memory",
+      "label": "溫柔回憶",
+      "emoji": "🎹",
+      "engineStyle": "ballad",
+      "blurb": "想把這一天好好留住"
+    },
+    {
+      "id": "lively_port",
+      "label": "熱鬧港口",
+      "emoji": "🎺",
+      "engineStyle": "latin",
+      "blurb": "有點熱、有點吵、很有活力"
+    },
+    {
+      "id": "cinematic",
+      "label": "電影感",
+      "emoji": "🎻",
+      "engineStyle": "cinematic",
+      "blurb": "像預告片裡的那段旅程"
+    },
+    {
+      "id": "romance",
+      "label": "浪漫",
+      "emoji": "❤️",
+      "engineStyle": "rnb",
+      "blurb": "兩個人的海與傍晚"
+    }
+  ],
+  "storyPrompts": {
+    "places": ["冷泉", "漁港", "海邊", "市場", "老街", "某處角落"],
+    "companions": ["家人", "朋友", "另一半", "自己", "好同事"],
+    "feelings": ["快樂", "療癒", "冒險", "浪漫", "紀念"],
+    "memoryPlaceholder": "例如：第一次帶媽媽來南方澳。"
+  }
+}

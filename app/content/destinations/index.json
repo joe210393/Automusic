@@ -1,0 +1,10 @@
+{
+  "destinations": [
+    {
+      "id": "suao",
+      "label": "蘇澳",
+      "enabled": true,
+      "tagline": "把今天的蘇澳，變成一首屬於你的歌"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>登入｜聲之旅</title>
+  <meta name="theme-color" content="#1a2b4a" />
+  <link rel="stylesheet" href="/trip/styles.css" />
+  <link rel="stylesheet" href="/trip/auth.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-scene">
+    <picture class="auth-photo" aria-hidden="true">
+      <source srcset="/trip/media/hero-coast.webp" type="image/webp" />
+      <img src="/trip/media/hero-coast.png" alt="" width="1024" height="576" fetchpriority="high" />
+    </picture>
+    <div class="auth-veil" aria-hidden="true"></div>
+    <header class="auth-nav">
+      <a class="auth-brand" href="/">聲之旅</a>
+      <a class="auth-link" href="/register">註冊</a>
+    </header>
+    <main class="auth-dock">
+      <h1>歡迎回來</h1>
+      <p>登入後可以收藏旅程、查看作品庫與額度。</p>
+      <form id="loginForm" class="auth-card" autocomplete="on">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required placeholder="you@example.com" autocomplete="email" />
+        <label for="displayName">暱稱（可選）</label>
+        <input id="displayName" name="displayName" type="text" maxlength="40" placeholder="旅人" autocomplete="nickname" />
+        <button class="primary" type="submit">登入</button>
+        <p class="auth-switch">還沒有帳號？<a href="/register">立即註冊</a></p>
+        <p id="authStatus" class="status"></p>
+      </form>
+    </main>
+    <footer class="site-footer auth-footer">
+      <p class="footer-copy">版權所有：來就補多媒體行銷</p>
+      <nav class="footer-links" aria-label="帳號與後台">
+        <a href="/admin">後台登入</a>
+        <a href="/register">註冊</a>
+      </nav>
+    </footer>
+  </div>
+  <script>window.AUTH_MODE = "login";</script>
+  <script src="/trip/auth.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>旅行歌曲</title>
+  <meta property="og:type" content="music.song" />
+  <meta property="og:title" content="旅行歌曲" id="ogTitle" />
+  <meta property="og:description" content="這首歌，是在旅行時創作的。" id="ogDesc" />
+  <meta name="theme-color" content="#122430" />
+  <link rel="stylesheet" href="/trip/styles.css" />
+</head>
+<body class="is-flow">
+  <div class="app-shell">
+    <div class="topbar">
+      <div class="brand-mark">AUTOMUSIC</div>
+      <a class="lab-link" href="/">首頁</a>
+    </div>
+    <div class="panel">
+      <div class="share-og" id="shareHero">
+        <p class="station-name" id="sharePlace" style="color:rgba(243,247,248,0.8)">蘇澳</p>
+        <h1 id="shareTitle">《旅行之歌》</h1>
+        <div id="shareBy">旅人的旅行歌</div>
+      </div>
+      <p class="lead" id="shareMemory"></p>
+      <audio id="shareAudio" controls style="width:100%"></audio>
+      <div class="lyrics-block" style="margin-top:14px;">
+        <h3>副歌</h3>
+        <div id="shareChorus"></div>
+      </div>
+      <p class="core-line" id="shareCore" style="margin-top:18px;"></p>
+      <div class="actions" style="margin-top:20px;">
+        <a class="btn btn-primary" href="/">我也想做一首</a>
+      </div>
+    </div>
+  </div>
+  <script>
+    (async function () {
+      const slug = location.pathname.split('/').filter(Boolean).pop();
+      const res = await fetch('/api/share/' + encodeURIComponent(slug));
+      if (!res.ok) {
+        document.getElementById('shareTitle').textContent = '找不到這首歌';
+        return;
+      }
+      const data = await res.json();
+      document.title = data.title + '｜旅行歌曲';
+      document.getElementById('ogTitle').setAttribute('content', data.title);
+      document.getElementById('ogDesc').setAttribute(
+        'content',
+        `這首歌，是在${data.place || '旅途'}創作的。`
+      );
+      document.getElementById('sharePlace').textContent = data.place || '';
+      document.getElementById('shareTitle').textContent = '《' + data.title + '》';
+      document.getElementById('shareBy').textContent =
+        `${data.nickname || '旅人'}的${data.place || ''}旅行歌`;
+      document.getElementById('shareMemory').textContent = data.memory || data.feeling || '';
+      document.getElementById('shareChorus').textContent = data.chorus || '';
+      document.getElementById('shareCore').textContent =
+        data.core_line || '這首歌，是在旅行時創作的。';
+      document.getElementById('shareAudio').src = data.audio_url;
+    })();
+  </script>
+</body>
+</html>

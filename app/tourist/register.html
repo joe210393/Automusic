@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>註冊｜聲之旅</title>
+  <meta name="theme-color" content="#1a2b4a" />
+  <link rel="stylesheet" href="/trip/styles.css" />
+  <link rel="stylesheet" href="/trip/auth.css" />
+</head>
+<body class="auth-page">
+  <div class="auth-scene">
+    <picture class="auth-photo" aria-hidden="true">
+      <source srcset="/trip/media/hero-fields.webp" type="image/webp" />
+      <img src="/trip/media/hero-fields.png" alt="" width="1024" height="576" fetchpriority="high" />
+    </picture>
+    <div class="auth-veil" aria-hidden="true"></div>
+    <header class="auth-nav">
+      <a class="auth-brand" href="/">聲之旅</a>
+      <a class="auth-link" href="/login">登入</a>
+    </header>
+    <main class="auth-dock">
+      <h1>開始你的音樂旅程</h1>
+      <p>註冊後，作品會保存在你的旅程庫裡。</p>
+      <form id="registerForm" class="auth-card" autocomplete="on">
+        <label for="displayName">暱稱</label>
+        <input id="displayName" name="displayName" type="text" maxlength="40" required placeholder="例如：小美" autocomplete="nickname" />
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required placeholder="you@example.com" autocomplete="email" />
+        <button class="primary" type="submit">註冊</button>
+        <p class="auth-switch">已經有帳號？<a href="/login">直接登入</a></p>
+        <p id="authStatus" class="status"></p>
+      </form>
+    </main>
+    <footer class="site-footer auth-footer">
+      <p class="footer-copy">版權所有：來就補多媒體行銷</p>
+      <nav class="footer-links" aria-label="帳號與後台">
+        <a href="/admin">後台登入</a>
+        <a href="/register">註冊</a>
+      </nav>
+    </footer>
+  </div>
+  <script>window.AUTH_MODE = "register";</script>
+  <script src="/trip/auth.js"></script>
+</body>
+</html>
