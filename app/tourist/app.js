@@ -1230,20 +1230,35 @@
     setStatus(statusEl, "正在製作，請稍候…");
 
     let stopPoll = false;
+    let lastPct = 3;
+    let serverSeen = false;
     let fallbackPct = 3;
+
+    function bumpProgress(pct, label) {
+      const next = Math.max(0, Math.min(99, Math.round(pct || 0)));
+      // 只允許往前，避免假進度與伺服器進度互搶橫跳
+      if (next < lastPct) return;
+      lastPct = next;
+      renderProgress(panelPrefix, steps, lastPct, label || "製作中");
+    }
+
     const fallbackTimer = setInterval(() => {
-      if (stopPoll) return;
-      fallbackPct = Math.min(88, fallbackPct + 2);
+      if (stopPoll || serverSeen) return;
+      fallbackPct = Math.min(40, fallbackPct + 1);
       const idx = Math.min(steps.length - 2, Math.floor(fallbackPct / (100 / (steps.length - 1))));
-      renderProgress(panelPrefix, steps, fallbackPct, fallbackLabels?.[idx] || steps[idx]);
-    }, 1800);
+      bumpProgress(fallbackPct, fallbackLabels?.[idx] || steps[idx]);
+    }, 2200);
 
     const poll = (async () => {
       while (!stopPoll) {
         try {
           const meta = await api(`/api/journey/${journey.id}`);
           const fp = meta.finalize_progress || {};
-          if (fp.pct != null) renderProgress(panelPrefix, steps, fp.pct, fp.label || "製作中");
+          // 只採信這次製作中的進度，避免讀到上一輪殘留的 100%
+          if (meta.status === "finalizing" && fp.pct != null) {
+            serverSeen = true;
+            bumpProgress(fp.pct, fp.label || "製作中");
+          }
         } catch (_) { /* ignore */ }
         await new Promise((r) => setTimeout(r, 900));
       }
@@ -1253,6 +1268,7 @@
       const data = await request();
       stopPoll = true;
       clearInterval(fallbackTimer);
+      lastPct = 100;
       renderProgress(panelPrefix, steps, 100, "完成");
       await onDone(data);
     } catch (e) {

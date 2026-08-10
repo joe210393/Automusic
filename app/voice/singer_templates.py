@@ -1,19 +1,25 @@
 """
 AI 歌手模板：男／女聲各三種。
 
-實際音色差異：
-1. DiffSinger 代唱時依 speaker_midi 折疊音域
-2. 若 app/voice/singer_refs/{id}.wav 存在且 Seed-VC 可用，再換成該參考音色
-3. 否則套用輕量等化／響度輪廓，讓六種仍可聽出差別
+重要：DiffSinger Opencpop 是女聲模型，代唱必須維持其自然音域（約 MIDI 64）。
+男／女差異用「合成後變調」與輕量音色處理，不要把音符硬折到過低音域
+（那會讓模型唱出鬼叫聲）。
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
+import soundfile as sf
 
 REFS_DIR = Path(__file__).resolve().parent / "singer_refs"
+
+# DiffSinger Opencpop 舒適音域中心（女聲）
+DIFFSINGER_NATIVE_MIDI = 64.0
 
 SINGER_TEMPLATES: Dict[str, Dict[str, Any]] = {
     "female_bright": {
@@ -21,54 +27,54 @@ SINGER_TEMPLATES: Dict[str, Dict[str, Any]] = {
         "gender": "female",
         "label": "女聲・明亮",
         "blurb": "清亮一點，像海邊陽光",
-        "speaker_midi": 67.0,
-        "gain": 1.05,
-        "softness": 0.0,
+        "pitch_shift": 1.5,
+        "gain": 1.04,
+        "high_shelf": 1.12,
     },
     "female_warm": {
         "id": "female_warm",
         "gender": "female",
         "label": "女聲・溫暖",
         "blurb": "溫柔中音，適合旅行回憶",
-        "speaker_midi": 64.0,
+        "pitch_shift": 0.0,
         "gain": 1.0,
-        "softness": 0.15,
+        "high_shelf": 1.0,
     },
     "female_soft": {
         "id": "female_soft",
         "gender": "female",
         "label": "女聲・柔和",
         "blurb": "柔一點、輕一點",
-        "speaker_midi": 61.0,
-        "gain": 0.92,
-        "softness": 0.35,
+        "pitch_shift": -1.0,
+        "gain": 0.95,
+        "high_shelf": 0.88,
     },
     "male_deep": {
         "id": "male_deep",
         "gender": "male",
         "label": "男聲・低沉",
         "blurb": "沉穩低音",
-        "speaker_midi": 48.0,
-        "gain": 1.08,
-        "softness": 0.1,
+        "pitch_shift": -11.0,
+        "gain": 1.06,
+        "high_shelf": 0.9,
     },
     "male_warm": {
         "id": "male_warm",
         "gender": "male",
         "label": "男聲・溫暖",
         "blurb": "中低男聲，有溫度",
-        "speaker_midi": 52.0,
-        "gain": 1.0,
-        "softness": 0.2,
+        "pitch_shift": -9.0,
+        "gain": 1.02,
+        "high_shelf": 0.95,
     },
     "male_clear": {
         "id": "male_clear",
         "gender": "male",
         "label": "男聲・清朗",
         "blurb": "偏高男聲，較清楚",
-        "speaker_midi": 56.0,
-        "gain": 1.02,
-        "softness": 0.05,
+        "pitch_shift": -7.0,
+        "gain": 1.04,
+        "high_shelf": 1.05,
     },
 }
 
@@ -103,23 +109,83 @@ def ref_wav_path(singer_id: str) -> Path:
     return REFS_DIR / f"{singer_id}.wav"
 
 
+def _pitch_shift_audio(x: np.ndarray, fs: int, semitones: float) -> np.ndarray:
+    """用 ffmpeg 變調並維持時長（asetrate + atempo）。"""
+    if abs(semitones) < 0.05 or x.size < 32:
+        return x
+    rate = 2.0 ** (semitones / 12.0)
+    # 變速補償：asetrate 改變音高也改變速度，atempo 拉回原長
+    tempo = rate
+    filters = [f"asetrate={fs * rate:.4f}", f"aresample={fs}"]
+    # atempo 只接受 0.5–2.0
+    r = tempo
+    while r > 2.0:
+        filters.append("atempo=2.0")
+        r /= 2.0
+    while r < 0.5:
+        filters.append("atempo=0.5")
+        r /= 0.5
+    filters.append(f"atempo={r:.6f}")
+    af = ",".join(filters)
+
+    in_path = tempfile.mktemp(prefix="tpl_in_", suffix=".wav")
+    out_path = tempfile.mktemp(prefix="tpl_out_", suffix=".wav")
+    try:
+        sf.write(in_path, x.astype(np.float32), fs)
+        subprocess.run(
+            ["ffmpeg", "-y", "-loglevel", "error", "-i", in_path, "-af", af, out_path],
+            check=True,
+            capture_output=True,
+            timeout=180,
+        )
+        y, out_fs = sf.read(out_path, dtype="float64")
+        if y.ndim > 1:
+            y = y.mean(axis=1)
+        if out_fs != fs:
+            n = int(len(y) * fs / out_fs)
+            y = np.interp(np.linspace(0, len(y) - 1, n), np.arange(len(y)), y)
+        # 對齊長度
+        if len(y) < len(x):
+            y = np.pad(y, (0, len(x) - len(y)))
+        return y[: len(x)]
+    except Exception as e:
+        print(f"[singer-templates] pitch shift fail: {e}")
+        return x
+    finally:
+        for p in (in_path, out_path):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def _high_shelf(x: np.ndarray, amount: float) -> np.ndarray:
+    """amount>1 提亮，amount<1 變柔；用簡易差分近似。"""
+    if abs(amount - 1.0) < 0.02 or x.size < 4:
+        return x
+    # high = x - smooth(x)
+    k = 5
+    kernel = np.ones(k, dtype=np.float64) / k
+    smooth = np.convolve(x, kernel, mode="same")
+    high = x - smooth
+    # amount=1.12 → 多加一點高頻；0.88 → 減少高頻
+    return smooth + high * float(amount)
+
+
 def apply_template_color(vocal: np.ndarray, singer_id: Optional[str], fs: int = 44100) -> np.ndarray:
-    """無 Seed-VC 參考檔時，用增益與輕柔化做出可感知差異。"""
+    """合成後套用模板：變調（男聲）＋輕量音色，避免破壞 DiffSinger 音質。"""
     tpl = get_template(singer_id)
     x = np.asarray(vocal, dtype=np.float64).copy()
     if x.size == 0:
         return x
-    softness = float(tpl.get("softness") or 0.0)
-    if softness > 0 and len(x) > 8:
-        # 簡易移動平均＝略柔一點的高頻
-        k = max(3, int(fs * 0.0004 * (1.0 + softness * 4)))
-        if k % 2 == 0:
-            k += 1
-        kernel = np.ones(k, dtype=np.float64) / k
-        smooth = np.convolve(x, kernel, mode="same")
-        x = (1.0 - softness) * x + softness * smooth
-    gain = float(tpl.get("gain") or 1.0)
-    x *= gain
+
+    shift = float(tpl.get("pitch_shift") or 0.0)
+    if abs(shift) >= 0.05:
+        x = _pitch_shift_audio(x, fs, shift)
+
+    x = _high_shelf(x, float(tpl.get("high_shelf") or 1.0))
+    x *= float(tpl.get("gain") or 1.0)
+
     peak = float(np.max(np.abs(x))) if x.size else 0.0
     if peak > 0.95:
         x *= 0.95 / peak

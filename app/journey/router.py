@@ -490,6 +490,7 @@ def set_singer(journey_id: str, body: SingerBody):
     meta["ai_singer_id"] = body.singer_id
     meta["ai_singer_label"] = tpl.get("label")
     meta["status"] = "style"
+    meta["finalize_progress"] = None
     store.save_meta(journey_id, meta)
     return {"ok": True, "singer": tpl, "meta": meta}
 

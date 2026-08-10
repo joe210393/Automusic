@@ -137,7 +137,9 @@ def run_finalize_ai(journey_id: str) -> dict:
     meta["status"] = "finalizing"
     meta["error"] = None
     meta["compose_steps"] = []
+    meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
     tpl = get_template(meta.get("ai_singer_id"))
+    store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 5, "準備製作")
 
     final_path = _render_arrangement(meta, vocal_mode="ai")
@@ -169,9 +171,9 @@ def run_finalize_voice(journey_id: str) -> dict:
     meta["status"] = "finalizing"
     meta["error"] = None
     meta["compose_steps"] = []
+    meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
+    store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 5, "準備製作")
-
-    final_path = _render_arrangement(meta, vocal_mode="voiceprint")
     out_name = "final-voice" + Path(final_path).suffix
     dest_file = store.output_dir(journey_id) / out_name
     shutil.copyfile(final_path, dest_file)
@@ -373,13 +375,19 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
 
     _set_finalize_progress(meta, 35, "AI 歌手代唱")
     vocal = None
-    speaker_midi = float(tpl.get("speaker_midi") or 64.0)
-    if vocal_mode == "voiceprint":
-        # 聲紋版仍以使用者音高估計為優先；無聲紋時退回模板
+    from app.voice.singer_templates import DIFFSINGER_NATIVE_MIDI
+
+    # AI 版一律用 DiffSinger 原生女聲音域合成；男聲之後再變調
+    # 聲紋版可用使用者音高估計，但仍夾在合理範圍避免鬼聲
+    if vocal_mode == "ai":
+        speaker_midi = float(DIFFSINGER_NATIVE_MIDI)
+    else:
+        speaker_midi = float(DIFFSINGER_NATIVE_MIDI)
         from app.voice.sing import estimate_speaker_midi
         est = estimate_speaker_midi(vp_dir, manifest)
         if est is not None:
-            speaker_midi = float(est)
+            # 夾在 58–70：接近 Opencpop，再靠 Seed-VC 換音色
+            speaker_midi = float(max(58.0, min(70.0, est)))
 
     if svs.is_available() or svs.SVS_REMOTE_URLS:
         vocal = svs.build_svs_vocal_track(

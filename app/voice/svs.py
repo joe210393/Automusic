@@ -205,7 +205,7 @@ def build_svs_vocal_track(
     if not chorus_chars:
         chorus_chars = verse_chars
 
-    # DiffSinger Opencpop 女聲音域偏高；依模板 speaker_midi 折疊
+    # DiffSinger Opencpop 女聲音域；模板男／女差異在合成後變調，不要在這裡硬折到過低音域
     notes = fold_notes_to_speaker_range(notes, speaker_midi=float(speaker_midi))
     quantized = quantize_notes(notes, bpm, grid="1/8")
     if not quantized:
