@@ -253,7 +253,7 @@ async def root():
 async def tourist_login_page():
     page = tourist_dir / "login.html"
     if page.exists():
-        return FileResponse(page)
+        return FileResponse(page, headers={"Cache-Control": "no-store"})
     raise HTTPException(status_code=404, detail="登入頁尚未準備好")
 
 
@@ -261,7 +261,7 @@ async def tourist_login_page():
 async def tourist_register_page():
     page = tourist_dir / "register.html"
     if page.exists():
-        return FileResponse(page)
+        return FileResponse(page, headers={"Cache-Control": "no-store"})
     raise HTTPException(status_code=404, detail="註冊頁尚未準備好")
 
 
@@ -270,7 +270,7 @@ async def tourist_me_page():
     """使用者後台：帳號與我的旅程。"""
     page = tourist_dir / "me.html"
     if page.exists():
-        return FileResponse(page)
+        return FileResponse(page, headers={"Cache-Control": "no-store"})
     raise HTTPException(status_code=404, detail="使用者後台尚未準備好")
 
 

@@ -39,7 +39,7 @@
         const path = mode() === "register" ? "/api/account/register" : "/api/account/login";
         const data = await submit(path, {
           email,
-          display_name: String(displayName).trim(),
+          display_name: String(displayName || "").trim(),
         });
         localStorage.setItem(TOKEN_KEY, data.token);
         setStatus(`歡迎，${data.account.display_name || data.account.email}`, "ok");

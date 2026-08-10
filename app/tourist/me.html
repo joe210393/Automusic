@@ -3,45 +3,51 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>我的旅程｜聲之旅</title>
+  <title>旅人後台｜聲之旅</title>
   <meta name="theme-color" content="#1a2b4a" />
+  <meta http-equiv="Cache-Control" content="no-cache" />
   <link rel="stylesheet" href="/trip/styles.css" />
   <link rel="stylesheet" href="/trip/auth.css" />
   <link rel="stylesheet" href="/trip/me.css" />
 </head>
-<body class="auth-page me-page">
-  <div class="auth-scene">
-    <picture class="auth-photo" aria-hidden="true">
-      <source srcset="/trip/media/hero-river.webp" type="image/webp" />
-      <img src="/trip/media/hero-river.png" alt="" width="1024" height="576" fetchpriority="high" />
-    </picture>
-    <div class="auth-veil" aria-hidden="true"></div>
-    <header class="auth-nav">
+<body class="me-page">
+  <div class="me-shell">
+    <div class="me-bg" aria-hidden="true">
+      <picture>
+        <source srcset="/trip/media/hero-river.webp" type="image/webp" />
+        <img src="/trip/media/hero-river.png" alt="" width="1024" height="576" fetchpriority="high" />
+      </picture>
+      <div class="me-bg-veil"></div>
+    </div>
+
+    <header class="me-topbar">
       <a class="auth-brand" href="/">聲之旅</a>
       <div class="auth-nav-right">
-        <a class="auth-link" href="/">回首頁</a>
+        <a class="auth-link" href="/">回首頁玩遊戲</a>
         <button type="button" class="auth-link" id="btnLogout">登出</button>
       </div>
     </header>
-    <main class="me-dock">
+
+    <main class="me-main">
       <section class="me-card" id="meProfileCard">
-        <p class="me-eyebrow">使用者後台</p>
-        <h1 id="meName">我的旅程</h1>
+        <p class="me-eyebrow">旅人後台 · 不是登入頁</p>
+        <h1 id="meName">旅人</h1>
         <p class="me-email" id="meEmail"></p>
         <p class="me-quota" id="meQuota"></p>
       </section>
 
       <section class="me-card" id="meListCard">
         <div class="me-card-head">
-          <h2>旅程作品</h2>
+          <h2>我的旅程作品</h2>
           <a class="auth-link" href="/">開始新旅程</a>
         </div>
+        <p class="me-hint">這裡只放你的作品：可命名、換封面、看錄音／歌詞／成品，也能繼續未完成的旅程。</p>
         <div id="meJourneyList" class="me-journey-list"></div>
         <p id="meStatus" class="status"></p>
       </section>
 
       <section class="me-card me-detail hidden" id="meDetailCard">
-        <button type="button" class="me-back" id="btnBackList">← 回到列表</button>
+        <button type="button" class="me-back" id="btnBackList">← 回到作品列表</button>
         <div class="me-cover-wrap">
           <img id="meCoverImg" class="me-cover" alt="旅程封面" hidden />
           <div class="me-cover-empty" id="meCoverEmpty">預設封面，可換成自己的照片</div>
@@ -56,7 +62,7 @@
 
         <div class="me-block">
           <h3>封面照片</h3>
-          <p class="me-empty" style="margin-bottom:8px;">新建旅程會從六張風景裡隨機一張；想換成自己的照片再上傳。</p>
+          <p class="me-empty" style="margin-bottom:8px;">新建時會從六張風景隨機一張；想換成自己的照片再上傳。</p>
           <input id="meCoverFile" type="file" accept="image/jpeg,image/png,image/webp" />
           <button type="button" class="auth-link" id="btnUploadCover">換成我的照片</button>
         </div>
@@ -76,11 +82,12 @@
         <p id="meDetailStatus" class="status"></p>
       </section>
     </main>
-    <footer class="site-footer auth-footer">
+
+    <footer class="site-footer me-footer">
       <p class="footer-copy">版權所有：來就補多媒體行銷</p>
       <nav class="footer-links" aria-label="帳號與後台">
         <a href="/admin">後台登入</a>
-        <a href="/register">註冊</a>
+        <a href="/">首頁</a>
       </nav>
     </footer>
   </div>
