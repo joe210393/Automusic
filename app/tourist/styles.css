@@ -1036,7 +1036,9 @@ textarea { min-height: 96px; resize: vertical; }
 .finalize-busy .gender-choice,
 .finalize-busy #singerList .choice,
 .finalize-busy #btnFinalizeVoice,
-.finalize-busy #btnConsentStart {
+.finalize-busy #btnConsentStart,
+.finalize-busy #btnUpgradeFull,
+.finalize-busy #btnPayStub {
   pointer-events: none;
   opacity: 0.55;
 }

@@ -174,6 +174,13 @@ def consume_finalize(account_id: Optional[str]) -> None:
     save_account(acc)
 
 
+def can_full_song(account_id: Optional[str] = None, acc: Optional[dict] = None) -> bool:
+    """付費 stub：解鎖完整歌曲長度。"""
+    if acc is None and account_id:
+        acc = get_account(account_id)
+    return bool(acc and acc.get("paid"))
+
+
 def set_paid(account_id: str, paid: bool = True) -> Optional[dict]:
     acc = get_account(account_id)
     if not acc:
@@ -189,6 +196,7 @@ def public_account_view(acc: dict) -> dict:
         "email": acc["email"],
         "display_name": acc.get("display_name"),
         "paid": bool(acc.get("paid")),
+        "can_full_song": can_full_song(acc=acc),
         "quota": check_finalize_quota(acc["id"]),
     }
 

@@ -679,15 +679,6 @@ def svs_synthesize(job: SVSJobRequest):
     return FileResponse(out, media_type="audio/wav", filename="svs.wav")
 
 
-class AceStepGenerateRequest(BaseModel):
-    lyrics: dict
-    bpm: float = 100
-    key: Optional[str] = None
-    singer_id: Optional[str] = None
-    engine_style: Optional[str] = None
-    duration_sec: float = 45.0
-
-
 @app.get("/acestep/health")
 def acestep_health():
     """本機 ACE-Step 是否就緒（給雲端 Zeabur 探測；只查 :8001）。"""
@@ -698,27 +689,85 @@ def acestep_health():
 
 
 @app.post("/acestep/generate")
-def acestep_generate(req: AceStepGenerateRequest):
+async def acestep_generate(
+    lyrics_json: str = Form(...),
+    bpm: float = Form(100),
+    key: str = Form(""),
+    singer_id: str = Form(""),
+    engine_style: str = Form(""),
+    duration_sec: float = Form(45.0),
+    cover_strength: float = Form(0.85),
+    full_lyrics: str = Form("0"),
+    seed: Optional[str] = Form(None),
+    src_audio: Optional[UploadFile] = File(None),
+):
     """
-    用本機 ACE-Step 產生含人聲整曲 MP3。
-    雲端 Zeabur 經 ngrok 委託此端點（與 /svs、/vc 相同）。
+    用本機 ACE-Step 產生含人聲整曲 MP3（可帶 preview 做 cover）。
+    雲端 Zeabur 經 ngrok 委託此端點（multipart）。
     """
     from app.voice import acestep as _ace
 
     if not _ace.local_available():
         raise HTTPException(status_code=501, detail="此伺服器未啟動 ACE-Step")
     try:
-        out = _ace.generate_to_tempfile(
-            lyrics=req.lyrics,
-            bpm=float(req.bpm),
-            key=req.key,
-            singer_id=req.singer_id,
-            engine_style=req.engine_style,
-            duration_sec=float(req.duration_sec or 45.0),
+        lyrics = json.loads(lyrics_json)
+        if not isinstance(lyrics, dict):
+            raise ValueError("lyrics_json must be object")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"lyrics_json 無效: {e}") from e
+
+    src_path = None
+    if src_audio is not None:
+        raw = await src_audio.read()
+        if raw:
+            suffix = Path(src_audio.filename or "preview.mp3").suffix or ".mp3"
+            fd, tmp = tempfile.mkstemp(prefix="ace_src_", suffix=suffix)
+            os.close(fd)
+            Path(tmp).write_bytes(raw)
+            src_path = Path(tmp)
+
+    seed_i = None
+    if seed not in (None, ""):
+        try:
+            seed_i = int(seed)
+        except ValueError:
+            seed_i = None
+
+    try:
+        result = await run_in_threadpool(
+            lambda: _ace.generate_to_tempfile(
+                lyrics=lyrics,
+                bpm=float(bpm),
+                key=key or None,
+                singer_id=singer_id or None,
+                engine_style=engine_style or None,
+                duration_sec=float(duration_sec or 45.0),
+                src_audio_path=src_path,
+                cover_strength=float(cover_strength or 0.85),
+                seed=seed_i,
+                full_lyrics=str(full_lyrics).strip().lower() in ("1", "true", "yes"),
+            )
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ACE-Step 產生失敗: {e}") from e
-    return FileResponse(out, media_type="audio/mpeg", filename="acestep.mp3")
+    finally:
+        if src_path:
+            try:
+                src_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    headers = {}
+    if result.seed:
+        headers["X-ACE-Seed"] = str(result.seed)
+    if result.engine:
+        headers["X-ACE-Engine"] = result.engine
+    return FileResponse(
+        str(result.path),
+        media_type="audio/mpeg",
+        filename="acestep.mp3",
+        headers=headers,
+    )
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)

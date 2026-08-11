@@ -120,13 +120,42 @@ def _set_finalize_progress(meta: dict, pct: int, label: str) -> None:
 
 
 def run_finalize(journey_id: str) -> dict:
-    """向後相容：等同 AI 版成品。"""
-    return run_finalize_ai(journey_id)
+    """向後相容：等同 AI 試聽版成品。"""
+    return run_finalize_ai(journey_id, full=False)
 
 
-def run_finalize_ai(journey_id: str) -> dict:
-    """用選定的 AI 歌手風格合成最終成品（優先 ACE-Step 整曲人聲；失敗則編曲＋主旋律）。"""
+def _ensure_preview_path(meta: dict) -> Path:
+    """保證有 MIDI 伴奏 preview，作為 cover 的旋律來源。"""
+    jid = meta["id"]
+    name = meta.get("preview_file")
+    if name:
+        path = store.output_dir(jid) / name
+        if path.is_file():
+            return path
+    preview_path = _render_arrangement(meta, vocal_mode="preview")
+    out_name = "preview" + Path(preview_path).suffix
+    dest = store.output_dir(jid) / out_name
+    if Path(preview_path).resolve() != dest.resolve():
+        shutil.copyfile(preview_path, dest)
+    meta["preview_file"] = out_name
+    store.save_meta(jid, meta)
+    return dest
+
+
+def _parse_seed_int(raw) -> Optional[int]:
+    if raw is None:
+        return None
+    try:
+        text = str(raw).split(",")[0].strip()
+        return int(text)
+    except Exception:
+        return None
+
+
+def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
+    """以預覽伴奏做 ACE-Step cover，在同一條旋律上加入 AI 人聲。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
+    from app.voice import acestep as _ace
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
@@ -142,38 +171,58 @@ def run_finalize_ai(journey_id: str) -> dict:
     store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 8, "準備製作")
 
-    from app.voice import acestep as _ace
-
     if not _ace.is_available():
         raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
 
-    out = store.output_dir(journey_id) / "final.mp3"
+    preview_path = _ensure_preview_path(meta)
+    _set_finalize_progress(meta, 15, "讀取旅途旋律")
+
+    duration = _ace.FULL_DURATION_SEC if full else _ace.TEASER_DURATION_SEC
+    out_name = "final-full.mp3" if full else "final.mp3"
+    out = store.output_dir(journey_id) / out_name
+    seed = _parse_seed_int(meta.get("ace_seed")) if full else None
 
     def _prog(pct: int, label: str) -> None:
         _set_finalize_progress(meta, pct, label)
 
     try:
-        _ace.generate_to_file(
+        result = _ace.generate_to_file(
             lyrics=meta["lyrics"],
             bpm=float(meta.get("bpm") or 100),
             key=meta.get("key"),
             singer_id=meta.get("ai_singer_id"),
             engine_style=meta.get("engine_style"),
-            duration_sec=45.0,
+            duration_sec=duration,
             out_path=out,
+            src_audio_path=preview_path,
+            cover_strength=_ace.ACESTEP_COVER_STRENGTH,
+            seed=seed,
+            full_lyrics=full,
             progress=_prog,
         )
     except Exception as e:
-        print(f"[journey] ACE-Step failed: {e}")
+        print(f"[journey] ACE-Step cover failed: {e}")
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
 
-    meta["final_file"] = "final.mp3"
-    meta["final_engine"] = "acestep"
+    if full:
+        meta["final_full_file"] = out_name
+    else:
+        meta["final_file"] = out_name
+    meta["final_engine"] = result.engine or "acestep_cover"
+    if result.seed:
+        meta["ace_seed"] = result.seed
+    meta["ace_duration"] = float(result.duration_sec or duration)
+    meta["ace_full"] = bool(full)
     meta["status"] = "done"
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")
     _set_finalize_progress(meta, 100, "完成")
     return meta
+
+
+def run_finalize_full(journey_id: str) -> dict:
+    """付費升級：另存完整版（不覆蓋試聽 final.mp3）。"""
+    return run_finalize_ai(journey_id, full=True)
 
 
 def run_finalize_voice(journey_id: str) -> dict:

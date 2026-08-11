@@ -191,10 +191,14 @@
       }
 
       const outs = [];
-      if (j.preview_url) outs.push(`<div class="me-audio-row"><span>預覽伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
+      if (j.preview_url) outs.push(`<div class="me-audio-row"><span>旅途旋律伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
       if (j.final_url) {
-        outs.push(`<div class="me-audio-row"><span>AI 唱歌版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
+        outs.push(`<div class="me-audio-row"><span>AI 試聽版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
           <a class="me-btn" href="${esc(j.final_url)}" download>下載</a></div>`);
+      }
+      if (j.final_full_url) {
+        outs.push(`<div class="me-audio-row"><span>AI 完整版</span><audio controls preload="none" src="${esc(j.final_full_url)}"></audio>
+          <a class="me-btn" href="${esc(j.final_full_url)}" download>下載</a></div>`);
       }
       if (j.final_voice_url) {
         outs.push(`<div class="me-audio-row"><span>我的聲音版</span><audio controls preload="none" src="${esc(j.final_voice_url)}"></audio>

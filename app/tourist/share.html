@@ -65,9 +65,16 @@
       document.getElementById('shareCore').textContent =
         data.core_line || '這首歌，是在旅行時創作的。';
       if (data.ai_singer_label) {
-        document.getElementById('shareAiLabel').textContent = 'AI 唱歌版・' + data.ai_singer_label;
+        document.getElementById('shareAiLabel').textContent =
+          (data.has_full_final ? 'AI 唱歌完整版・' : 'AI 唱歌試聽版・') + data.ai_singer_label;
+      } else {
+        document.getElementById('shareAiLabel').textContent =
+          data.has_full_final ? 'AI 唱歌完整版' : 'AI 唱歌試聽版';
       }
       document.getElementById('shareAudio').src = data.audio_url;
+      if (data.audio_full_url && data.has_full_final) {
+        // 主播放器已是完整版；另標註即可
+      }
       if (data.audio_voice_url) {
         document.getElementById('shareVoiceBlock').hidden = false;
         document.getElementById('shareVoiceAudio').src = data.audio_voice_url;

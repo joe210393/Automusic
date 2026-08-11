@@ -293,7 +293,7 @@
         <div class="flow-body">
           <div class="panel">
             <h2>選一個 AI 歌手</h2>
-            <p class="lead">選擇明亮系或沉穩系風格，AI 會為你唱出完整旅行歌曲（含人聲與編曲）。</p>
+            <p class="lead">在同一條旅途旋律上加入 AI 人聲（先做約 45 秒試聽版）。</p>
             <div class="gender-row" id="genderRow" role="group" aria-label="選擇聲線群組">
               <button type="button" class="choice gender-choice selected" data-gender="female">明亮系</button>
               <button type="button" class="choice gender-choice" data-gender="male">沉穩系</button>
@@ -309,7 +309,7 @@
             </div>
             <div class="nav-row">
               <button class="secondary" data-back="compose" id="btnVoiceBack">返回</button>
-              <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌版</button>
+              <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌試聽版</button>
             </div>
             <p class="status" id="voiceStatus"></p>
           </div>
@@ -332,14 +332,39 @@
             <p class="meta-line" id="finalMeta"></p>
 
             <div class="version-block">
-              <h3 class="version-label">AI 唱歌版</h3>
+              <h3 class="version-label">AI 唱歌試聽版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
+              <p class="lead" id="aiTeaserNote">約 45 秒 · 依你旅途聲音寫出的旋律加人聲</p>
               <audio id="finalAudio" controls></audio>
               <div class="actions">
-                <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 唱歌版</a>
+                <a class="btn btn-primary" id="btnDownload" href="#" download>下載試聽版</a>
                 <button class="secondary" id="btnCopyShare">分享給朋友</button>
                 <button class="secondary" id="btnNewTrip">再做一趟</button>
               </div>
+            </div>
+
+            <div class="version-block" id="fullUpgradeBlock">
+              <h3 class="version-label">升級完整歌曲</h3>
+              <p class="lead">完整版約 2 分鐘，主歌／副歌更完整，仍是同一條旅途旋律。</p>
+              <div id="fullSongReady" hidden>
+                <audio id="finalFullAudio" controls></audio>
+                <div class="actions">
+                  <a class="btn btn-primary" id="btnDownloadFull" href="#" download>下載完整版</a>
+                </div>
+              </div>
+              <div id="fullSongCta" class="actions">
+                <button class="primary" id="btnUpgradeFull">升級完整歌曲（約 2 分鐘）</button>
+                <button class="secondary" id="btnPayStub">先解鎖升級（開發用）</button>
+              </div>
+              <div id="fullFinalizeProgress" class="finalize-progress" hidden>
+                <div class="pct-row">
+                  <span id="fullFinalizePctLabel">製作完整版</span>
+                  <strong id="fullFinalizePct">0%</strong>
+                </div>
+                <div class="pct-bar" aria-hidden="true"><i id="fullFinalizePctBar"></i></div>
+                <ul class="progress-list" id="fullFinalizeSteps"></ul>
+              </div>
+              <p class="status" id="fullSongStatus"></p>
             </div>
 
             <div class="version-block" id="voiceVersionBlock" hidden>
@@ -393,7 +418,6 @@
                 <a class="btn btn-primary" href="/me" data-auth="user" hidden>我的旅程</a>
                 <a class="btn btn-primary" href="/login?next=/me" data-auth="guest">登入</a>
                 <a class="btn btn-secondary" href="/register?next=/me" data-auth="guest">註冊</a>
-                <button class="secondary" id="btnPayStub">升級（開發用）</button>
               </div>
               <div id="library" style="margin-top:14px;" hidden></div>
             </div>

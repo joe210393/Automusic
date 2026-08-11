@@ -388,12 +388,34 @@
       const url = `/api/journey/${journey.id}/audio/final?t=${Date.now()}`;
       $("finalAudio").src = url;
       $("btnDownload").href = url;
-      $("btnDownload").download = `${title}-AI.mp3`;
+      $("btnDownload").download = `${title}-試聽.mp3`;
     }
+    syncFullSongUi();
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你的 AI 唱歌版。想用人聲再做一版，可在下方開啟自己的聲音。");
+    setStatus($("resultStatus"), "這是同一條旅途旋律上的 AI 唱歌試聽版（約 45 秒）。可升級完整版，或用自己的聲音再做一版。");
+  }
+
+  function syncFullSongUi() {
+    const hasFull = !!(journey.final_full_file || journey.has_full_final);
+    const ready = $("fullSongReady");
+    const cta = $("fullSongCta");
+    if (ready) ready.hidden = !hasFull;
+    if (cta) cta.hidden = hasFull;
+    if (hasFull && journey.id) {
+      const url = `/api/journey/${journey.id}/audio/final-full?t=${Date.now()}`;
+      if ($("finalFullAudio")) $("finalFullAudio").src = url;
+      if ($("btnDownloadFull")) {
+        $("btnDownloadFull").href = url;
+        const ly = journey.lyrics || {};
+        const title = journey.title || ly.title || "旅行之歌";
+        $("btnDownloadFull").download = `${title}-完整.mp3`;
+      }
+      setStatus($("fullSongStatus"), "完整版已就緒。");
+    } else if ($("fullSongStatus") && !document.body.classList.contains("finalize-busy")) {
+      setStatus($("fullSongStatus"), "");
+    }
   }
 
   async function resumeJourney(id) {
@@ -877,7 +899,7 @@
       const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
       $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
       $("composeResult").style.display = "block";
-      setStatus($("composeStatus"), "完成！先聽聽伴奏版，確認歌詞後再用你的聲音唱。想再換感覺可按「換一個版本」。");
+      setStatus($("composeStatus"), "完成！這是依你旅途聲音寫出的旋律伴奏。確認歌詞後，可在下一頁加入 AI 人聲。");
       setupVoiceLines(ly);
     } catch (e) {
       clearInterval(tick);
@@ -1103,8 +1125,18 @@
 
   const AI_FINALIZE_STEPS = [
     "準備製作",
+    "讀取旅途旋律",
     "連線 AI 唱歌引擎",
-    "AI 正在作曲唱歌",
+    "AI 正在依旋律唱歌",
+    "下載成品",
+    "輸出成品",
+    "完成",
+  ];
+  const FULL_FINALIZE_STEPS = [
+    "準備製作",
+    "讀取旅途旋律",
+    "連線 AI 唱歌引擎",
+    "AI 正在依旋律唱歌",
     "下載成品",
     "輸出成品",
     "完成",
@@ -1121,8 +1153,11 @@
 
   const STEP_PCT = {
     "準備製作": 8,
+    "讀取旅途旋律": 15,
     "連線 AI 唱歌引擎": 20,
+    "連線本機 AI 唱歌引擎": 20,
     "AI 正在作曲唱歌": 55,
+    "AI 正在依旋律唱歌": 55,
     "下載成品": 85,
     "編排伴奏": 25,
     "套用演奏風格": 55,
@@ -1215,21 +1250,46 @@
       refreshVoiceFinalizeEnabled();
       if (busy) $("btnFinalizeVoice").disabled = true;
     }
+    if (enableBtn === "full") {
+      if ($("btnUpgradeFull")) $("btnUpgradeFull").disabled = !!busy;
+      if ($("btnPayStub")) $("btnPayStub").disabled = !!busy;
+    }
+  }
+
+  function progressEls(panelPrefix) {
+    if (panelPrefix === "voice") {
+      return {
+        pctEl: $("voiceFinalizePct"),
+        barEl: $("voiceFinalizePctBar"),
+        labelEl: $("voiceFinalizePctLabel"),
+        ul: $("voiceFinalizeSteps"),
+      };
+    }
+    if (panelPrefix === "full") {
+      return {
+        pctEl: $("fullFinalizePct"),
+        barEl: $("fullFinalizePctBar"),
+        labelEl: $("fullFinalizePctLabel"),
+        ul: $("fullFinalizeSteps"),
+      };
+    }
+    return {
+      pctEl: $("finalizePct"),
+      barEl: $("finalizePctBar"),
+      labelEl: $("finalizePctLabel"),
+      ul: $("finalizeSteps"),
+    };
   }
 
   function renderProgress(panelPrefix, steps, pct, label) {
     const safePct = Math.max(0, Math.min(100, Math.round(pct || 0)));
-    const pctEl = $(panelPrefix === "voice" ? "voiceFinalizePct" : "finalizePct");
-    const barEl = $(panelPrefix === "voice" ? "voiceFinalizePctBar" : "finalizePctBar");
-    const labelEl = $(panelPrefix === "voice" ? "voiceFinalizePctLabel" : "finalizePctLabel");
-    const ul = $(panelPrefix === "voice" ? "voiceFinalizeSteps" : "finalizeSteps");
+    const { pctEl, barEl, labelEl, ul } = progressEls(panelPrefix);
     if (pctEl) pctEl.textContent = `${safePct}%`;
     if (barEl) barEl.style.width = `${safePct}%`;
     if (labelEl) labelEl.textContent = label || "製作中";
     if (!ul) return;
     let activeIdx = steps.findIndex((s) => s === label);
     if (activeIdx < 0) {
-      // 依百分比找最近步驟，但不亂跳：取不大於目前 pct 的最大步驟
       activeIdx = 0;
       steps.forEach((t, i) => {
         const p = STEP_PCT[t];
@@ -1327,7 +1387,51 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。");
+        setStatus($("resultStatus"), "試聽版完成！同一條旅途旋律已加人聲。可升級完整版，或用自己的聲音再做一版。");
+      },
+    });
+  }
+
+  async function ensurePaidForFullSong() {
+    const me = await api("/api/account/me").catch(() => null);
+    if (me?.account?.can_full_song || me?.account?.paid) return me.account;
+    const data = await api("/api/account/pay-stub", {
+      method: "POST",
+      body: JSON.stringify({ paid: true }),
+    });
+    return data.account;
+  }
+
+  async function finalizeFull() {
+    if (!journey?.id || !journey.final_file) {
+      setStatus($("fullSongStatus"), "請先完成試聽版", true);
+      return;
+    }
+    await runProgressJob({
+      steps: FULL_FINALIZE_STEPS,
+      panelPrefix: "full",
+      panelId: "fullFinalizeProgress",
+      enableBtn: "full",
+      statusEl: $("fullSongStatus"),
+      request: async () => {
+        await ensurePaidForFullSong();
+        return api(`/api/journey/${journey.id}/finalize-full`, { method: "POST", body: "{}" });
+      },
+      onDone: async (data) => {
+        journey = {
+          ...(journey || {}),
+          status: "done",
+          final_full_file: "final-full.mp3",
+          has_full_final: true,
+          ace_duration: data.ace_duration,
+          ace_full: true,
+          slug: data.slug || journey.slug,
+          share_path: data.share_path || journey.share_path,
+        };
+        persistJourney();
+        syncFullSongUi();
+        setStatus($("resultStatus"), "完整版完成！試聽版仍保留，兩首都可下載。");
+        setStatus($("fullSongStatus"), "完整版約 2 分鐘已就緒。");
       },
     });
   }
@@ -1431,6 +1535,21 @@
     show("voice");
   });
   $("btnFinalize").addEventListener("click", () => finalize());
+  $("btnUpgradeFull")?.addEventListener("click", () => finalizeFull());
+  $("btnPayStub")?.addEventListener("click", async () => {
+    try {
+      const data = await api("/api/account/pay-stub", {
+        method: "POST",
+        body: JSON.stringify({ paid: true }),
+      });
+      setStatus(
+        $("fullSongStatus") || $("resultStatus"),
+        `已解鎖完整歌曲升級（開發用）。額度 ${data.account.quota.limit}/月`,
+      );
+    } catch (e) {
+      setStatus($("fullSongStatus") || $("resultStatus"), e.message, true);
+    }
+  });
   document.querySelectorAll(".gender-choice").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectedGender = btn.dataset.gender || "female";
@@ -1467,17 +1586,6 @@
       }
     }
     show("hub");
-  });
-  $("btnPayStub").addEventListener("click", async () => {
-    try {
-      const data = await api("/api/account/pay-stub", {
-        method: "POST",
-        body: JSON.stringify({ paid: true }),
-      });
-      setStatus($("resultStatus"), `已標記付費（開發用）。額度 ${data.account.quota.limit}/月`);
-    } catch (e) {
-      setStatus($("resultStatus"), e.message, true);
-    }
   });
 
   function setAuthVisibility(loggedIn) {
