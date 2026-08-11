@@ -95,7 +95,14 @@
     try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
     if (!res.ok) {
       const detail = (data && data.detail) || text || res.statusText;
-      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+      const err = new Error(
+        typeof detail === "string"
+          ? detail
+          : (detail && detail.message) || JSON.stringify(detail),
+      );
+      err.status = res.status;
+      err.detail = detail;
+      throw err;
     }
     return data;
   }
@@ -373,6 +380,105 @@
     }
   }
 
+  function formatQuotaLine(acc) {
+    const q = acc?.quota || {};
+    if (!acc || q.anonymous) return "";
+    const plan = acc.plan_label || (acc.paid ? "加值方案" : "免費方案");
+    const bonus = q.bonus ? `（含加購 +${q.bonus}）` : "";
+    return `${plan}｜本月成品 ${q.used ?? 0} / ${q.limit ?? "—"}，剩餘 ${q.remaining ?? "—"} 次${bonus}`;
+  }
+
+  function paintQuotaUpgradeUi(acc, {
+    noteEl,
+    blurbEl,
+    upgradeBtn,
+    bonusBtn,
+    boxEl,
+    forceShow = false,
+  } = {}) {
+    const q = acc?.quota || {};
+    const line = formatQuotaLine(acc);
+    if (noteEl) {
+      noteEl.hidden = !line;
+      noteEl.textContent = line;
+    }
+    const isPlus = acc?.plan === "plus" || !!acc?.paid;
+    const pack = q.bonus_pack || 5;
+    if (upgradeBtn) {
+      upgradeBtn.disabled = isPlus;
+      upgradeBtn.textContent = isPlus
+        ? "已是加值方案"
+        : `升級加值方案（${(acc?.plans || []).find((p) => p.id === "plus")?.finalize_limit || 30} 次／月）`;
+    }
+    if (bonusBtn) {
+      bonusBtn.textContent = `加購本月成品 +${pack}`;
+    }
+    if (blurbEl) {
+      blurbEl.textContent = isPlus
+        ? "你已是加值方案。額度不夠可再加購本月次數。"
+        : "免費方案每月次數有限；升級可提高額度並解鎖完整歌曲。也可只加購本月次數。";
+    }
+    if (boxEl) {
+      const low = !q.anonymous && (q.remaining != null) && q.remaining <= 1;
+      boxEl.hidden = !(forceShow || low || !q.allowed);
+    }
+  }
+
+  async function refreshQuotaPanels({ forceShowVoice = false } = {}) {
+    if (!token()) {
+      if ($("voiceQuotaNote")) $("voiceQuotaNote").hidden = true;
+      if ($("voiceQuotaUpgrade")) $("voiceQuotaUpgrade").hidden = true;
+      if ($("monthlyQuotaBlock")) $("monthlyQuotaBlock").hidden = true;
+      return null;
+    }
+    try {
+      const me = await api("/api/account/me");
+      const acc = me.account || {};
+      paintQuotaUpgradeUi(acc, {
+        noteEl: $("voiceQuotaNote"),
+        blurbEl: $("voiceQuotaBlurb"),
+        upgradeBtn: $("btnVoiceUpgradePlus"),
+        bonusBtn: $("btnVoiceBuyBonus"),
+        boxEl: $("voiceQuotaUpgrade"),
+        forceShow: forceShowVoice,
+      });
+      if ($("monthlyQuotaBlock")) $("monthlyQuotaBlock").hidden = false;
+      paintQuotaUpgradeUi(acc, {
+        noteEl: $("resultQuotaNote"),
+        blurbEl: null,
+        upgradeBtn: $("btnResultUpgradePlus"),
+        bonusBtn: $("btnResultBuyBonus"),
+        boxEl: null,
+      });
+      return acc;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function upgradePlanPlus(statusEl) {
+    setStatus(statusEl, "升級中…");
+    const data = await api("/api/account/upgrade-plan", {
+      method: "POST",
+      body: JSON.stringify({ plan: "plus" }),
+    });
+    await refreshQuotaPanels({ forceShowVoice: true });
+    setStatus(statusEl, "已升級加值方案（開發用 stub，金流之後再接）");
+    return data.account;
+  }
+
+  async function buyQuotaBonus(statusEl) {
+    setStatus(statusEl, "加購中…");
+    const data = await api("/api/account/buy-quota-bonus", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    const q = data.account?.quota || {};
+    await refreshQuotaPanels({ forceShowVoice: true });
+    setStatus(statusEl, `已加購本月額度（開發用）。目前剩餘 ${q.remaining ?? "—"} / ${q.limit ?? "—"} 次`);
+    return data.account;
+  }
+
   function showResultFromMeta() {
     const ly = journey.lyrics || {};
     const title = journey.title || ly.title || "旅行之歌";
@@ -395,6 +501,7 @@
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
     setStatus($("resultStatus"), "這是同一條旅途旋律上的 AI 唱歌試聽版（約 45 秒）。可升級完整版，或用自己的聲音再做一版。");
+    refreshQuotaPanels();
   }
 
   function syncFullSongUi() {
@@ -1203,6 +1310,7 @@
     });
     $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
     if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一位 AI 歌手。");
+    refreshQuotaPanels();
   }
 
   function syncVoiceVersionUi() {
@@ -1302,7 +1410,7 @@
     }).join("");
   }
 
-  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl }) {
+  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, onError, statusEl }) {
     setFinalizeBusy(true, { panelId, enableBtn });
     renderProgress(panelPrefix, steps, STEP_PCT[steps[0]] || 8, steps[0]);
     setStatus(statusEl, "正在製作，請稍候…");
@@ -1344,6 +1452,9 @@
     } catch (e) {
       stopPoll = true;
       setStatus(statusEl, e.message, true);
+      if (onError) {
+        try { await onError(e); } catch (_) { /* ignore */ }
+      }
     } finally {
       stopPoll = true;
       try { await poll; } catch (_) { /* ignore */ }
@@ -1389,24 +1500,41 @@
         }
         setStatus($("resultStatus"), "試聽版完成！同一條旅途旋律已加人聲。可升級完整版，或用自己的聲音再做一版。");
       },
+      onError: async (e) => {
+        if (e.status === 402 || e.detail?.code === "quota_exhausted") {
+          await refreshQuotaPanels({ forceShowVoice: true });
+          setStatus(
+            $("voiceQuotaStatus") || $("voiceStatus"),
+            e.message || "本月成品次數已用完，請先升級或加購。",
+            true,
+          );
+        }
+      },
     });
   }
 
   async function ensurePaidForFullSong() {
-    const me = await api("/api/account/me").catch(() => null);
-    if (me?.account?.can_full_song || me?.account?.paid) return me.account;
-    const data = await api("/api/account/pay-stub", {
+    if (!journey?.id) throw new Error("找不到這趟旅程");
+    // 開發用：先解鎖本趟（訪客也可）；有登入則一併升級加值方案
+    const unlocked = await api(`/api/journey/${journey.id}/unlock-full`, {
       method: "POST",
-      body: JSON.stringify({ paid: true }),
+      body: "{}",
     });
-    return data.account;
+    journey.full_song_unlocked = true;
+    if (unlocked.account) {
+      await refreshQuotaPanels();
+    }
+    return unlocked.account || { can_full_song: true };
   }
 
   async function finalizeFull() {
-    if (!journey?.id || !journey.final_file) {
+    const hasTeaser = !!(journey?.final_file || journey?.has_final || journey?.final_url);
+    if (!journey?.id || !hasTeaser) {
       setStatus($("fullSongStatus"), "請先完成試聽版", true);
       return;
     }
+    // 舊資料可能缺 final_file 欄位但實際已有成品
+    if (!journey.final_file) journey.final_file = "final.mp3";
     await runProgressJob({
       steps: FULL_FINALIZE_STEPS,
       panelPrefix: "full",
@@ -1423,8 +1551,11 @@
           status: "done",
           final_full_file: "final-full.mp3",
           has_full_final: true,
+          full_song_unlocked: true,
           ace_duration: data.ace_duration,
           ace_full: true,
+          ai_singer_id: data.ai_singer_id || journey.ai_singer_id,
+          ai_singer_label: data.ai_singer_label || journey.ai_singer_label,
           slug: data.slug || journey.slug,
           share_path: data.share_path || journey.share_path,
         };
@@ -1432,6 +1563,15 @@
         syncFullSongUi();
         setStatus($("resultStatus"), "完整版完成！試聽版仍保留，兩首都可下載。");
         setStatus($("fullSongStatus"), "完整版約 2 分鐘已就緒。");
+      },
+      onError: async (e) => {
+        if (e.status === 402 || e.detail?.code === "full_song_locked") {
+          setStatus(
+            $("fullSongStatus"),
+            e.message || "請先點「先解鎖升級（開發用）」再製作完整版",
+            true,
+          );
+        }
       },
     });
   }
@@ -1538,17 +1678,43 @@
   $("btnUpgradeFull")?.addEventListener("click", () => finalizeFull());
   $("btnPayStub")?.addEventListener("click", async () => {
     try {
-      const data = await api("/api/account/pay-stub", {
+      if (!journey?.id) {
+        setStatus($("fullSongStatus"), "請先完成試聽版", true);
+        return;
+      }
+      if (!journey.final_file && !(journey.has_final || journey.final_url)) {
+        setStatus($("fullSongStatus"), "請先完成試聽版", true);
+        return;
+      }
+      setStatus($("fullSongStatus"), "解鎖中…");
+      const data = await api(`/api/journey/${journey.id}/unlock-full`, {
         method: "POST",
-        body: JSON.stringify({ paid: true }),
+        body: "{}",
       });
+      journey.full_song_unlocked = true;
+      if (data.account) await refreshQuotaPanels();
+      const limit = data.account?.quota?.limit;
       setStatus(
-        $("fullSongStatus") || $("resultStatus"),
-        `已解鎖完整歌曲升級（開發用）。額度 ${data.account.quota.limit}/月`,
+        $("fullSongStatus"),
+        limit
+          ? `已解鎖完整歌曲（開發用）。加值額度 ${limit}/月，可按上方按鈕製作約 2 分鐘完整版。`
+          : "已解鎖本趟完整歌曲（開發用）。可按「升級完整歌曲」開始製作。",
       );
     } catch (e) {
       setStatus($("fullSongStatus") || $("resultStatus"), e.message, true);
     }
+  });
+  $("btnVoiceUpgradePlus")?.addEventListener("click", () => {
+    upgradePlanPlus($("voiceQuotaStatus")).catch((e) => setStatus($("voiceQuotaStatus"), e.message, true));
+  });
+  $("btnVoiceBuyBonus")?.addEventListener("click", () => {
+    buyQuotaBonus($("voiceQuotaStatus")).catch((e) => setStatus($("voiceQuotaStatus"), e.message, true));
+  });
+  $("btnResultUpgradePlus")?.addEventListener("click", () => {
+    upgradePlanPlus($("resultQuotaStatus")).catch((e) => setStatus($("resultQuotaStatus"), e.message, true));
+  });
+  $("btnResultBuyBonus")?.addEventListener("click", () => {
+    buyQuotaBonus($("resultQuotaStatus")).catch((e) => setStatus($("resultQuotaStatus"), e.message, true));
   });
   document.querySelectorAll(".gender-choice").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1630,8 +1796,9 @@
       setAuthVisibility(true);
       fillUserChips(me.account || {});
       if ($("resultStatus") && me.account) {
-        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${me.account.email}｜本月剩餘 ${me.account.quota?.remaining ?? "∞"} 次）`);
+        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${formatQuotaLine(me.account) || me.account.email}）`);
       }
+      refreshQuotaPanels();
       return me;
     } catch (_) {
       localStorage.removeItem(TOKEN_KEY);

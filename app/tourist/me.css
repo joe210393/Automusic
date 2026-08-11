@@ -114,6 +114,42 @@
   color: #5c6b7a;
 }
 
+.me-upgrade {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(26, 43, 74, 0.12);
+}
+.me-upgrade-title {
+  margin: 0 0 6px;
+  font-size: 1rem;
+  color: #1a2b4a;
+}
+.me-upgrade-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.me-btn {
+  appearance: none;
+  border: 1px solid rgba(26, 43, 74, 0.25);
+  background: rgba(255, 255, 255, 0.55);
+  color: #1a2b4a;
+  border-radius: 10px;
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+  cursor: pointer;
+}
+.me-btn-primary {
+  background: #1a2b4a;
+  border-color: #1a2b4a;
+  color: #f7f4ef;
+}
+.me-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .me-card-head {
   display: flex;
   justify-content: space-between;

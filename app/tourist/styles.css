@@ -997,6 +997,19 @@ textarea { min-height: 96px; resize: vertical; }
   font-family: var(--font-display);
   font-size: 1.05rem;
 }
+.quota-upgrade {
+  margin: 12px 0 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(26, 43, 74, 0.04);
+  text-align: left;
+}
+.quota-upgrade .lead {
+  margin-bottom: 10px;
+}
+.quota-upgrade .actions {
+  justify-content: flex-start;
+}
 .voiceprint-upgrade {
   margin-top: 22px;
   padding-top: 18px;
@@ -1038,7 +1051,11 @@ textarea { min-height: 96px; resize: vertical; }
 .finalize-busy #btnFinalizeVoice,
 .finalize-busy #btnConsentStart,
 .finalize-busy #btnUpgradeFull,
-.finalize-busy #btnPayStub {
+.finalize-busy #btnPayStub,
+.finalize-busy #btnVoiceUpgradePlus,
+.finalize-busy #btnVoiceBuyBonus,
+.finalize-busy #btnResultUpgradePlus,
+.finalize-busy #btnResultBuyBonus {
   pointer-events: none;
   opacity: 0.55;
 }

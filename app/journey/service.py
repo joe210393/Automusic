@@ -161,8 +161,13 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     if not meta.get("notes") or not meta.get("lyrics"):
         raise RuntimeError("請先完成創作")
     if not is_valid_singer_id(meta.get("ai_singer_id")):
-        raise RuntimeError("請先選擇 AI 歌手")
+        # 完整版升級：若試聽版已存在但缺歌手（舊旅程），退回預設音色
+        if full and meta.get("final_file"):
+            meta["ai_singer_id"] = get_template(None)["id"]
+        else:
+            raise RuntimeError("請先選擇 AI 歌手")
 
+    prev_status = meta.get("status") or "done"
     meta["status"] = "finalizing"
     meta["error"] = None
     meta["compose_steps"] = []
@@ -172,6 +177,9 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     _set_finalize_progress(meta, 8, "準備製作")
 
     if not _ace.is_available():
+        # 保留原狀態，避免試聽版旅程被標成 error
+        meta["status"] = "done" if meta.get("final_file") else prev_status
+        store.save_meta(journey_id, meta)
         raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
 
     preview_path = _ensure_preview_path(meta)
@@ -202,6 +210,12 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
         )
     except Exception as e:
         print(f"[journey] ACE-Step cover failed: {e}")
+        meta = store.load_meta(journey_id)
+        if meta.get("final_file"):
+            meta["status"] = "done"
+            meta["error"] = "AI 唱歌製作失敗，請稍後再試"
+            meta["finalize_progress"] = None
+            store.save_meta(journey_id, meta)
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
 
     if full:
@@ -216,6 +230,7 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     meta["status"] = "done"
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")
+    meta["error"] = None
     _set_finalize_progress(meta, 100, "完成")
     return meta
 
