@@ -163,6 +163,7 @@ def build_prompt(
     singer_id: Optional[str],
     engine_style: Optional[str],
     title: Optional[str] = None,
+    extend: bool = False,
 ) -> str:
     base = SINGER_PROMPTS.get(
         singer_id or "",
@@ -172,9 +173,17 @@ def build_prompt(
         base,
         "cover the source accompaniment",
         "preserve the original melody contour and rhythm",
+        "same melody and harmonic progression as the source audio",
         "add clearly audible lead singer vocals on top",
         "not instrumental-only",
+        "do not invent a new unrelated melody",
     ]
+    if extend:
+        bits.extend([
+            "extend into a fuller song with verse and chorus",
+            "keep the same travel melody while developing longer structure",
+            "about two minutes",
+        ])
     if engine_style:
         bits.append(str(engine_style))
     if title:
@@ -316,6 +325,7 @@ def _generate_via_local_api(
         singer_id=singer_id,
         engine_style=engine_style,
         title=lyrics.get("title"),
+        extend=bool(full_lyrics),
     )
     duration_sec = max(20.0, min(120.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None

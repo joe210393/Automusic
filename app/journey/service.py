@@ -183,11 +183,24 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
         raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
 
     preview_path = _ensure_preview_path(meta)
-    _set_finalize_progress(meta, 15, "讀取旅途旋律")
+    # 完整版優先 cover 使用者已聽過的試聽人聲版，鎖同一條旋律再延長
+    cover_src = preview_path
+    cover_strength = _ace.ACESTEP_COVER_STRENGTH
+    if full and meta.get("final_file"):
+        teaser = store.output_dir(journey_id) / meta["final_file"]
+        if teaser.is_file() and teaser.stat().st_size > 5000:
+            cover_src = teaser
+            cover_strength = max(cover_strength, 0.9)
+    _set_finalize_progress(
+        meta,
+        15,
+        "沿用同一條旅途旋律延長" if full else "讀取旅途旋律",
+    )
 
     duration = _ace.FULL_DURATION_SEC if full else _ace.TEASER_DURATION_SEC
     out_name = "final-full.mp3" if full else "final.mp3"
     out = store.output_dir(journey_id) / out_name
+    # 完整版沿用試聽 seed；試聽版每次可換 seed 方便「再唱一次」
     seed = _parse_seed_int(meta.get("ace_seed")) if full else None
 
     def _prog(pct: int, label: str) -> None:
@@ -202,8 +215,8 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
             engine_style=meta.get("engine_style"),
             duration_sec=duration,
             out_path=out,
-            src_audio_path=preview_path,
-            cover_strength=_ace.ACESTEP_COVER_STRENGTH,
+            src_audio_path=cover_src,
+            cover_strength=cover_strength,
             seed=seed,
             full_lyrics=full,
             progress=_prog,

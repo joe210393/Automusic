@@ -971,6 +971,74 @@ textarea { min-height: 96px; resize: vertical; }
   background: linear-gradient(90deg, #1a2b4a, #3d5a80);
   transition: width 420ms var(--ease);
 }
+
+.full-upgrade-offer .hint {
+  margin: 8px 0 0;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.full-upgrade-choose,
+.full-upgrade-start {
+  width: 100%;
+  min-height: 52px;
+  font-size: 1.05rem;
+}
+.full-upgrade-selected {
+  margin-top: 12px;
+  padding: 16px;
+  border-radius: 14px;
+  background: rgba(26, 43, 74, 0.08);
+  border: 2px solid #1a2b4a;
+  animation: fullUpgradeIn 420ms var(--ease);
+}
+.full-upgrade-badge {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1a2b4a;
+}
+.full-upgrade.is-making {
+  outline: 2px solid #1a2b4a;
+  outline-offset: 4px;
+  border-radius: 16px;
+}
+.full-making {
+  margin-top: 14px;
+  padding: 18px 16px;
+  background:
+    linear-gradient(135deg, rgba(26, 43, 74, 0.1), rgba(26, 43, 74, 0.04));
+  border: 2px solid #1a2b4a;
+  animation: fullMakingPulse 1.8s ease-in-out infinite;
+}
+.full-making-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  color: #1a2b4a;
+}
+.full-making-sub,
+.full-making-elapsed {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.full-making-elapsed {
+  margin-top: 10px;
+  margin-bottom: 4px;
+  font-variant-numeric: tabular-nums;
+  color: #1a2b4a;
+  font-weight: 700;
+}
+@keyframes fullUpgradeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fullMakingPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(26, 43, 74, 0.18); }
+  50% { box-shadow: 0 0 0 8px rgba(26, 43, 74, 0.04); }
+}
+
 .finalize-busy #btnFinalize,
 .finalize-busy #btnVoiceBack,
 .finalize-busy .voice-actions button {
@@ -1052,6 +1120,7 @@ textarea { min-height: 96px; resize: vertical; }
 .finalize-busy #btnConsentStart,
 .finalize-busy #btnUpgradeFull,
 .finalize-busy #btnPayStub,
+.finalize-busy #btnRegenTeaser,
 .finalize-busy #btnVoiceUpgradePlus,
 .finalize-busy #btnVoiceBuyBonus,
 .finalize-busy #btnResultUpgradePlus,
