@@ -29,7 +29,7 @@ ACESTEP_GUIDANCE = float(os.getenv("ACESTEP_GUIDANCE", "8.5"))
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 
-TEASER_DURATION_SEC = float(os.getenv("ACESTEP_TEASER_DURATION", "45"))
+TEASER_DURATION_SEC = float(os.getenv("ACESTEP_TEASER_DURATION", "60"))
 FULL_DURATION_SEC = float(os.getenv("ACESTEP_FULL_DURATION", "105"))
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"

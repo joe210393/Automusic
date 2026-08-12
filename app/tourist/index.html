@@ -293,7 +293,7 @@
         <div class="flow-body">
           <div class="panel">
             <h2>選一個 AI 歌手</h2>
-            <p class="lead">我們會把旅途伴奏當成「歌曲 A」，再用你選的音色把歌詞唱進去。旋律大致不變，只加人聲。</p>
+            <p class="lead">旅途伴奏先成為「歌曲 A」。選音色後，會在同一地基上再編曲並加人聲，升級成「歌曲 A+」試聽版。</p>
             <p class="meta-line" id="voiceQuotaNote" hidden></p>
             <div class="quota-upgrade" id="voiceQuotaUpgrade" hidden>
               <p class="lead" id="voiceQuotaBlurb">本月成品次數不夠時，可升級方案或加購本月額度（金流之後再接）。</p>
@@ -343,7 +343,7 @@
             <div class="version-block">
               <h3 class="version-label">AI 唱歌試聽版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
-              <p class="lead" id="aiTeaserNote">約 45 秒 · 歌曲 A（旅途旋律）＋ AI 人聲</p>
+              <p class="lead" id="aiTeaserNote">約 60 秒 · 歌曲 A+（再編曲＋ AI 人聲）</p>
               <audio id="finalAudio" controls></audio>
               <div class="actions">
                 <a class="btn btn-primary" id="btnDownload" href="#" download>下載試聽版</a>
@@ -364,7 +364,7 @@
 
             <div class="version-block full-upgrade" id="fullUpgradeBlock">
               <h3 class="version-label">升級完整歌曲</h3>
-              <p class="lead">好聽的話，可把同一首歌曲 A 拉長成約 2 分鐘（主歌／副歌更完整）。不會另寫新歌。</p>
+              <p class="lead">好聽的話，可把 A+ 再進化成「歌曲 A++」：約 2 分鐘、主歌／副歌更完整。同一旋律地基，不是循環播放。</p>
 
               <div id="fullSongReady" hidden>
                 <audio id="finalFullAudio" controls></audio>
@@ -382,15 +382,15 @@
 
               <div id="fullUpgradeSelected" class="full-upgrade-selected" hidden>
                 <p class="full-upgrade-badge" id="fullUpgradeBadge">已選擇升級完整版</p>
-                <p class="lead">接下來會把你剛聽的歌曲 A，沿同一旋律延長成完整版。</p>
+                <p class="lead">接下來會把 A+ 再編曲升級成 A++（主副歌完整版）。</p>
                 <button type="button" class="primary full-upgrade-start" id="btnUpgradeFull">
                   開始製作完整版（約 2 分鐘）
                 </button>
               </div>
 
               <div id="fullFinalizeProgress" class="finalize-progress full-making" hidden>
-                <p class="full-making-title">正在延長歌曲 A</p>
-                <p class="full-making-sub">同一條旅途旋律拉長中，大約 2 分鐘內完成。</p>
+                <p class="full-making-title">正在升級成歌曲 A++</p>
+                <p class="full-making-sub">同一旋律地基再編曲中，大約 2 分鐘內完成。</p>
                 <div class="pct-row">
                   <span id="fullFinalizePctLabel">製作完整版</span>
                   <strong id="fullFinalizePct">0%</strong>

@@ -500,7 +500,7 @@
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是同一條旅途旋律上的 AI 唱歌試聽版（約 45 秒）。可升級完整版，或用自己的聲音再做一版。");
+    setStatus($("resultStatus"), "這是歌曲 A+ 試聽版（約 60 秒）：在歌曲 A 地基上再編曲並加人聲。可升級 A++，或用自己的聲音再做一版。");
     refreshQuotaPanels();
   }
 
@@ -539,10 +539,10 @@
         const title = journey.title || ly.title || "旅行之歌";
         $("btnDownloadFull").download = `${title}-完整.mp3`;
       }
-      if (!making) setStatus($("fullSongStatus"), "完整版已就緒 · 與試聽版同一條旋律。");
+      if (!making) setStatus($("fullSongStatus"), "歌曲 A++ 已就緒 · 同一旋律地基再進化。");
     } else if ($("fullSongStatus") && !making && !document.body.classList.contains("finalize-busy")) {
       if (unlocked) {
-        setStatus($("fullSongStatus"), "已選擇升級。按下開始後，會沿同一旋律延長成約 2 分鐘完整版。");
+        setStatus($("fullSongStatus"), "已選擇升級。按下開始後，會把 A+ 再編曲成約 2 分鐘的 A++。");
       } else {
         setStatus($("fullSongStatus"), "");
       }
@@ -1256,20 +1256,18 @@
 
   const AI_FINALIZE_STEPS = [
     "準備製作",
-    "讀取歌曲 A 旋律",
-    "連線 AI 唱歌引擎",
-    "AI 正在依歌曲 A 唱歌",
-    "下載成品",
-    "輸出成品",
+    "從歌曲 A 升級為歌曲 A+",
+    "升級編曲為歌曲 A+",
+    "AI 在歌曲 A+上唱歌",
+    "混音成歌曲 A+",
     "完成",
   ];
   const FULL_FINALIZE_STEPS = [
     "準備製作",
-    "延長歌曲 A 並加入人聲",
-    "連線 AI 唱歌引擎",
-    "AI 正在依歌曲 A 唱歌",
-    "下載成品",
-    "輸出成品",
+    "從歌曲 A 升級為歌曲 A++",
+    "升級編曲為歌曲 A++",
+    "AI 在歌曲 A++上唱歌",
+    "混音成歌曲 A++",
     "完成",
   ];
   const VOICE_FINALIZE_STEPS = [
@@ -1286,6 +1284,10 @@
     "準備製作": 8,
     "讀取旅途旋律": 15,
     "讀取歌曲 A 旋律": 15,
+    "從歌曲 A 升級為歌曲 A+": 12,
+    "從歌曲 A 升級為歌曲 A++": 12,
+    "升級編曲為歌曲 A+": 18,
+    "升級編曲為歌曲 A++": 18,
     "沿用同一條旅途旋律延長": 15,
     "延長歌曲 A 並加入人聲": 15,
     "準備歌曲 A 長度": 12,
@@ -1294,6 +1296,11 @@
     "AI 正在作曲唱歌": 55,
     "AI 正在依旋律唱歌": 55,
     "AI 正在依歌曲 A 唱歌": 55,
+    "AI 在歌曲 A+上唱歌": 48,
+    "AI 在歌曲 A++上唱歌": 48,
+    "套用選定音色": 72,
+    "混音成歌曲 A+": 88,
+    "混音成歌曲 A++": 88,
     "加強人聲後再 cover 歌曲 A": 40,
     "下載成品": 85,
     "編排伴奏": 25,
@@ -1556,7 +1563,7 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "試聽版完成！同一條旅途旋律已加人聲。可升級完整版，或用自己的聲音再做一版。");
+        setStatus($("resultStatus"), "試聽版完成！已從歌曲 A 升級成 A+（再編曲＋人聲）。可再升級 A++，或用自己的聲音再做一版。");
       },
       onError: async (e) => {
         if (e.status === 402 || e.detail?.code === "quota_exhausted") {
@@ -1627,8 +1634,8 @@
         };
         persistJourney();
         syncFullSongUi();
-        setStatus($("resultStatus"), "完整版完成！與試聽版同一條旋律，只是更長、主副歌更完整。");
-        setStatus($("fullSongStatus"), "完整版約 2 分鐘已就緒。");
+        setStatus($("resultStatus"), "完整版完成！已從 A+ 再進化成 A++（主副歌更完整）。");
+        setStatus($("fullSongStatus"), "歌曲 A++ 約 2 分鐘已就緒。");
       },
       onError: async (e) => {
         syncFullSongUi();
@@ -1688,8 +1695,8 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("teaserRegenStatus"), "已用同一條旋律再唱一次，可以再聽看看。");
-        setStatus($("resultStatus"), "試聽版已重新製作。若喜歡，再升級完整版。");
+        setStatus($("teaserRegenStatus"), "已在同一地基上重做 A+，可以再聽看看。");
+        setStatus($("resultStatus"), "試聽版已重新製作。若喜歡，再升級成 A++。");
       },
       onError: async (e) => {
         if (e.status === 402 || e.detail?.code === "quota_exhausted") {
@@ -1820,7 +1827,7 @@
       syncFullSongUi();
       setStatus(
         $("fullSongStatus"),
-        "已選擇升級完整版。請按「開始製作完整版」，會沿同一旋律延長。",
+        "已選擇升級完整版。請按「開始製作完整版」，會把 A+ 再編曲成 A++。",
       );
       $("fullUpgradeSelected")?.scrollIntoView({ behavior: "smooth", block: "center" });
     } catch (e) {

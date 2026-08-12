@@ -96,14 +96,12 @@ def run_compose(journey_id: str) -> dict:
         meta["title"] = str(lyrics["title"]).strip()[:40]
     store.save_meta(journey_id, meta)
 
-    # 3) 伴奏預覽（無人聲）
+    # 3) 伴奏預覽（歌曲 A：簡單編曲，無人聲）
     _step(meta, "編排伴奏")
     store.save_meta(journey_id, meta)
-    preview_path = _render_arrangement(meta, use_voiceprint=False)
-    out_name = Path(preview_path).name
-    dest_file = store.output_dir(journey_id) / out_name
-    shutil.copyfile(preview_path, dest_file)
-    meta["preview_file"] = out_name
+    preview_path = _render_and_save_tier(meta, "a")
+    meta["preview_file"] = Path(preview_path).name
+    meta["song_a_file"] = meta["preview_file"]
     meta["status"] = "preview"
     _step(meta, "旅行歌曲誕生了")
     store.save_meta(journey_id, meta)
@@ -124,21 +122,83 @@ def run_finalize(journey_id: str) -> dict:
     return run_finalize_ai(journey_id, full=False)
 
 
+# 歌曲堆疊：同一組旋律／和弦／風格 seed，越往上編曲越完整（不是循環播放 A）
+# A（預覽伴奏）→ A+（試聽：再編曲＋人聲）→ A++（完整：主副歌結構＋人聲）
+ARRANGEMENT_TIERS = {
+    "a": {
+        "duration": 45,
+        "melody_gain": 1.0,
+        "label": "歌曲 A",
+        "file": "song-a.mp3",
+        "meta_key": "preview_file",
+    },
+    "a_plus": {
+        "duration": 60,
+        "melody_gain": 0.48,
+        "label": "歌曲 A+",
+        "file": "song-a-plus.mp3",
+        "meta_key": "song_a_plus_file",
+    },
+    "a_plusplus": {
+        "duration": 105,
+        "melody_gain": 0.4,
+        "label": "歌曲 A++",
+        "file": "song-a-plusplus.mp3",
+        "meta_key": "song_a_plusplus_file",
+    },
+}
+
+
+def _arrangement_seed(meta: dict) -> int:
+    """A / A+ / A++ 共用同一個編曲 seed，保證是同一首歌往上堆。"""
+    raw = meta.get("compose_seed")
+    if raw is not None:
+        try:
+            return int(raw) % (10**9)
+        except Exception:
+            pass
+    return abs(hash(str(meta.get("id") or "") + "-arrangement")) % (10**9)
+
+
 def _ensure_preview_path(meta: dict) -> Path:
-    """保證有 MIDI 伴奏 preview，作為 cover 的旋律來源。"""
+    """保證有歌曲 A（預覽伴奏）。"""
     jid = meta["id"]
     name = meta.get("preview_file")
     if name:
         path = store.output_dir(jid) / name
         if path.is_file():
             return path
-    preview_path = _render_arrangement(meta, vocal_mode="preview")
-    out_name = "preview" + Path(preview_path).suffix
-    dest = store.output_dir(jid) / out_name
-    if Path(preview_path).resolve() != dest.resolve():
-        shutil.copyfile(preview_path, dest)
-    meta["preview_file"] = out_name
-    store.save_meta(jid, meta)
+    return _render_and_save_tier(meta, "a")
+
+
+def _render_and_save_tier(meta: dict, tier: str) -> Path:
+    """依階層重新 MIDI 編曲並存檔（不循環舊 MP3）。"""
+    if tier not in ARRANGEMENT_TIERS:
+        raise ValueError(f"unknown arrangement tier: {tier}")
+    cfg = ARRANGEMENT_TIERS[tier]
+    rendered = _render_arrangement(
+        meta,
+        vocal_mode="preview",
+        duration_seconds=int(cfg["duration"]),
+        melody_gain=float(cfg["melody_gain"]),
+        arrangement_seed=_arrangement_seed(meta),
+    )
+    dest = store.output_dir(meta["id"]) / cfg["file"]
+    src = Path(rendered)
+    if src.resolve() != dest.resolve():
+        shutil.copyfile(src, dest)
+        try:
+            if src.name.startswith("journey_render_") or src.suffix == ".mp3":
+                # compress_to_mp3 可能回傳暫存；清掉避免堆積
+                if str(src).startswith(tempfile.gettempdir()):
+                    src.unlink(missing_ok=True)
+        except OSError:
+            pass
+    meta[cfg["meta_key"]] = cfg["file"]
+    if tier == "a":
+        meta["preview_file"] = cfg["file"]
+        meta["song_a_file"] = cfg["file"]
+    store.save_meta(meta["id"], meta)
     return dest
 
 
@@ -152,27 +212,28 @@ def _parse_seed_int(raw) -> Optional[int]:
         return None
 
 
-def _mix_ai_vocals_onto_song_a(
+def _mix_ai_vocals_onto_tier(
     meta: dict,
     *,
-    song_a_path: Path,
-    duration_sec: float,
+    tier: str,
     out_path: Path,
 ) -> dict:
     """
-    以歌曲 A（旅途伴奏）為床：裁切／循環到目標長度，再把 DiffSinger 人聲
-    依同一組 notes／歌詞混進去。完整版＝同一首歌拉長，不是另寫新歌。
+    在進化後的編曲床（A+ / A++）上混入 DiffSinger 人聲。
+    床是重新 generate_full_midi，不是循環歌曲 A。
     """
     import numpy as np
     import soundfile as sf
+    import subprocess
 
     from app.main import compress_to_mp3
     from app.midi.generate_midi import compute_song_structure
     from app.voice import svs
-    from app.voice.acestep import fit_cover_source, vocal_presence_score
+    from app.voice.acestep import vocal_presence_score
     from app.voice.sing import apply_reverb
     from app.voice.singer_templates import (
         DIFFSINGER_NATIVE_MIDI,
+        apply_arrangement_color,
         apply_template_color,
         get_template,
     )
@@ -180,116 +241,107 @@ def _mix_ai_vocals_onto_song_a(
     if not (svs.is_available() or svs.SVS_REMOTE_URLS):
         raise RuntimeError("AI 代唱引擎未就緒，請稍後再試")
 
-    _set_finalize_progress(
-        meta,
-        18,
-        "延長歌曲 A" if duration_sec >= 90 else "讀取歌曲 A 旋律",
-    )
-    fitted = fit_cover_source(song_a_path, duration_sec)
-    try:
-        acc, sr = sf.read(str(fitted))
+    cfg = ARRANGEMENT_TIERS[tier]
+    duration_sec = float(cfg["duration"])
+    _set_finalize_progress(meta, 18, f"升級編曲為{cfg['label']}")
+    bed_path = _render_and_save_tier(meta, tier)
+
+    # 讀取編曲床；統一 44.1k stereo
+    acc, sr = sf.read(str(bed_path))
+    if acc.ndim == 1:
+        acc = np.stack([acc, acc], axis=1)
+    if int(sr) != 44100:
+        resampled = Path(tempfile.mktemp(prefix="tier_bed_44k_", suffix=".wav"))
+        subprocess.check_call(
+            [
+                "ffmpeg", "-y", "-loglevel", "error",
+                "-i", str(bed_path),
+                "-ar", "44100", "-ac", "2",
+                str(resampled),
+            ]
+        )
+        acc, sr = sf.read(str(resampled))
         if acc.ndim == 1:
             acc = np.stack([acc, acc], axis=1)
-        if sr != 44100:
-            # DiffSinger / 混音管線以 44100 為準；重採樣用 ffmpeg 較穩
-            import subprocess
-
-            resampled = Path(tempfile.mktemp(prefix="song_a_44k_", suffix=".wav"))
-            subprocess.check_call(
-                [
-                    "ffmpeg", "-y", "-loglevel", "error",
-                    "-i", str(fitted),
-                    "-ar", "44100", "-ac", "2",
-                    str(resampled),
-                ]
-            )
-            acc, sr = sf.read(str(resampled))
-            if acc.ndim == 1:
-                acc = np.stack([acc, acc], axis=1)
-            try:
-                resampled.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-        notes_list = [
-            {
-                "start": n["start"],
-                "end": n["end"],
-                "midi": n["midi"],
-                "velocity": n.get("velocity", 90),
-            }
-            for n in (meta.get("notes") or [])
-        ]
-        lyrics = meta.get("lyrics") or {}
-        lyrics_obj = {"verse": lyrics.get("verse"), "chorus": lyrics.get("chorus")}
-        bpm = float(meta.get("bpm") or 100)
-        structure = compute_song_structure(
-            notes_list, bpm, target_seconds=int(round(duration_sec))
-        )
-
-        _set_finalize_progress(meta, 45, "AI 依歌曲 A 唱歌詞")
-        vocal = svs.build_svs_vocal_track(
-            notes=notes_list,
-            bpm=bpm,
-            structure=structure,
-            lyrics=lyrics_obj,
-            total_samples=len(acc),
-            speaker_midi=float(DIFFSINGER_NATIVE_MIDI),
-            fs=44100,
-        )
-        if vocal is None:
-            raise RuntimeError("無法依歌詞合成人聲")
-
-        singer_id = meta.get("ai_singer_id") or get_template(None)["id"]
-        _set_finalize_progress(meta, 70, "套用選定音色")
-        vocal = apply_template_color(vocal, singer_id, fs=44100)
-
-        _set_finalize_progress(meta, 85, "混入歌曲 A")
-        # 略壓低伴奏，讓主唱清楚；床仍是同一條歌曲 A
-        mix = _mix_vocal_into_acc(
-            acc.astype(np.float64) * 0.78,
-            vocal,
-            apply_reverb,
-            vocal_to_acc=1.55,
-        )
-
-        wav = tempfile.mktemp(prefix="journey_ai_sung_", suffix=".wav")
-        sf.write(wav, mix, 44100)
-        mp3 = compress_to_mp3(wav)
-        final_src = mp3 or wav
-        shutil.copyfile(final_src, out_path)
-        if Path(final_src).resolve() != out_path.resolve():
-            try:
-                os.unlink(final_src)
-            except OSError:
-                pass
         try:
-            os.unlink(wav)
+            resampled.unlink(missing_ok=True)
         except OSError:
             pass
 
-        score = float(vocal_presence_score(out_path))
-        return {
-            "engine": "song_a_diffsinger",
-            "duration_sec": float(duration_sec),
-            "vocal_score": round(score, 3),
-            "path": out_path,
+    singer_id = meta.get("ai_singer_id") or get_template(None)["id"]
+    try:
+        acc = apply_arrangement_color(acc, singer_id)
+    except Exception as e:
+        print(f"[journey] arrangement color skip: {e}")
+
+    notes_list = [
+        {
+            "start": n["start"],
+            "end": n["end"],
+            "midi": n["midi"],
+            "velocity": n.get("velocity", 90),
         }
-    finally:
+        for n in (meta.get("notes") or [])
+    ]
+    lyrics = meta.get("lyrics") or {}
+    lyrics_obj = {"verse": lyrics.get("verse"), "chorus": lyrics.get("chorus")}
+    bpm = float(meta.get("bpm") or 100)
+    structure = compute_song_structure(
+        notes_list, bpm, target_seconds=int(round(duration_sec))
+    )
+
+    _set_finalize_progress(meta, 48, f"AI 在{cfg['label']}上唱歌")
+    vocal = svs.build_svs_vocal_track(
+        notes=notes_list,
+        bpm=bpm,
+        structure=structure,
+        lyrics=lyrics_obj,
+        total_samples=len(acc),
+        speaker_midi=float(DIFFSINGER_NATIVE_MIDI),
+        fs=44100,
+    )
+    if vocal is None:
+        raise RuntimeError("無法依歌詞合成人聲")
+
+    _set_finalize_progress(meta, 72, "套用選定音色")
+    vocal = apply_template_color(vocal, singer_id, fs=44100)
+
+    _set_finalize_progress(meta, 88, f"混音成{cfg['label']}")
+    mix = _mix_vocal_into_acc(
+        acc.astype(np.float64) * 0.82,
+        vocal,
+        apply_reverb,
+        vocal_to_acc=1.5,
+    )
+
+    wav = tempfile.mktemp(prefix="journey_ai_sung_", suffix=".wav")
+    sf.write(wav, mix, 44100)
+    mp3 = compress_to_mp3(wav)
+    final_src = mp3 or wav
+    shutil.copyfile(final_src, out_path)
+    for p in (final_src, wav):
         try:
-            fitted.unlink(missing_ok=True)
-            parent = fitted.parent
-            if parent.name.startswith("ace_song_a_"):
-                parent.rmdir()
+            if Path(p).resolve() != out_path.resolve():
+                os.unlink(p)
         except OSError:
             pass
+
+    score = float(vocal_presence_score(out_path))
+    return {
+        "engine": f"{tier}_diffsinger",
+        "tier": tier,
+        "duration_sec": duration_sec,
+        "vocal_score": round(score, 3),
+        "path": out_path,
+        "bed_file": cfg["file"],
+    }
 
 
 def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     """
-    把 AI 人聲融入「歌曲 A」（旅途伴奏）：
-    - 試聽：裁切歌曲 A + 同旋律代唱
-    - 完整版：循環延長歌曲 A + 同旋律代唱（不是另產新歌）
+    歌曲堆疊：
+    - 試聽 A+：在歌曲 A 旋律地基上重新編曲，再加 AI 人聲
+    - 完整 A++：再進化成主副歌完整編曲＋人聲（不是循環播放 A）
     """
     from app.voice.singer_templates import get_template, is_valid_singer_id
     from app.voice import acestep as _ace
@@ -314,32 +366,32 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 8, "準備製作")
 
-    preview_path = _ensure_preview_path(meta)
+    _ensure_preview_path(meta)
     meta["song_a_file"] = meta.get("preview_file")
-    duration = _ace.FULL_DURATION_SEC if full else _ace.TEASER_DURATION_SEC
+    tier = "a_plusplus" if full else "a_plus"
+    cfg = ARRANGEMENT_TIERS[tier]
+    duration = float(cfg["duration"])
     out_name = "final-full.mp3" if full else "final.mp3"
     out = store.output_dir(journey_id) / out_name
 
     _set_finalize_progress(
         meta,
         12,
-        "延長歌曲 A 並加入人聲" if full else "讀取歌曲 A 旋律",
+        f"從歌曲 A 升級為{cfg['label']}",
     )
 
     try:
         if svs.is_available() or svs.SVS_REMOTE_URLS:
-            result = _mix_ai_vocals_onto_song_a(
-                meta,
-                song_a_path=preview_path,
-                duration_sec=duration,
-                out_path=out,
-            )
+            result = _mix_ai_vocals_onto_tier(meta, tier=tier, out_path=out)
             meta["vocal_score"] = result.get("vocal_score")
-            meta["final_engine"] = result.get("engine") or "song_a_diffsinger"
+            meta["final_engine"] = result.get("engine") or f"{tier}_diffsinger"
+            meta["arrangement_tier"] = tier
             meta["ace_duration"] = float(result.get("duration_sec") or duration)
         elif _ace.is_available():
-            # 後備：僅在 DiffSinger 不可用時才走 ACE cover
-            _set_finalize_progress(meta, 20, "AI 正在依歌曲 A 唱歌")
+            # 後備：先進化編曲床，再 ACE cover（仍不循環舊 A）
+            _set_finalize_progress(meta, 18, f"升級編曲為{cfg['label']}")
+            bed = _render_and_save_tier(meta, tier)
+            _set_finalize_progress(meta, 35, f"AI 在{cfg['label']}上唱歌")
             seed = _parse_seed_int(meta.get("ace_seed")) if full else None
             ace = _ace.generate_to_file(
                 lyrics=meta["lyrics"],
@@ -349,13 +401,15 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
                 engine_style=meta.get("engine_style"),
                 duration_sec=duration,
                 out_path=out,
-                src_audio_path=preview_path,
+                src_audio_path=bed,
                 seed=seed,
                 full_lyrics=full,
+                fit_source_duration=False,
                 progress=lambda pct, label: _set_finalize_progress(meta, pct, label),
             )
             meta["vocal_score"] = round(float(_ace.vocal_presence_score(ace.path)), 3)
             meta["final_engine"] = ace.engine or "acestep_cover"
+            meta["arrangement_tier"] = tier
             if ace.seed:
                 meta["ace_seed"] = ace.seed
             meta["ace_duration"] = float(ace.duration_sec or duration)
@@ -517,13 +571,23 @@ def _mix_vocal_into_acc(acc, vocal, apply_reverb, *, vocal_to_acc: float = 1.25)
     return mix
 
 
-def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode: Optional[str] = None) -> str:
+def _render_arrangement(
+    meta: dict,
+    *,
+    use_voiceprint: bool = False,
+    vocal_mode: Optional[str] = None,
+    duration_seconds: Optional[int] = None,
+    melody_gain: Optional[float] = None,
+    arrangement_seed: Optional[int] = None,
+) -> str:
     """
     呼叫與 /render-audio 相同的核心路徑。
     vocal_mode:
       None / 搭配 use_voiceprint=False → 僅伴奏預覽
       "ai" → AI 歌手模板
       "voiceprint" → 使用者聲紋
+    duration_seconds / melody_gain / arrangement_seed：
+      歌曲 A→A+→A++ 堆疊時覆寫長度與音色密度（同一 seed 保證同一首歌）。
     """
     from app.main import (
         find_fluidsynth,
@@ -548,12 +612,18 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
     bpm = float(meta["bpm"])
     key = meta["key"]
     style = meta.get("engine_style")
-    seed = abs(hash(meta["id"] + f"-{vocal_mode}")) % (10**9)
-    duration = 60
+    seed = (
+        int(arrangement_seed)
+        if arrangement_seed is not None
+        else abs(hash(meta["id"] + f"-{vocal_mode}")) % (10**9)
+    )
+    duration = int(duration_seconds) if duration_seconds is not None else 60
     # AI 版：完整編曲＋主旋律（暫不走 DiffSinger，避免鬼聲）
     # voiceprint 版：關主旋律 MIDI，改混入人聲
     with_user_vocals = vocal_mode == "voiceprint"
     is_ai_final = vocal_mode == "ai"
+    if melody_gain is None:
+        melody_gain = 0.0 if with_user_vocals else 1.0
 
     fluidsynth_bin = find_fluidsynth()
     if not fluidsynth_bin:
@@ -577,13 +647,13 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
         lyrics=lyrics_obj,
         chord_overrides=meta.get("chords"),
         seed=seed,
-        melody_gain=0.0 if with_user_vocals else 1.0,
+        melody_gain=float(melody_gain),
         style=style,
         duration_seconds=duration,
     )
 
     wav_path = tempfile.mktemp(prefix="journey_render_", suffix=".wav")
-    use_lead = not with_user_vocals
+    use_lead = not with_user_vocals and float(melody_gain) > 0.05
     if not can_render_acoustic_locally() and RENDER_REMOTE_URLS:
         remote = _render_midi_via_remote(midi_path, use_lead_overlay=use_lead)
         if remote:
