@@ -152,10 +152,148 @@ def _parse_seed_int(raw) -> Optional[int]:
         return None
 
 
+def _mix_ai_vocals_onto_song_a(
+    meta: dict,
+    *,
+    song_a_path: Path,
+    duration_sec: float,
+    out_path: Path,
+) -> dict:
+    """
+    以歌曲 A（旅途伴奏）為床：裁切／循環到目標長度，再把 DiffSinger 人聲
+    依同一組 notes／歌詞混進去。完整版＝同一首歌拉長，不是另寫新歌。
+    """
+    import numpy as np
+    import soundfile as sf
+
+    from app.main import compress_to_mp3
+    from app.midi.generate_midi import compute_song_structure
+    from app.voice import svs
+    from app.voice.acestep import fit_cover_source, vocal_presence_score
+    from app.voice.sing import apply_reverb
+    from app.voice.singer_templates import (
+        DIFFSINGER_NATIVE_MIDI,
+        apply_template_color,
+        get_template,
+    )
+
+    if not (svs.is_available() or svs.SVS_REMOTE_URLS):
+        raise RuntimeError("AI 代唱引擎未就緒，請稍後再試")
+
+    _set_finalize_progress(
+        meta,
+        18,
+        "延長歌曲 A" if duration_sec >= 90 else "讀取歌曲 A 旋律",
+    )
+    fitted = fit_cover_source(song_a_path, duration_sec)
+    try:
+        acc, sr = sf.read(str(fitted))
+        if acc.ndim == 1:
+            acc = np.stack([acc, acc], axis=1)
+        if sr != 44100:
+            # DiffSinger / 混音管線以 44100 為準；重採樣用 ffmpeg 較穩
+            import subprocess
+
+            resampled = Path(tempfile.mktemp(prefix="song_a_44k_", suffix=".wav"))
+            subprocess.check_call(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-i", str(fitted),
+                    "-ar", "44100", "-ac", "2",
+                    str(resampled),
+                ]
+            )
+            acc, sr = sf.read(str(resampled))
+            if acc.ndim == 1:
+                acc = np.stack([acc, acc], axis=1)
+            try:
+                resampled.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        notes_list = [
+            {
+                "start": n["start"],
+                "end": n["end"],
+                "midi": n["midi"],
+                "velocity": n.get("velocity", 90),
+            }
+            for n in (meta.get("notes") or [])
+        ]
+        lyrics = meta.get("lyrics") or {}
+        lyrics_obj = {"verse": lyrics.get("verse"), "chorus": lyrics.get("chorus")}
+        bpm = float(meta.get("bpm") or 100)
+        structure = compute_song_structure(
+            notes_list, bpm, target_seconds=int(round(duration_sec))
+        )
+
+        _set_finalize_progress(meta, 45, "AI 依歌曲 A 唱歌詞")
+        vocal = svs.build_svs_vocal_track(
+            notes=notes_list,
+            bpm=bpm,
+            structure=structure,
+            lyrics=lyrics_obj,
+            total_samples=len(acc),
+            speaker_midi=float(DIFFSINGER_NATIVE_MIDI),
+            fs=44100,
+        )
+        if vocal is None:
+            raise RuntimeError("無法依歌詞合成人聲")
+
+        singer_id = meta.get("ai_singer_id") or get_template(None)["id"]
+        _set_finalize_progress(meta, 70, "套用選定音色")
+        vocal = apply_template_color(vocal, singer_id, fs=44100)
+
+        _set_finalize_progress(meta, 85, "混入歌曲 A")
+        # 略壓低伴奏，讓主唱清楚；床仍是同一條歌曲 A
+        mix = _mix_vocal_into_acc(
+            acc.astype(np.float64) * 0.78,
+            vocal,
+            apply_reverb,
+            vocal_to_acc=1.55,
+        )
+
+        wav = tempfile.mktemp(prefix="journey_ai_sung_", suffix=".wav")
+        sf.write(wav, mix, 44100)
+        mp3 = compress_to_mp3(wav)
+        final_src = mp3 or wav
+        shutil.copyfile(final_src, out_path)
+        if Path(final_src).resolve() != out_path.resolve():
+            try:
+                os.unlink(final_src)
+            except OSError:
+                pass
+        try:
+            os.unlink(wav)
+        except OSError:
+            pass
+
+        score = float(vocal_presence_score(out_path))
+        return {
+            "engine": "song_a_diffsinger",
+            "duration_sec": float(duration_sec),
+            "vocal_score": round(score, 3),
+            "path": out_path,
+        }
+    finally:
+        try:
+            fitted.unlink(missing_ok=True)
+            parent = fitted.parent
+            if parent.name.startswith("ace_song_a_"):
+                parent.rmdir()
+        except OSError:
+            pass
+
+
 def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
-    """以預覽伴奏做 ACE-Step cover，在同一條旋律上加入 AI 人聲。"""
+    """
+    把 AI 人聲融入「歌曲 A」（旅途伴奏）：
+    - 試聽：裁切歌曲 A + 同旋律代唱
+    - 完整版：循環延長歌曲 A + 同旋律代唱（不是另產新歌）
+    """
     from app.voice.singer_templates import get_template, is_valid_singer_id
     from app.voice import acestep as _ace
+    from app.voice import svs
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
@@ -176,53 +314,57 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
     store.save_meta(journey_id, meta)
     _set_finalize_progress(meta, 8, "準備製作")
 
-    if not _ace.is_available():
-        # 保留原狀態，避免試聽版旅程被標成 error
-        meta["status"] = "done" if meta.get("final_file") else prev_status
-        store.save_meta(journey_id, meta)
-        raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
-
     preview_path = _ensure_preview_path(meta)
-    # 完整版優先 cover 使用者已聽過的試聽人聲版，鎖同一條旋律再延長
-    cover_src = preview_path
-    cover_strength = _ace.ACESTEP_COVER_STRENGTH
-    if full and meta.get("final_file"):
-        teaser = store.output_dir(journey_id) / meta["final_file"]
-        if teaser.is_file() and teaser.stat().st_size > 5000:
-            cover_src = teaser
-            cover_strength = max(cover_strength, 0.9)
-    _set_finalize_progress(
-        meta,
-        15,
-        "沿用同一條旅途旋律延長" if full else "讀取旅途旋律",
-    )
-
+    meta["song_a_file"] = meta.get("preview_file")
     duration = _ace.FULL_DURATION_SEC if full else _ace.TEASER_DURATION_SEC
     out_name = "final-full.mp3" if full else "final.mp3"
     out = store.output_dir(journey_id) / out_name
-    # 完整版沿用試聽 seed；試聽版每次可換 seed 方便「再唱一次」
-    seed = _parse_seed_int(meta.get("ace_seed")) if full else None
 
-    def _prog(pct: int, label: str) -> None:
-        _set_finalize_progress(meta, pct, label)
+    _set_finalize_progress(
+        meta,
+        12,
+        "延長歌曲 A 並加入人聲" if full else "讀取歌曲 A 旋律",
+    )
 
     try:
-        result = _ace.generate_to_file(
-            lyrics=meta["lyrics"],
-            bpm=float(meta.get("bpm") or 100),
-            key=meta.get("key"),
-            singer_id=meta.get("ai_singer_id"),
-            engine_style=meta.get("engine_style"),
-            duration_sec=duration,
-            out_path=out,
-            src_audio_path=cover_src,
-            cover_strength=cover_strength,
-            seed=seed,
-            full_lyrics=full,
-            progress=_prog,
-        )
+        if svs.is_available() or svs.SVS_REMOTE_URLS:
+            result = _mix_ai_vocals_onto_song_a(
+                meta,
+                song_a_path=preview_path,
+                duration_sec=duration,
+                out_path=out,
+            )
+            meta["vocal_score"] = result.get("vocal_score")
+            meta["final_engine"] = result.get("engine") or "song_a_diffsinger"
+            meta["ace_duration"] = float(result.get("duration_sec") or duration)
+        elif _ace.is_available():
+            # 後備：僅在 DiffSinger 不可用時才走 ACE cover
+            _set_finalize_progress(meta, 20, "AI 正在依歌曲 A 唱歌")
+            seed = _parse_seed_int(meta.get("ace_seed")) if full else None
+            ace = _ace.generate_to_file(
+                lyrics=meta["lyrics"],
+                bpm=float(meta.get("bpm") or 100),
+                key=meta.get("key"),
+                singer_id=meta.get("ai_singer_id"),
+                engine_style=meta.get("engine_style"),
+                duration_sec=duration,
+                out_path=out,
+                src_audio_path=preview_path,
+                seed=seed,
+                full_lyrics=full,
+                progress=lambda pct, label: _set_finalize_progress(meta, pct, label),
+            )
+            meta["vocal_score"] = round(float(_ace.vocal_presence_score(ace.path)), 3)
+            meta["final_engine"] = ace.engine or "acestep_cover"
+            if ace.seed:
+                meta["ace_seed"] = ace.seed
+            meta["ace_duration"] = float(ace.duration_sec or duration)
+        else:
+            meta["status"] = "done" if meta.get("final_file") else prev_status
+            store.save_meta(journey_id, meta)
+            raise RuntimeError("AI 唱歌引擎未就緒，請稍後再試")
     except Exception as e:
-        print(f"[journey] ACE-Step cover failed: {e}")
+        print(f"[journey] AI finalize failed: {e}")
         meta = store.load_meta(journey_id)
         if meta.get("final_file"):
             meta["status"] = "done"
@@ -235,10 +377,6 @@ def run_finalize_ai(journey_id: str, *, full: bool = False) -> dict:
         meta["final_full_file"] = out_name
     else:
         meta["final_file"] = out_name
-    meta["final_engine"] = result.engine or "acestep_cover"
-    if result.seed:
-        meta["ace_seed"] = result.seed
-    meta["ace_duration"] = float(result.duration_sec or duration)
     meta["ace_full"] = bool(full)
     meta["status"] = "done"
     meta["share_public"] = True
@@ -362,14 +500,14 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
     }
 
 
-def _mix_vocal_into_acc(acc, vocal, apply_reverb):
+def _mix_vocal_into_acc(acc, vocal, apply_reverb, *, vocal_to_acc: float = 1.25):
     import numpy as np
 
     vocal = apply_reverb(vocal)
     acc_rms = float(np.sqrt(np.mean(acc ** 2)))
     voc_rms = float(np.sqrt(np.mean(vocal[vocal != 0] ** 2))) if np.any(vocal != 0) else 0.0
     if voc_rms > 1e-6:
-        vocal = vocal * (acc_rms * 1.25 / voc_rms)
+        vocal = vocal * (acc_rms * float(vocal_to_acc) / voc_rms)
     mix = acc * 0.8
     mix[:, 0] += vocal
     mix[:, 1] += vocal
