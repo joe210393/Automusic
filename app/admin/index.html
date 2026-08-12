@@ -57,16 +57,59 @@
     </section>
 
     <!-- 遊客活動紀錄 -->
-    <section id="page-activity" class="page hidden">
+    <section id="page-activity" class="page page--wide hidden">
       <p class="crumb"><a href="#/">← 目的地列表</a></p>
       <div class="card">
         <div class="card-head">
           <h2>遊客紀錄</h2>
           <button id="btnRefreshActivity" class="secondary" type="button">重新整理</button>
         </div>
-        <p class="hint">看每位遊客玩了哪條旅程、錄了什麼聲音、產出了哪首歌。</p>
+        <p class="hint">搜尋、篩選後再展開細節。時間為台灣 UTC+8。</p>
         <div id="activityStats" class="activity-stats"></div>
-        <div id="activityList" class="activity-list"></div>
+        <div class="activity-toolbar">
+          <label class="grow">
+            <span class="sr-only">搜尋</span>
+            <input id="activitySearch" type="search" placeholder="搜尋歌名、暱稱、email、關鍵字…" />
+          </label>
+          <label>
+            <span class="sr-only">狀態</span>
+            <select id="activityStatusFilter">
+              <option value="">全部狀態</option>
+              <option value="done">已完成</option>
+              <option value="finalizing">製作中</option>
+              <option value="preview">已有預覽</option>
+              <option value="composing">作曲中</option>
+              <option value="collecting">錄音中</option>
+              <option value="error">失敗</option>
+            </select>
+          </label>
+          <label>
+            <span class="sr-only">成品</span>
+            <select id="activityFinalFilter">
+              <option value="">成品：全部</option>
+              <option value="1">已有成品</option>
+              <option value="0">尚無成品</option>
+            </select>
+          </label>
+          <button id="btnApplyActivity" class="secondary" type="button">套用</button>
+        </div>
+        <div class="activity-table-wrap">
+          <table class="activity-table" id="activityTable">
+            <thead>
+              <tr>
+                <th>時間</th>
+                <th>作品</th>
+                <th>旅人</th>
+                <th>狀態</th>
+                <th>錄音</th>
+                <th>成品</th>
+              </tr>
+            </thead>
+            <tbody id="activityList"></tbody>
+          </table>
+        </div>
+        <div id="activityDetail" class="activity-detail" hidden></div>
+        <nav class="pager" id="activityPager" aria-label="遊客紀錄分頁" hidden></nav>
         <p id="activityStatus" class="status"></p>
       </div>
     </section>

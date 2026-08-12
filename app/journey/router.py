@@ -497,7 +497,7 @@ def set_singer(journey_id: str, body: SingerBody):
 
 @router.post("/api/journey/{journey_id}/voiceprint/consent")
 def voiceprint_consent(journey_id: str, body: ConsentBody):
-    from datetime import datetime, timezone
+    from app.util.timeutil import now_iso
 
     meta = _meta_or_404(journey_id)
     if not body.accepted:
@@ -506,7 +506,7 @@ def voiceprint_consent(journey_id: str, body: ConsentBody):
         raise HTTPException(status_code=400, detail="請先完成 AI 歌手版本")
     meta["voiceprint_consent"] = {
         "accepted": True,
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "at": now_iso(),
     }
     meta["status"] = "voicing"
     store.save_meta(journey_id, meta)

@@ -10,9 +10,11 @@ from __future__ import annotations
 import json
 import os
 import secrets
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+from app.util.timeutil import month_key as _month_key
+from app.util.timeutil import now_iso as _now
 
 _persistent = Path("/voice")
 _default = (
@@ -25,14 +27,6 @@ ACCOUNTS_ROOT.mkdir(parents=True, exist_ok=True)
 # 免費／付費額度（每月）
 FREE_FINALIZE_LIMIT = int(os.getenv("FREE_FINALIZE_LIMIT", "3"))
 PAID_FINALIZE_LIMIT = int(os.getenv("PAID_FINALIZE_LIMIT", "30"))
-
-
-def _now() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def _month_key() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m")
 
 
 def _path(account_id: str) -> Path:

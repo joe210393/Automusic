@@ -14,6 +14,8 @@ import tempfile
 import json
 import requests
 
+from app.util.timeutil import TAIPEI
+
 app = FastAPI(title="Music Education MVP", version="1.0.0")
 
 # 遊客旅程 API（薄適配層）
@@ -379,7 +381,9 @@ async def list_recordings():
             RecordingInfo(
                 filename=p.name,
                 size=stat.st_size,
-                created=datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+                created=datetime.fromtimestamp(stat.st_mtime, tz=TAIPEI).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                ),
             )
         )
     items.sort(key=lambda x: x.created, reverse=True)

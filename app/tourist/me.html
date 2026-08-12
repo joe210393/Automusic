@@ -23,26 +23,47 @@
     <header class="me-topbar">
       <a class="auth-brand" href="/">蘇澳拾音</a>
       <div class="auth-nav-right">
-        <a class="auth-link" href="/">回首頁玩遊戲</a>
+        <a class="auth-link" href="/">回首頁</a>
         <button type="button" class="auth-link" id="btnLogout">登出</button>
       </div>
     </header>
 
     <main class="me-main">
-      <section class="me-card" id="meProfileCard">
-        <p class="me-eyebrow">旅人後台 · 不是登入頁</p>
-        <h1 id="meName">旅人</h1>
-        <p class="me-email" id="meEmail"></p>
-        <p class="me-quota" id="meQuota"></p>
+      <section class="me-card me-profile" id="meProfileCard">
+        <div class="me-profile-row">
+          <div>
+            <h1 id="meName">旅人</h1>
+            <p class="me-email" id="meEmail"></p>
+          </div>
+          <p class="me-quota" id="meQuota"></p>
+        </div>
       </section>
 
       <section class="me-card" id="meListCard">
         <div class="me-card-head">
           <h2>我的旅程作品</h2>
-          <a class="auth-link" href="/">開始新旅程</a>
+          <a class="me-btn primary" href="/">開始新旅程</a>
         </div>
-        <p class="me-hint">這裡只放你的作品：可命名、換封面、看錄音／歌詞／成品，也能繼續未完成的旅程。</p>
+
+        <div class="me-toolbar" role="search">
+          <label class="me-search">
+            <span class="visually-hidden">搜尋</span>
+            <input id="meSearch" type="search" placeholder="搜尋名稱、目的地…" autocomplete="off" />
+          </label>
+          <label class="me-filter">
+            <span class="visually-hidden">狀態</span>
+            <select id="meStatusFilter">
+              <option value="">全部狀態</option>
+              <option value="done">已完成</option>
+              <option value="preview">已有預覽</option>
+              <option value="in_progress">進行中</option>
+              <option value="error">失敗</option>
+            </select>
+          </label>
+        </div>
+        <p class="me-list-meta" id="meListMeta"></p>
         <div id="meJourneyList" class="me-journey-list"></div>
+        <nav class="me-pager" id="mePager" aria-label="作品分頁" hidden></nav>
         <p id="meStatus" class="status"></p>
       </section>
 
@@ -55,28 +76,30 @@
         <label class="me-field" for="meTitleInput">旅程名稱</label>
         <div class="me-title-row">
           <input id="meTitleInput" type="text" maxlength="40" placeholder="替這趟旅程取名" />
-          <button type="button" class="auth-link" id="btnSaveTitle">儲存名稱</button>
+          <button type="button" class="me-btn" id="btnSaveTitle">儲存名稱</button>
         </div>
         <p class="me-meta-line" id="meDetailMeta"></p>
         <div class="me-actions" id="meDetailActions"></div>
 
-        <div class="me-block">
-          <h3>封面照片</h3>
-          <p class="me-empty" style="margin-bottom:8px;">新建時會從六張風景隨機一張；想換成自己的照片再上傳。</p>
-          <input id="meCoverFile" type="file" accept="image/jpeg,image/png,image/webp" />
-          <button type="button" class="auth-link" id="btnUploadCover">換成我的照片</button>
+        <div class="me-tabs" role="tablist" aria-label="作品內容">
+          <button type="button" class="me-tab is-active" data-tab="cover" role="tab" aria-selected="true">封面</button>
+          <button type="button" class="me-tab" data-tab="sounds" role="tab" aria-selected="false">錄音</button>
+          <button type="button" class="me-tab" data-tab="lyrics" role="tab" aria-selected="false">歌詞</button>
+          <button type="button" class="me-tab" data-tab="outputs" role="tab" aria-selected="false">成品</button>
         </div>
 
-        <div class="me-block">
-          <h3>當初錄音</h3>
+        <div class="me-panel is-active" data-panel="cover">
+          <p class="me-empty" style="margin-bottom:8px;">新建時會從六張風景隨機一張；想換成自己的照片再上傳。</p>
+          <input id="meCoverFile" type="file" accept="image/jpeg,image/png,image/webp" />
+          <button type="button" class="me-btn" id="btnUploadCover">換成我的照片</button>
+        </div>
+        <div class="me-panel" data-panel="sounds" hidden>
           <div id="meSounds"></div>
         </div>
-        <div class="me-block">
-          <h3>當初歌詞</h3>
+        <div class="me-panel" data-panel="lyrics" hidden>
           <div id="meLyrics"></div>
         </div>
-        <div class="me-block">
-          <h3>做好的檔案</h3>
+        <div class="me-panel" data-panel="outputs" hidden>
           <div id="meOutputs"></div>
         </div>
         <p id="meDetailStatus" class="status"></p>

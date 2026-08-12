@@ -255,14 +255,35 @@ def admin_delete_route(
 
 @router.get("/api/admin/activity")
 def admin_activity(
-    limit: int = 100,
+    limit: int = 20,
+    page: int = 1,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    destination: Optional[str] = None,
+    has_final: Optional[str] = None,
     x_admin_token: Optional[str] = Header(default=None),
     authorization: Optional[str] = Header(default=None),
 ):
-    """遊客玩了什麼、錄了什麼、產出了什麼。"""
+    """遊客玩了什麼、錄了什麼、產出了什麼（搜尋／篩選／分頁）。"""
+    import json as _json
+
     _require_admin(x_admin_token, authorization)
     accounts = ops_accounts.account_map()
-    journeys = journey_store.list_all_journeys(limit=limit)
+    has_final_flag = None
+    if has_final is not None and str(has_final).strip() != "":
+        has_final_flag = str(has_final).strip().lower() in ("1", "true", "yes")
+    page_n = max(1, int(page or 1))
+    page_size = max(1, min(int(limit or 20), 100))
+    offset = (page_n - 1) * page_size
+    packed = journey_store.list_all_journeys(
+        limit=page_size,
+        offset=offset,
+        q=q,
+        status=status,
+        destination=destination,
+        has_final=has_final_flag,
+    )
+    journeys = packed["journeys"]
     for j in journeys:
         acc = accounts.get(j.get("account_id") or "")
         if acc:
@@ -274,14 +295,36 @@ def admin_activity(
             }
         else:
             j["account"] = None
+
+    n_sounds = n_final = n_all = 0
+    for path in journey_store.JOURNEYS_ROOT.glob("*/meta.json"):
+        try:
+            meta = _json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        n_all += 1
+        if meta.get("sounds"):
+            n_sounds += 1
+        if meta.get("final_file"):
+            n_final += 1
+    total_pages = max(1, (int(packed["total"]) + page_size - 1) // page_size)
     return {
         "journeys": journeys,
         "accounts": list(accounts.values()),
+        "page": page_n,
+        "page_size": page_size,
+        "total": packed["total"],
+        "total_pages": total_pages,
+        "q": q or "",
+        "status": status or "",
+        "destination": destination or "",
+        "has_final": has_final_flag,
         "stats": {
-            "journeys": len(journeys),
+            "journeys": n_all,
             "accounts": len(accounts),
-            "with_sounds": sum(1 for j in journeys if j.get("sound_count")),
-            "with_final": sum(1 for j in journeys if j.get("final_file")),
+            "with_sounds": n_sounds,
+            "with_final": n_final,
+            "filtered": packed["total"],
         },
     }
 

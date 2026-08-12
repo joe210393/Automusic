@@ -14,9 +14,10 @@ import json
 import os
 import secrets
 import string
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from app.util.timeutil import now_iso as _now_iso
 
 _persistent = Path("/voice")
 _default_root = (
@@ -39,10 +40,6 @@ DEFAULT_COVERS = (
 )
 STOCK_COVER_PREFIX = "stock:"
 STOCK_COVER_PUBLIC = "/trip/media/covers"
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def new_journey_id() -> str:
@@ -327,9 +324,20 @@ def list_account_journeys(account_id: str) -> List[Dict[str, Any]]:
     return out
 
 
-def list_all_journeys(limit: int = 200) -> List[Dict[str, Any]]:
-    """後台用：列出近期旅程摘要（含錄音／成品狀態）。"""
+def list_all_journeys(
+    limit: int = 200,
+    *,
+    offset: int = 0,
+    q: Optional[str] = None,
+    status: Optional[str] = None,
+    destination: Optional[str] = None,
+    has_final: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """後台用：列出旅程摘要，支援搜尋／篩選／分頁。"""
     out: List[Dict[str, Any]] = []
+    needle = (q or "").strip().lower()
+    status_f = (status or "").strip().lower()
+    dest_f = (destination or "").strip().lower()
     for path in JOURNEYS_ROOT.glob("*/meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
@@ -337,10 +345,37 @@ def list_all_journeys(limit: int = 200) -> List[Dict[str, Any]]:
             continue
         jid = meta.get("id") or path.parent.name
         sounds = meta.get("sounds") or []
-        lyrics = meta.get("lyrics") or {}
         keywords = meta.get("keywords") or []
         if isinstance(keywords, str):
             keywords = [keywords] if keywords.strip() else []
+        st = str(meta.get("status") or "").lower()
+        dest = str(meta.get("destination") or "").lower()
+        if status_f and st != status_f:
+            continue
+        if dest_f and dest != dest_f:
+            continue
+        has_f = bool(meta.get("final_file"))
+        if has_final is True and not has_f:
+            continue
+        if has_final is False and has_f:
+            continue
+        title = display_title(meta) or ""
+        nick = meta.get("nickname") or ""
+        if needle:
+            blob = " ".join(
+                [
+                    jid,
+                    title,
+                    nick,
+                    dest,
+                    st,
+                    " ".join(str(k) for k in keywords),
+                    str(meta.get("account_id") or ""),
+                    str(meta.get("route_id") or ""),
+                ]
+            ).lower()
+            if needle not in blob:
+                continue
         vp_path = journey_dir(jid) / "voiceprint" / "manifest.json"
         voice_lines = 0
         if vp_path.exists():
@@ -358,14 +393,14 @@ def list_all_journeys(limit: int = 200) -> List[Dict[str, Any]]:
             "destination": meta.get("destination"),
             "route_id": meta.get("route_id"),
             "mood_id": meta.get("mood_id"),
-            "nickname": meta.get("nickname") or "",
+            "nickname": nick,
             "status": meta.get("status"),
             "account_id": meta.get("account_id"),
             "share_public": bool(meta.get("share_public")),
             "keywords": keywords,
             "memory": meta.get("memory") or "",
             "feeling": meta.get("feeling") or "",
-            "title": display_title(meta) or None,
+            "title": title or None,
             "cover_url": cover_info["cover_url"],
             "cover_custom": cover_info["cover_custom"],
             "sounds": [
@@ -387,4 +422,13 @@ def list_all_journeys(limit: int = 200) -> List[Dict[str, Any]]:
             "error": meta.get("error"),
         })
     out.sort(key=lambda x: x.get("updated") or x.get("created") or "", reverse=True)
-    return out[: max(1, min(limit, 500))]
+    total = len(out)
+    page_size = max(1, min(int(limit or 20), 100))
+    start = max(0, int(offset or 0))
+    page = out[start : start + page_size]
+    return {
+        "journeys": page,
+        "total": total,
+        "offset": start,
+        "limit": page_size,
+    }

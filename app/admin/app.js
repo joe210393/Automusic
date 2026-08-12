@@ -61,6 +61,8 @@
     const page = $(`page-${name}`);
     if (page) page.classList.remove("hidden");
     $("navHome").hidden = name === "login" || name === "home";
+    const shell = document.querySelector(".shell");
+    if (shell) shell.classList.toggle("shell--wide", name === "activity");
   }
 
   function setTitle(text) {
@@ -115,62 +117,124 @@
     return URL.createObjectURL(blob);
   }
 
-  async function renderActivity() {
-    const root = $("activityList");
-    const statsEl = $("activityStats");
-    setStatus($("activityStatus"), "載入中…");
-    root.innerHTML = "";
-    const data = await api("/api/admin/activity?limit=120");
-    const stats = data.stats || {};
-    statsEl.innerHTML = `
-      <span>旅程 ${stats.journeys ?? 0}</span>
-      <span>帳號 ${stats.accounts ?? 0}</span>
-      <span>有錄音 ${stats.with_sounds ?? 0}</span>
-      <span>有成品 ${stats.with_final ?? 0}</span>
-    `;
-    const journeys = data.journeys || [];
-    if (!journeys.length) {
-      root.innerHTML = "<p class='hint'>尚無遊客旅程紀錄。</p>";
-      setStatus($("activityStatus"), "");
+  function formatTaipei(iso) {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return String(iso);
+    try {
+      return new Intl.DateTimeFormat("zh-TW", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+        .format(d)
+        .replace(/\//g, "-");
+    } catch (_) {
+      return String(iso);
+    }
+  }
+
+  let activityPage = 1;
+  let activityCache = [];
+  let selectedActivityId = null;
+
+  function activityQuery() {
+    const params = new URLSearchParams();
+    params.set("page", String(activityPage));
+    params.set("limit", "15");
+    const q = ($("activitySearch")?.value || "").trim();
+    const status = $("activityStatusFilter")?.value || "";
+    const hasFinal = $("activityFinalFilter")?.value || "";
+    if (q) params.set("q", q);
+    if (status) params.set("status", status);
+    if (hasFinal !== "") params.set("has_final", hasFinal);
+    return params.toString();
+  }
+
+  function renderActivityPager(data) {
+    const pager = $("activityPager");
+    const totalPages = data.total_pages || 1;
+    const total = data.total || 0;
+    if (total <= (data.page_size || 15)) {
+      pager.hidden = true;
+      pager.innerHTML = "";
       return;
     }
-    for (const j of journeys) {
-      const card = document.createElement("article");
-      card.className = "activity-card";
-      const acc = j.account;
-      const who = acc
-        ? `${esc(acc.display_name || "旅人")} · ${esc(acc.email || "")}`
-        : "匿名遊客";
-      const title = j.title || "尚未產出歌名";
-      const status = STATUS_LABEL[j.status] || j.status || "—";
-      const kw = (j.keywords || []).filter(Boolean).map(esc).join("、") || "（無）";
-      const sounds = j.sounds || [];
-      const soundHtml = sounds.length
-        ? sounds.map((s, i) => `
+    pager.hidden = false;
+    pager.innerHTML = `
+      <button type="button" class="page-btn" data-p="${activityPage - 1}" ${activityPage <= 1 ? "disabled" : ""}>上一頁</button>
+      <span class="page-info">第 ${activityPage} / ${totalPages} 頁 · 篩選 ${total} 筆</span>
+      <button type="button" class="page-btn" data-p="${activityPage + 1}" ${activityPage >= totalPages ? "disabled" : ""}>下一頁</button>
+    `;
+    pager.querySelectorAll("[data-p]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const n = Number(btn.getAttribute("data-p"));
+        if (!Number.isFinite(n) || n < 1 || n > totalPages) return;
+        activityPage = n;
+        renderActivity();
+      });
+    });
+  }
+
+  function showActivityDetail(j) {
+    const box = $("activityDetail");
+    if (!j) {
+      box.hidden = true;
+      box.innerHTML = "";
+      return;
+    }
+    selectedActivityId = j.id;
+    const acc = j.account;
+    const who = acc
+      ? `${esc(acc.display_name || "旅人")} · ${esc(acc.email || "")}`
+      : "匿名遊客";
+    const kw = (j.keywords || []).filter(Boolean).map(esc).join("、") || "（無）";
+    const sounds = j.sounds || [];
+    const soundHtml = sounds.length
+      ? sounds
+          .map(
+            (s, i) => `
             <div class="activity-sound">
               <span>${esc(s.label || s.slot || `錄音${i + 1}`)}</span>
               <audio controls preload="none" data-admin-src="${esc(s.url || "")}"></audio>
-            </div>`).join("")
-        : "<p class='hint'>尚未錄音</p>";
-      const outputs = [];
-      if (j.preview_url) outputs.push(`<div class="activity-sound"><span>預覽</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
-      if (j.final_url) outputs.push(`<div class="activity-sound"><span>成品</span><audio controls preload="none" src="${esc(j.final_url)}"></audio></div>`);
-      if (j.share_public && j.slug) outputs.push(`<p><a href="/s/${esc(j.slug)}" target="_blank" rel="noopener">分享頁 /s/${esc(j.slug)}</a></p>`);
-      if (!outputs.length) outputs.push("<p class='hint'>尚未產出音樂</p>");
+            </div>`
+          )
+          .join("")
+      : "<p class='hint'>尚未錄音</p>";
+    const outputs = [];
+    if (j.preview_url)
+      outputs.push(
+        `<div class="activity-sound"><span>預覽</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`
+      );
+    if (j.final_url)
+      outputs.push(
+        `<div class="activity-sound"><span>成品</span><audio controls preload="none" src="${esc(j.final_url)}"></audio></div>`
+      );
+    if (j.share_public && j.slug)
+      outputs.push(
+        `<p><a href="/s/${esc(j.slug)}" target="_blank" rel="noopener">分享頁 /s/${esc(j.slug)}</a></p>`
+      );
+    if (!outputs.length) outputs.push("<p class='hint'>尚未產出音樂</p>");
 
-      card.innerHTML = `
-        <header>
-          <div>
-            <strong>${esc(title)}</strong>
-            <span class="activity-who">${who}</span>
-          </div>
-          <span class="activity-badge">${esc(status)}</span>
-        </header>
-        <p class="activity-meta">
-          ${esc(j.destination || "—")} · 路線 ${esc(j.route_id || "未選")} · 心情 ${esc(j.mood_id || "未選")}
-          ${j.nickname ? ` · 暱稱「${esc(j.nickname)}」` : ""}
-          <br />${esc(j.created || "")}
-        </p>
+    box.hidden = false;
+    box.innerHTML = `
+      <div class="activity-detail-head">
+        <div>
+          <strong>${esc(j.title || "尚未產出歌名")}</strong>
+          <span class="activity-who">${who}</span>
+        </div>
+        <button type="button" class="ghost" id="btnCloseActivityDetail">收合</button>
+      </div>
+      <p class="activity-meta">
+        ${esc(formatTaipei(j.updated || j.created))} · ${esc(j.destination || "—")} · 路線 ${esc(j.route_id || "未選")} · 心情 ${esc(j.mood_id || "未選")}
+        ${j.nickname ? ` · 暱稱「${esc(j.nickname)}」` : ""}
+        · ID <code>${esc(j.id)}</code>
+      </p>
+      <div class="activity-detail-grid">
         <div class="activity-block">
           <h3>玩了什麼</h3>
           <p>關鍵字：${kw}</p>
@@ -186,12 +250,17 @@
           <h3>產出了什麼</h3>
           ${outputs.join("")}
         </div>
-        ${j.error ? `<p class="status error">${esc(j.error)}</p>` : ""}
-      `;
-      root.appendChild(card);
-    }
-
-    root.querySelectorAll("audio[data-admin-src]").forEach((audio) => {
+      </div>
+      ${j.error ? `<p class="status error">${esc(j.error)}</p>` : ""}
+    `;
+    $("btnCloseActivityDetail")?.addEventListener("click", () => {
+      selectedActivityId = null;
+      showActivityDetail(null);
+      document
+        .querySelectorAll(".activity-row.is-active")
+        .forEach((el) => el.classList.remove("is-active"));
+    });
+    box.querySelectorAll("audio[data-admin-src]").forEach((audio) => {
       const src = audio.getAttribute("data-admin-src");
       if (!src) return;
       let loaded = false;
@@ -207,6 +276,69 @@
         }
       });
     });
+  }
+
+  async function renderActivity() {
+    const root = $("activityList");
+    const statsEl = $("activityStats");
+    setStatus($("activityStatus"), "載入中…");
+    root.innerHTML = "";
+    showActivityDetail(null);
+    const data = await api(`/api/admin/activity?${activityQuery()}`);
+    const stats = data.stats || {};
+    statsEl.innerHTML = `
+      <span>旅程 ${stats.journeys ?? 0}</span>
+      <span>帳號 ${stats.accounts ?? 0}</span>
+      <span>有錄音 ${stats.with_sounds ?? 0}</span>
+      <span>有成品 ${stats.with_final ?? 0}</span>
+      <span>目前篩選 ${stats.filtered ?? data.total ?? 0}</span>
+    `;
+    const journeys = data.journeys || [];
+    activityCache = journeys;
+    if (!journeys.length) {
+      root.innerHTML = `<tr><td colspan="6" class="hint">尚無符合的遊客紀錄。</td></tr>`;
+      renderActivityPager(data);
+      setStatus($("activityStatus"), "");
+      return;
+    }
+    for (const j of journeys) {
+      const tr = document.createElement("tr");
+      tr.className = "activity-row";
+      tr.dataset.id = j.id;
+      const acc = j.account;
+      const who = acc
+        ? `${acc.display_name || "旅人"}<br><span class="dim">${esc(acc.email || "")}</span>`
+        : "匿名遊客";
+      const status = STATUS_LABEL[j.status] || j.status || "—";
+      tr.innerHTML = `
+        <td class="num">${esc(formatTaipei(j.updated || j.created))}</td>
+        <td>
+          <strong>${esc(j.title || "尚未產出歌名")}</strong>
+          <span class="dim">${esc(j.destination || "—")} · ${esc(j.route_id || "未選路線")}</span>
+        </td>
+        <td>${who}</td>
+        <td><span class="activity-badge">${esc(status)}</span></td>
+        <td class="num">${j.sound_count || 0}</td>
+        <td class="num">${j.final_file ? "有" : "—"}</td>
+      `;
+      tr.addEventListener("click", () => {
+        document
+          .querySelectorAll(".activity-row.is-active")
+          .forEach((el) => el.classList.remove("is-active"));
+        tr.classList.add("is-active");
+        showActivityDetail(j);
+      });
+      root.appendChild(tr);
+    }
+    if (selectedActivityId) {
+      const again = journeys.find((x) => x.id === selectedActivityId);
+      if (again) {
+        const row = root.querySelector(`[data-id="${CSS.escape(selectedActivityId)}"]`);
+        row?.classList.add("is-active");
+        showActivityDetail(again);
+      }
+    }
+    renderActivityPager(data);
     setStatus($("activityStatus"), "");
   }
 
@@ -607,13 +739,21 @@
     }
   });
 
-  $("btnRefreshActivity")?.addEventListener("click", async () => {
+  async function reloadActivity(resetPage = false) {
     try {
+      if (resetPage) activityPage = 1;
       await renderActivity();
     } catch (e) {
       setStatus($("activityStatus"), e.message, "error");
     }
+  }
+  $("btnRefreshActivity")?.addEventListener("click", () => reloadActivity(false));
+  $("btnApplyActivity")?.addEventListener("click", () => reloadActivity(true));
+  $("activitySearch")?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") reloadActivity(true);
   });
+  $("activityStatusFilter")?.addEventListener("change", () => reloadActivity(true));
+  $("activityFinalFilter")?.addEventListener("change", () => reloadActivity(true));
 
   window.addEventListener("hashchange", () => { route(); });
 
