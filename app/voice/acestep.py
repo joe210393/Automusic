@@ -22,14 +22,11 @@ ACESTEP_URL = os.getenv("ACESTEP_URL", "http://127.0.0.1:8001").rstrip("/")
 ACESTEP_API_KEY = (os.getenv("ACESTEP_API_KEY") or "").strip()
 ACESTEP_MODEL = os.getenv("ACESTEP_MODEL", "acestep-v15-turbo")
 ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "1").strip().lower() not in ("0", "false", "no")
-ACESTEP_COVER_STRENGTH = float(os.getenv("ACESTEP_COVER_STRENGTH", "0.68"))
-# >0 讓 cover 有空間長出人聲；太高會黏死伴奏、無人聲
-ACESTEP_COVER_NOISE = float(os.getenv("ACESTEP_COVER_NOISE", "0.28"))
-ACESTEP_GUIDANCE = float(os.getenv("ACESTEP_GUIDANCE", "8.5"))
+ACESTEP_COVER_STRENGTH = float(os.getenv("ACESTEP_COVER_STRENGTH", "0.85"))
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 
-TEASER_DURATION_SEC = float(os.getenv("ACESTEP_TEASER_DURATION", "60"))
+TEASER_DURATION_SEC = float(os.getenv("ACESTEP_TEASER_DURATION", "45"))
 FULL_DURATION_SEC = float(os.getenv("ACESTEP_FULL_DURATION", "105"))
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
@@ -174,118 +171,24 @@ def build_prompt(
     )
     bits = [
         base,
-        "cover the source accompaniment as Song A",
-        "preserve the original melody contour rhythm and chords of Song A",
-        "same travel melody — only slight variation allowed, not a new song",
-        "add a clearly audible lead singer in the foreground singing Chinese lyrics",
-        "vocals must be present and prominent, not buried, not instrumental-only",
+        "cover the source accompaniment",
+        "preserve the original melody contour and rhythm",
+        "same melody and harmonic progression as the source audio",
+        "add clearly audible lead singer vocals on top",
+        "not instrumental-only",
         "do not invent a new unrelated melody",
     ]
     if extend:
         bits.extend([
-            "extend the same Song A into a longer verse-chorus form",
-            "keep the identical travel melody while lengthening structure",
-            "about two minutes of the same song, not a different composition",
+            "extend into a fuller song with verse and chorus",
+            "keep the same travel melody while developing longer structure",
+            "about two minutes",
         ])
     if engine_style:
         bits.append(str(engine_style))
     if title:
         bits.append(f"song about: {title}")
     return ", ".join(bits)
-
-
-def _ffprobe_duration(path: Path) -> Optional[float]:
-    try:
-        import subprocess
-        out = subprocess.check_output(
-            [
-                "ffprobe", "-v", "error", "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1", str(path),
-            ],
-            stderr=subprocess.DEVNULL,
-            text=True,
-        ).strip()
-        return float(out)
-    except Exception:
-        return None
-
-
-def fit_cover_source(src_audio_path: Path, target_sec: float, *, out_dir: Optional[Path] = None) -> Path:
-    """
-    ACE-Step cover 的輸出長度 = src_audio 長度。
-    把歌曲 A（伴奏）裁成試聽長、或循環延長成完整版長，再送去 cover。
-    """
-    import subprocess
-
-    src = Path(src_audio_path)
-    if not src.is_file():
-        raise RuntimeError(f"找不到歌曲 A 伴奏：{src}")
-    target = max(20.0, min(120.0, float(target_sec)))
-    work = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="ace_song_a_"))
-    work.mkdir(parents=True, exist_ok=True)
-    out = work / f"song_a_{int(round(target))}s.wav"
-
-    src_dur = _ffprobe_duration(src) or 0.0
-    fade_out = min(1.2, target * 0.04)
-    fade_st = max(0.0, target - fade_out)
-    af = f"afade=t=in:st=0:d=0.05,afade=t=out:st={fade_st:.2f}:d={fade_out:.2f}"
-
-    if src_dur >= target - 0.25:
-        cmd = [
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-i", str(src),
-            "-t", f"{target:.2f}",
-            "-ac", "2", "-ar", "48000",
-            "-af", af,
-            str(out),
-        ]
-    else:
-        # 循環歌曲 A 到目標長度（同一旋律延長，不是另寫新歌）
-        cmd = [
-            "ffmpeg", "-y", "-loglevel", "error",
-            "-stream_loop", "-1",
-            "-i", str(src),
-            "-t", f"{target:.2f}",
-            "-ac", "2", "-ar", "48000",
-            "-af", af,
-            str(out),
-        ]
-    try:
-        subprocess.check_call(cmd)
-    except Exception as e:
-        raise RuntimeError(f"無法準備歌曲 A cover 素材: {e}") from e
-    if not out.is_file() or out.stat().st_size < 2000:
-        raise RuntimeError("歌曲 A cover 素材異常過短")
-    return out
-
-
-def vocal_presence_score(path: Path) -> float:
-    """粗估人聲存在感（中頻能量占比 0~1）。"""
-    try:
-        import subprocess
-        import numpy as np
-        import soundfile as sf
-
-        wav = Path(tempfile.mktemp(suffix=".wav"))
-        subprocess.check_call(
-            ["ffmpeg", "-y", "-loglevel", "error", "-i", str(path), "-ac", "1", "-ar", "16000", str(wav)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        audio, sr = sf.read(wav)
-        wav.unlink(missing_ok=True)
-        if getattr(audio, "ndim", 1) > 1:
-            audio = audio.mean(axis=1)
-        spec = np.abs(np.fft.rfft(audio))
-        freqs = np.fft.rfftfreq(len(audio), 1 / sr)
-        def band(lo, hi):
-            m = (freqs >= lo) & (freqs < hi)
-            return float(np.mean(spec[m] ** 2)) if m.any() else 0.0
-        bass, mid, high = band(20, 250), band(250, 3400), band(3400, 8000)
-        tot = bass + mid + high + 1e-12
-        return mid / tot
-    except Exception:
-        return 0.0
 
 
 def _parse_result_payload(raw: Any) -> Optional[dict]:
@@ -410,7 +313,6 @@ def _generate_via_local_api(
     seed: Optional[int],
     full_lyrics: bool,
     progress: ProgressCb = None,
-    cover_noise: Optional[float] = None,
 ) -> GenerateResult:
     if progress:
         progress(20, "連線 AI 唱歌引擎")
@@ -428,7 +330,6 @@ def _generate_via_local_api(
     duration_sec = max(20.0, min(120.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
     use_cover = bool(src_audio_path and Path(src_audio_path).is_file())
-    noise = ACESTEP_COVER_NOISE if cover_noise is None else float(cover_noise)
 
     fields: Dict[str, Any] = {
         "prompt": prompt,
@@ -442,13 +343,11 @@ def _generate_via_local_api(
         "audio_duration": str(duration_sec),
         "time_signature": "4",
         "batch_size": "1",
-        "inference_steps": "10",
-        "guidance_scale": str(ACESTEP_GUIDANCE),
+        "inference_steps": "8",
     }
     if use_cover:
         fields["task_type"] = "cover"
         fields["audio_cover_strength"] = str(max(0.05, min(1.0, float(cover_strength))))
-        fields["cover_noise_strength"] = str(max(0.0, min(1.0, noise)))
     else:
         fields["task_type"] = "text2music"
         fields["thinking"] = "true" if ACESTEP_THINKING else "false"
@@ -472,7 +371,7 @@ def _generate_via_local_api(
         }
 
     if progress:
-        progress(35, "AI 正在依歌曲 A 唱歌" if use_cover else "AI 正在作曲唱歌")
+        progress(35, "AI 正在依旋律唱歌" if use_cover else "AI 正在作曲唱歌")
 
     r = requests.post(
         f"{ACESTEP_URL}/release_task",
@@ -519,7 +418,6 @@ def _generate_via_remote(
     seed: Optional[int],
     full_lyrics: bool,
     progress: ProgressCb = None,
-    cover_noise: Optional[float] = None,
 ) -> GenerateResult:
     if progress:
         progress(20, "連線本機 AI 唱歌引擎")
@@ -528,7 +426,7 @@ def _generate_via_remote(
     for base in ACESTEP_REMOTE_URLS:
         try:
             if progress:
-                progress(35, "AI 正在依歌曲 A 唱歌")
+                progress(35, "AI 正在依旋律唱歌")
             data = {
                 "lyrics_json": json.dumps(lyrics, ensure_ascii=False),
                 "bpm": str(bpm),
@@ -537,7 +435,6 @@ def _generate_via_remote(
                 "engine_style": engine_style or "",
                 "duration_sec": str(duration_sec),
                 "cover_strength": str(cover_strength),
-                "cover_noise": str(ACESTEP_COVER_NOISE if cover_noise is None else cover_noise),
                 "full_lyrics": "1" if full_lyrics else "0",
             }
             if seed is not None and int(seed) >= 0:
@@ -596,51 +493,31 @@ def generate_to_file(
     full_lyrics: bool = False,
     progress: ProgressCb = None,
     force_local: bool = False,
-    cover_noise: Optional[float] = None,
-    fit_source_duration: bool = True,
 ) -> GenerateResult:
     """
     產生整曲並寫入 out_path。
-    若提供 src_audio_path，走 cover（鎖歌曲 A 旋律）。
-    cover 時會先把歌曲 A 裁切／循環成目標秒數（ACE-Step cover 長度=來源長度）。
+    若提供 src_audio_path，走 cover（鎖預覽旋律）。
     """
-    fitted = None
-    try:
-        src = Path(src_audio_path) if src_audio_path else None
-        if src and src.is_file() and fit_source_duration:
-            if progress:
-                progress(12, "準備歌曲 A 長度")
-            fitted = fit_cover_source(src, duration_sec)
-            src = fitted
-        kwargs = dict(
-            lyrics=lyrics,
-            bpm=bpm,
-            key=key,
-            singer_id=singer_id,
-            engine_style=engine_style,
-            duration_sec=duration_sec,
-            out_path=out_path,
-            src_audio_path=src,
-            cover_strength=cover_strength,
-            seed=seed,
-            full_lyrics=full_lyrics,
-            progress=progress,
-            cover_noise=cover_noise,
-        )
-        if force_local or local_available():
-            return _generate_via_local_api(**kwargs)
-        if ACESTEP_REMOTE_URLS:
-            return _generate_via_remote(**kwargs)
-        raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
-    finally:
-        if fitted and fitted.exists():
-            try:
-                fitted.unlink(missing_ok=True)
-                parent = fitted.parent
-                if parent.name.startswith("ace_song_a_"):
-                    parent.rmdir()
-            except OSError:
-                pass
+    kwargs = dict(
+        lyrics=lyrics,
+        bpm=bpm,
+        key=key,
+        singer_id=singer_id,
+        engine_style=engine_style,
+        duration_sec=duration_sec,
+        out_path=out_path,
+        src_audio_path=Path(src_audio_path) if src_audio_path else None,
+        cover_strength=cover_strength,
+        seed=seed,
+        full_lyrics=full_lyrics,
+        progress=progress,
+    )
+    if force_local or local_available():
+        return _generate_via_local_api(**kwargs)
+    if ACESTEP_REMOTE_URLS:
+        return _generate_via_remote(**kwargs)
+    raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
+
 
 def generate_to_tempfile(**kwargs) -> GenerateResult:
     """給 HTTP 代理用：寫到暫存 mp3。"""

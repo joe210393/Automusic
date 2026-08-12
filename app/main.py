@@ -696,14 +696,13 @@ async def acestep_generate(
     singer_id: str = Form(""),
     engine_style: str = Form(""),
     duration_sec: float = Form(45.0),
-    cover_strength: float = Form(0.68),
-    cover_noise: float = Form(0.28),
+    cover_strength: float = Form(0.85),
     full_lyrics: str = Form("0"),
     seed: Optional[str] = Form(None),
     src_audio: Optional[UploadFile] = File(None),
 ):
     """
-    用本機 ACE-Step 產生含人聲整曲 MP3（可帶歌曲 A 伴奏做 cover）。
+    用本機 ACE-Step 產生含人聲整曲 MP3（可帶 preview 做 cover）。
     雲端 Zeabur 經 ngrok 委託此端點（multipart）。
     """
     from app.voice import acestep as _ace
@@ -744,8 +743,7 @@ async def acestep_generate(
                 engine_style=engine_style or None,
                 duration_sec=float(duration_sec or 45.0),
                 src_audio_path=src_path,
-                cover_strength=float(cover_strength or 0.68),
-                cover_noise=float(cover_noise or 0.28),
+                cover_strength=float(cover_strength or 0.85),
                 seed=seed_i,
                 full_lyrics=str(full_lyrics).strip().lower() in ("1", "true", "yes"),
             )
