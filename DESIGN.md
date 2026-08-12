@@ -1,7 +1,7 @@
 # Automusic Travel — visual system
 
 ## World
-**蘇澳拾音 / SU'AO SOUND** — photo-led travel UI. Full-bleed place photography with CTAs parked in the image’s quiet zones (water, sky, pier), matching the user-supplied comps.
+**Sound Journey / 蘇澳拾音** — photo-led travel UI. Full-bleed place photography with CTAs parked in the image’s quiet zones (water, sky, pier), matching the user-supplied comps.
 
 ## Assets
 ## Screen → photo map
