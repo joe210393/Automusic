@@ -191,14 +191,10 @@
       }
 
       const outs = [];
-      if (j.preview_url) outs.push(`<div class="me-audio-row"><span>旅途旋律伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
+      if (j.preview_url) outs.push(`<div class="me-audio-row"><span>預覽伴奏</span><audio controls preload="none" src="${esc(j.preview_url)}"></audio></div>`);
       if (j.final_url) {
-        outs.push(`<div class="me-audio-row"><span>AI 試聽版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
+        outs.push(`<div class="me-audio-row"><span>AI 唱歌版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
           <a class="me-btn" href="${esc(j.final_url)}" download>下載</a></div>`);
-      }
-      if (j.final_full_url) {
-        outs.push(`<div class="me-audio-row"><span>AI 完整版</span><audio controls preload="none" src="${esc(j.final_full_url)}"></audio>
-          <a class="me-btn" href="${esc(j.final_full_url)}" download>下載</a></div>`);
       }
       if (j.final_voice_url) {
         outs.push(`<div class="me-audio-row"><span>我的聲音版</span><audio controls preload="none" src="${esc(j.final_voice_url)}"></audio>
@@ -272,72 +268,14 @@
     const acc = me.account || {};
     $("meName").textContent = acc.display_name || "旅人";
     $("meEmail").textContent = acc.email || "";
-    renderQuota(acc);
+    const q = acc.quota || {};
+    $("meQuota").textContent = q.anonymous
+      ? ""
+      : `本月剩餘 ${q.remaining ?? "—"} / ${q.limit ?? "—"} 次成品`;
     renderList(me.journeys || []);
     if (resetView) setStatus($("meStatus"), "");
     return me;
   }
-
-  function renderQuota(acc) {
-    const q = acc.quota || {};
-    const planLabel = acc.plan_label || (acc.paid ? "加值方案" : "免費方案");
-    if (q.anonymous) {
-      $("meQuota").textContent = "";
-      return;
-    }
-    const bonus = q.bonus ? `（含加購 +${q.bonus}）` : "";
-    $("meQuota").textContent =
-      `${planLabel}｜本月成品 ${q.used ?? 0} / ${q.limit ?? "—"} 次，剩餘 ${q.remaining ?? "—"} 次${bonus}`;
-    if ($("mePlanBlurb")) {
-      const plus = (acc.plans || []).find((p) => p.id === "plus");
-      $("mePlanBlurb").textContent = acc.plan === "plus"
-        ? `你已是加值方案：每月 ${q.base_limit ?? 30} 次成品，並可製作完整歌曲。額度不夠可再加購本月次數。`
-        : (plus?.blurb || "升級加值方案可提高每月成品次數，並解鎖完整歌曲。");
-    }
-    if ($("btnUpgradePlus")) {
-      $("btnUpgradePlus").disabled = acc.plan === "plus" || !!acc.paid;
-      $("btnUpgradePlus").textContent = (acc.plan === "plus" || acc.paid)
-        ? "已是加值方案"
-        : `升級加值方案（${(acc.plans || []).find((p) => p.id === "plus")?.finalize_limit || 30} 次／月）`;
-    }
-    if ($("btnBuyBonus")) {
-      const n = q.bonus_pack || 5;
-      $("btnBuyBonus").textContent = `加購本月成品 +${n}`;
-    }
-  }
-
-  $("btnUpgradePlus")?.addEventListener("click", async () => {
-    try {
-      setStatus($("meUpgradeStatus"), "升級中…");
-      const data = await api("/api/account/upgrade-plan", {
-        method: "POST",
-        body: JSON.stringify({ plan: "plus" }),
-      });
-      renderQuota(data.account || {});
-      setStatus($("meUpgradeStatus"), "已升級加值方案（開發用 stub，金流之後再接）", "ok");
-    } catch (e) {
-      setStatus($("meUpgradeStatus"), e.message, "error");
-    }
-  });
-
-  $("btnBuyBonus")?.addEventListener("click", async () => {
-    try {
-      setStatus($("meUpgradeStatus"), "加購中…");
-      const data = await api("/api/account/buy-quota-bonus", {
-        method: "POST",
-        body: JSON.stringify({}),
-      });
-      renderQuota(data.account || {});
-      const q = data.account?.quota || {};
-      setStatus(
-        $("meUpgradeStatus"),
-        `已加購本月額度（開發用）。目前剩餘 ${q.remaining ?? "—"} / ${q.limit ?? "—"} 次`,
-        "ok",
-      );
-    } catch (e) {
-      setStatus($("meUpgradeStatus"), e.message, "error");
-    }
-  });
 
   async function boot() {
     if (!token()) {

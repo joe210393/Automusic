@@ -2,8 +2,8 @@
 簡易帳號與額度（檔案型，無外部 DB）。
 
 - 匿名遊客：每趟 journey 可完成一次成品
-- 登入帳號：每月成品次數（免費／加值方案）＋可加購本月額度
-- paid / plan stub：金流 webhook 可之後接
+- 登入帳號（email + 魔術連結 token）：可看作品庫、較高額度
+- 付費旗標 paid：解鎖下載／分享強化（金流 webhook 可之後接）
 """
 from __future__ import annotations
 
@@ -22,32 +22,9 @@ _default = (
 ACCOUNTS_ROOT = Path(os.getenv("ACCOUNTS_DIR", str(_default)))
 ACCOUNTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-# 免費／加值方案每月成品上限
+# 免費／付費額度（每月）
 FREE_FINALIZE_LIMIT = int(os.getenv("FREE_FINALIZE_LIMIT", "3"))
 PAID_FINALIZE_LIMIT = int(os.getenv("PAID_FINALIZE_LIMIT", "30"))
-# 本月加購單包次數（開發用 stub）
-QUOTA_BONUS_PACK = int(os.getenv("QUOTA_BONUS_PACK", "5"))
-QUOTA_BONUS_PACK_MAX = int(os.getenv("QUOTA_BONUS_PACK_MAX", "50"))
-
-PLAN_FREE = "free"
-PLAN_PLUS = "plus"
-
-PLANS: Dict[str, Dict[str, Any]] = {
-    PLAN_FREE: {
-        "id": PLAN_FREE,
-        "label": "免費方案",
-        "finalize_limit": FREE_FINALIZE_LIMIT,
-        "full_song": False,
-        "blurb": f"每月 {FREE_FINALIZE_LIMIT} 次 AI 成品（試聽版）",
-    },
-    PLAN_PLUS: {
-        "id": PLAN_PLUS,
-        "label": "加值方案",
-        "finalize_limit": PAID_FINALIZE_LIMIT,
-        "full_song": True,
-        "blurb": f"每月 {PAID_FINALIZE_LIMIT} 次成品，並解鎖完整歌曲",
-    },
-}
 
 
 def _now() -> str:
@@ -74,11 +51,11 @@ def create_account(email: str, display_name: str = "") -> Dict[str, Any]:
         "display_name": display_name or email.split("@")[0],
         "token": token,
         "paid": False,
-        "plan": PLAN_FREE,
         "created": _now(),
-        "usage": {_month_key(): {"finalize": 0, "bonus": 0}},
+        "usage": {_month_key(): {"finalize": 0}},
     }
     _path(account_id).write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # email → id 索引
     idx = _load_index()
     idx[email] = account_id
     _save_index(idx)
@@ -162,76 +139,25 @@ def save_account(data: Dict[str, Any]) -> None:
     )
 
 
-def account_plan_id(acc: Optional[dict]) -> str:
-    if not acc:
-        return PLAN_FREE
-    if acc.get("plan") in PLANS:
-        return str(acc["plan"])
-    # 舊帳號：paid=true 視為 plus
-    return PLAN_PLUS if acc.get("paid") else PLAN_FREE
-
-
-def plan_info(plan_id: Optional[str] = None, acc: Optional[dict] = None) -> Dict[str, Any]:
-    pid = plan_id or account_plan_id(acc)
-    return dict(PLANS.get(pid) or PLANS[PLAN_FREE])
-
-
-def _month_bucket(acc: dict) -> dict:
-    month = _month_key()
-    usage = acc.setdefault("usage", {})
-    bucket = usage.setdefault(month, {"finalize": 0, "bonus": 0})
-    if "bonus" not in bucket:
-        bucket["bonus"] = 0
-    return bucket
-
-
 def check_finalize_quota(account_id: Optional[str]) -> Dict[str, Any]:
-    """回傳額度狀態。匿名一律允許（靠 journey 隔離）。"""
+    """回傳 {allowed, remaining, limit, paid}。匿名一律允許（靠 journey 隔離）。"""
     if not account_id:
-        return {
-            "allowed": True,
-            "remaining": None,
-            "limit": None,
-            "used": None,
-            "bonus": None,
-            "base_limit": None,
-            "paid": False,
-            "plan": PLAN_FREE,
-            "anonymous": True,
-        }
+        return {"allowed": True, "remaining": None, "limit": None, "paid": False, "anonymous": True}
     acc = get_account(account_id)
     if not acc:
-        return {
-            "allowed": True,
-            "remaining": None,
-            "limit": None,
-            "used": None,
-            "bonus": None,
-            "base_limit": None,
-            "paid": False,
-            "plan": PLAN_FREE,
-            "anonymous": True,
-        }
-    plan = plan_info(acc=acc)
-    bucket = _month_bucket(acc)
-    base_limit = int(plan["finalize_limit"])
-    bonus = int(bucket.get("bonus") or 0)
-    limit = base_limit + bonus
+        return {"allowed": True, "remaining": None, "limit": None, "paid": False, "anonymous": True}
+    month = _month_key()
+    usage = acc.setdefault("usage", {})
+    bucket = usage.setdefault(month, {"finalize": 0})
+    limit = PAID_FINALIZE_LIMIT if acc.get("paid") else FREE_FINALIZE_LIMIT
     used = int(bucket.get("finalize", 0))
     remaining = max(0, limit - used)
     return {
         "allowed": remaining > 0,
         "remaining": remaining,
         "limit": limit,
-        "used": used,
-        "bonus": bonus,
-        "base_limit": base_limit,
-        "paid": account_plan_id(acc) == PLAN_PLUS or bool(acc.get("paid")),
-        "plan": account_plan_id(acc),
-        "plan_label": plan["label"],
+        "paid": bool(acc.get("paid")),
         "anonymous": False,
-        "month": _month_key(),
-        "bonus_pack": QUOTA_BONUS_PACK,
     }
 
 
@@ -241,101 +167,29 @@ def consume_finalize(account_id: Optional[str]) -> None:
     acc = get_account(account_id)
     if not acc:
         return
-    bucket = _month_bucket(acc)
+    month = _month_key()
+    usage = acc.setdefault("usage", {})
+    bucket = usage.setdefault(month, {"finalize": 0})
     bucket["finalize"] = int(bucket.get("finalize", 0)) + 1
     save_account(acc)
 
 
-def can_full_song(account_id: Optional[str] = None, acc: Optional[dict] = None) -> bool:
-    """加值方案：解鎖完整歌曲長度。"""
-    if acc is None and account_id:
-        acc = get_account(account_id)
-    if not acc:
-        return False
-    return account_plan_id(acc) == PLAN_PLUS or bool(acc.get("paid"))
-
-
 def set_paid(account_id: str, paid: bool = True) -> Optional[dict]:
-    """向後相容：paid=true 等同升級 plus。"""
-    return set_plan(account_id, PLAN_PLUS if paid else PLAN_FREE)
-
-
-def set_plan(account_id: str, plan: str = PLAN_PLUS) -> Optional[dict]:
     acc = get_account(account_id)
     if not acc:
         return None
-    if plan not in PLANS:
-        raise ValueError("未知方案")
-    acc["plan"] = plan
-    acc["paid"] = plan == PLAN_PLUS
+    acc["paid"] = paid
     save_account(acc)
     return acc
-
-
-def add_quota_bonus(account_id: str, amount: Optional[int] = None) -> Optional[dict]:
-    """本月加購成品次數（stub）。"""
-    acc = get_account(account_id)
-    if not acc:
-        return None
-    n = int(amount if amount is not None else QUOTA_BONUS_PACK)
-    if n <= 0:
-        raise ValueError("加購次數需為正整數")
-    bucket = _month_bucket(acc)
-    new_bonus = int(bucket.get("bonus") or 0) + n
-    if new_bonus > QUOTA_BONUS_PACK_MAX:
-        raise ValueError(f"本月加購上限為 {QUOTA_BONUS_PACK_MAX} 次")
-    bucket["bonus"] = new_bonus
-    save_account(acc)
-    return acc
-
-
-def list_upgrade_options(acc: Optional[dict] = None) -> list:
-    """前端展示用加值選項（金流之後可帶 price_id）。"""
-    plan_id = account_plan_id(acc)
-    options = []
-    if plan_id != PLAN_PLUS:
-        plus = PLANS[PLAN_PLUS]
-        options.append({
-            "id": "upgrade_plus",
-            "kind": "plan",
-            "plan": PLAN_PLUS,
-            "label": plus["label"],
-            "blurb": plus["blurb"],
-            "stub": True,
-        })
-    options.append({
-        "id": "bonus_pack",
-        "kind": "bonus",
-        "amount": QUOTA_BONUS_PACK,
-        "label": f"加購本月成品 +{QUOTA_BONUS_PACK} 次",
-        "blurb": f"立刻增加本月可用成品次數（單月加購上限 {QUOTA_BONUS_PACK_MAX}）",
-        "stub": True,
-    })
-    return options
 
 
 def public_account_view(acc: dict) -> dict:
-    plan = plan_info(acc=acc)
     return {
         "id": acc["id"],
         "email": acc["email"],
         "display_name": acc.get("display_name"),
-        "paid": account_plan_id(acc) == PLAN_PLUS or bool(acc.get("paid")),
-        "plan": plan["id"],
-        "plan_label": plan["label"],
-        "can_full_song": can_full_song(acc=acc),
+        "paid": bool(acc.get("paid")),
         "quota": check_finalize_quota(acc["id"]),
-        "upgrades": list_upgrade_options(acc),
-        "plans": [
-            {
-                "id": p["id"],
-                "label": p["label"],
-                "finalize_limit": p["finalize_limit"],
-                "full_song": p["full_song"],
-                "blurb": p["blurb"],
-            }
-            for p in PLANS.values()
-        ],
     }
 
 
@@ -354,8 +208,7 @@ def list_accounts() -> list:
             "id": data["id"],
             "email": data.get("email"),
             "display_name": data.get("display_name"),
-            "paid": account_plan_id(data) == PLAN_PLUS or bool(data.get("paid")),
-            "plan": account_plan_id(data),
+            "paid": bool(data.get("paid")),
             "created": data.get("created"),
             "quota": check_finalize_quota(data["id"]),
         })

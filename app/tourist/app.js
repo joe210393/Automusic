@@ -95,14 +95,7 @@
     try { data = text ? JSON.parse(text) : null; } catch { data = { detail: text }; }
     if (!res.ok) {
       const detail = (data && data.detail) || text || res.statusText;
-      const err = new Error(
-        typeof detail === "string"
-          ? detail
-          : (detail && detail.message) || JSON.stringify(detail),
-      );
-      err.status = res.status;
-      err.detail = detail;
-      throw err;
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
     }
     return data;
   }
@@ -380,105 +373,6 @@
     }
   }
 
-  function formatQuotaLine(acc) {
-    const q = acc?.quota || {};
-    if (!acc || q.anonymous) return "";
-    const plan = acc.plan_label || (acc.paid ? "加值方案" : "免費方案");
-    const bonus = q.bonus ? `（含加購 +${q.bonus}）` : "";
-    return `${plan}｜本月成品 ${q.used ?? 0} / ${q.limit ?? "—"}，剩餘 ${q.remaining ?? "—"} 次${bonus}`;
-  }
-
-  function paintQuotaUpgradeUi(acc, {
-    noteEl,
-    blurbEl,
-    upgradeBtn,
-    bonusBtn,
-    boxEl,
-    forceShow = false,
-  } = {}) {
-    const q = acc?.quota || {};
-    const line = formatQuotaLine(acc);
-    if (noteEl) {
-      noteEl.hidden = !line;
-      noteEl.textContent = line;
-    }
-    const isPlus = acc?.plan === "plus" || !!acc?.paid;
-    const pack = q.bonus_pack || 5;
-    if (upgradeBtn) {
-      upgradeBtn.disabled = isPlus;
-      upgradeBtn.textContent = isPlus
-        ? "已是加值方案"
-        : `升級加值方案（${(acc?.plans || []).find((p) => p.id === "plus")?.finalize_limit || 30} 次／月）`;
-    }
-    if (bonusBtn) {
-      bonusBtn.textContent = `加購本月成品 +${pack}`;
-    }
-    if (blurbEl) {
-      blurbEl.textContent = isPlus
-        ? "你已是加值方案。額度不夠可再加購本月次數。"
-        : "免費方案每月次數有限；升級可提高額度並解鎖完整歌曲。也可只加購本月次數。";
-    }
-    if (boxEl) {
-      const low = !q.anonymous && (q.remaining != null) && q.remaining <= 1;
-      boxEl.hidden = !(forceShow || low || !q.allowed);
-    }
-  }
-
-  async function refreshQuotaPanels({ forceShowVoice = false } = {}) {
-    if (!token()) {
-      if ($("voiceQuotaNote")) $("voiceQuotaNote").hidden = true;
-      if ($("voiceQuotaUpgrade")) $("voiceQuotaUpgrade").hidden = true;
-      if ($("monthlyQuotaBlock")) $("monthlyQuotaBlock").hidden = true;
-      return null;
-    }
-    try {
-      const me = await api("/api/account/me");
-      const acc = me.account || {};
-      paintQuotaUpgradeUi(acc, {
-        noteEl: $("voiceQuotaNote"),
-        blurbEl: $("voiceQuotaBlurb"),
-        upgradeBtn: $("btnVoiceUpgradePlus"),
-        bonusBtn: $("btnVoiceBuyBonus"),
-        boxEl: $("voiceQuotaUpgrade"),
-        forceShow: forceShowVoice,
-      });
-      if ($("monthlyQuotaBlock")) $("monthlyQuotaBlock").hidden = false;
-      paintQuotaUpgradeUi(acc, {
-        noteEl: $("resultQuotaNote"),
-        blurbEl: null,
-        upgradeBtn: $("btnResultUpgradePlus"),
-        bonusBtn: $("btnResultBuyBonus"),
-        boxEl: null,
-      });
-      return acc;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  async function upgradePlanPlus(statusEl) {
-    setStatus(statusEl, "升級中…");
-    const data = await api("/api/account/upgrade-plan", {
-      method: "POST",
-      body: JSON.stringify({ plan: "plus" }),
-    });
-    await refreshQuotaPanels({ forceShowVoice: true });
-    setStatus(statusEl, "已升級加值方案（開發用 stub，金流之後再接）");
-    return data.account;
-  }
-
-  async function buyQuotaBonus(statusEl) {
-    setStatus(statusEl, "加購中…");
-    const data = await api("/api/account/buy-quota-bonus", {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-    const q = data.account?.quota || {};
-    await refreshQuotaPanels({ forceShowVoice: true });
-    setStatus(statusEl, `已加購本月額度（開發用）。目前剩餘 ${q.remaining ?? "—"} / ${q.limit ?? "—"} 次`);
-    return data.account;
-  }
-
   function showResultFromMeta() {
     const ly = journey.lyrics || {};
     const title = journey.title || ly.title || "旅行之歌";
@@ -494,59 +388,12 @@
       const url = `/api/journey/${journey.id}/audio/final?t=${Date.now()}`;
       $("finalAudio").src = url;
       $("btnDownload").href = url;
-      $("btnDownload").download = `${title}-試聽.mp3`;
+      $("btnDownload").download = `${title}-AI.mp3`;
     }
-    syncFullSongUi();
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是同一條旅途旋律上的 AI 唱歌試聽版（約 45 秒）。可升級完整版，或用自己的聲音再做一版。");
-    refreshQuotaPanels();
-  }
-
-  function syncFullSongUi({ making = false } = {}) {
-    const hasFull = !!(journey?.final_full_file || journey?.has_full_final);
-    const unlocked = !!(journey?.full_song_unlocked || hasFull);
-    const block = $("fullUpgradeBlock");
-    const ready = $("fullSongReady");
-    const offer = $("fullUpgradeOffer");
-    const selected = $("fullUpgradeSelected");
-    const progress = $("fullFinalizeProgress");
-
-    if (block) {
-      block.classList.toggle("is-making", !!making);
-      block.classList.toggle("is-selected", unlocked && !hasFull);
-      block.classList.toggle("is-ready", hasFull);
-    }
-    if (ready) ready.hidden = !hasFull;
-    if (offer) offer.hidden = hasFull || unlocked || making;
-    if (selected) selected.hidden = hasFull || !unlocked || making;
-    if (progress) progress.hidden = !making;
-
-    if ($("btnUpgradeFull")) {
-      $("btnUpgradeFull").disabled = !!making || hasFull;
-    }
-    if ($("btnPayStub")) {
-      $("btnPayStub").disabled = !!making || unlocked || hasFull;
-    }
-
-    if (hasFull && journey?.id) {
-      const url = `/api/journey/${journey.id}/audio/final-full?t=${Date.now()}`;
-      if ($("finalFullAudio")) $("finalFullAudio").src = url;
-      if ($("btnDownloadFull")) {
-        $("btnDownloadFull").href = url;
-        const ly = journey.lyrics || {};
-        const title = journey.title || ly.title || "旅行之歌";
-        $("btnDownloadFull").download = `${title}-完整.mp3`;
-      }
-      if (!making) setStatus($("fullSongStatus"), "完整版已就緒 · 與試聽版同一條旋律。");
-    } else if ($("fullSongStatus") && !making && !document.body.classList.contains("finalize-busy")) {
-      if (unlocked) {
-        setStatus($("fullSongStatus"), "已選擇升級。按下開始後，會沿同一旋律延長成約 2 分鐘完整版。");
-      } else {
-        setStatus($("fullSongStatus"), "");
-      }
-    }
+    setStatus($("resultStatus"), "這是你的 AI 唱歌版。想用人聲再做一版，可在下方開啟自己的聲音。");
   }
 
   async function resumeJourney(id) {
@@ -1030,7 +877,7 @@
       const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
       $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
       $("composeResult").style.display = "block";
-      setStatus($("composeStatus"), "完成！這是依你旅途聲音寫出的旋律伴奏。確認歌詞後，可在下一頁加入 AI 人聲。");
+      setStatus($("composeStatus"), "完成！先聽聽伴奏版，確認歌詞後再用你的聲音唱。想再換感覺可按「換一個版本」。");
       setupVoiceLines(ly);
     } catch (e) {
       clearInterval(tick);
@@ -1256,18 +1103,8 @@
 
   const AI_FINALIZE_STEPS = [
     "準備製作",
-    "讀取旅途旋律",
     "連線 AI 唱歌引擎",
-    "AI 正在依旋律唱歌",
-    "下載成品",
-    "輸出成品",
-    "完成",
-  ];
-  const FULL_FINALIZE_STEPS = [
-    "準備製作",
-    "沿用同一條旅途旋律延長",
-    "連線 AI 唱歌引擎",
-    "AI 正在依旋律唱歌",
+    "AI 正在作曲唱歌",
     "下載成品",
     "輸出成品",
     "完成",
@@ -1284,12 +1121,8 @@
 
   const STEP_PCT = {
     "準備製作": 8,
-    "讀取旅途旋律": 15,
-    "沿用同一條旅途旋律延長": 15,
     "連線 AI 唱歌引擎": 20,
-    "連線本機 AI 唱歌引擎": 20,
     "AI 正在作曲唱歌": 55,
-    "AI 正在依旋律唱歌": 55,
     "下載成品": 85,
     "編排伴奏": 25,
     "套用演奏風格": 55,
@@ -1335,7 +1168,6 @@
     });
     $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
     if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一位 AI 歌手。");
-    refreshQuotaPanels();
   }
 
   function syncVoiceVersionUi() {
@@ -1383,59 +1215,21 @@
       refreshVoiceFinalizeEnabled();
       if (busy) $("btnFinalizeVoice").disabled = true;
     }
-    if (enableBtn === "full") {
-      syncFullSongUi({ making: !!busy });
-      if ($("btnRegenTeaser")) $("btnRegenTeaser").disabled = !!busy;
-    }
-    if (enableBtn === "teaser") {
-      if ($("btnRegenTeaser")) $("btnRegenTeaser").disabled = !!busy;
-      if ($("btnPayStub")) $("btnPayStub").disabled = !!busy;
-      if ($("btnUpgradeFull")) $("btnUpgradeFull").disabled = !!busy;
-    }
-  }
-
-  function progressEls(panelPrefix) {
-    if (panelPrefix === "voice") {
-      return {
-        pctEl: $("voiceFinalizePct"),
-        barEl: $("voiceFinalizePctBar"),
-        labelEl: $("voiceFinalizePctLabel"),
-        ul: $("voiceFinalizeSteps"),
-      };
-    }
-    if (panelPrefix === "full") {
-      return {
-        pctEl: $("fullFinalizePct"),
-        barEl: $("fullFinalizePctBar"),
-        labelEl: $("fullFinalizePctLabel"),
-        ul: $("fullFinalizeSteps"),
-      };
-    }
-    if (panelPrefix === "teaser") {
-      return {
-        pctEl: $("teaserFinalizePct"),
-        barEl: $("teaserFinalizePctBar"),
-        labelEl: $("teaserFinalizePctLabel"),
-        ul: $("teaserFinalizeSteps"),
-      };
-    }
-    return {
-      pctEl: $("finalizePct"),
-      barEl: $("finalizePctBar"),
-      labelEl: $("finalizePctLabel"),
-      ul: $("finalizeSteps"),
-    };
   }
 
   function renderProgress(panelPrefix, steps, pct, label) {
     const safePct = Math.max(0, Math.min(100, Math.round(pct || 0)));
-    const { pctEl, barEl, labelEl, ul } = progressEls(panelPrefix);
+    const pctEl = $(panelPrefix === "voice" ? "voiceFinalizePct" : "finalizePct");
+    const barEl = $(panelPrefix === "voice" ? "voiceFinalizePctBar" : "finalizePctBar");
+    const labelEl = $(panelPrefix === "voice" ? "voiceFinalizePctLabel" : "finalizePctLabel");
+    const ul = $(panelPrefix === "voice" ? "voiceFinalizeSteps" : "finalizeSteps");
     if (pctEl) pctEl.textContent = `${safePct}%`;
     if (barEl) barEl.style.width = `${safePct}%`;
     if (labelEl) labelEl.textContent = label || "製作中";
     if (!ul) return;
     let activeIdx = steps.findIndex((s) => s === label);
     if (activeIdx < 0) {
+      // 依百分比找最近步驟，但不亂跳：取不大於目前 pct 的最大步驟
       activeIdx = 0;
       steps.forEach((t, i) => {
         const p = STEP_PCT[t];
@@ -1448,7 +1242,7 @@
     }).join("");
   }
 
-  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, onError, statusEl }) {
+  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl }) {
     setFinalizeBusy(true, { panelId, enableBtn });
     renderProgress(panelPrefix, steps, STEP_PCT[steps[0]] || 8, steps[0]);
     setStatus(statusEl, "正在製作，請稍候…");
@@ -1456,20 +1250,6 @@
     let stopPoll = false;
     let lastPct = 0;
     let lastLabel = steps[0];
-    const startedAt = Date.now();
-    let elapsedTimer = null;
-    if (panelPrefix === "full" && $("fullMakeElapsed")) {
-      const tick = () => {
-        const sec = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
-        const mm = Math.floor(sec / 60);
-        const ss = String(sec % 60).padStart(2, "0");
-        $("fullMakeElapsed").textContent = mm > 0
-          ? `已進行 ${mm}:${ss} · 大約 2 分鐘內完成`
-          : `已進行 ${sec} 秒 · 大約 2 分鐘內完成`;
-      };
-      tick();
-      elapsedTimer = setInterval(tick, 1000);
-    }
 
     function applyServerProgress(fp) {
       if (!fp || fp.pct == null) return;
@@ -1504,12 +1284,8 @@
     } catch (e) {
       stopPoll = true;
       setStatus(statusEl, e.message, true);
-      if (onError) {
-        try { await onError(e); } catch (_) { /* ignore */ }
-      }
     } finally {
       stopPoll = true;
-      if (elapsedTimer) clearInterval(elapsedTimer);
       try { await poll; } catch (_) { /* ignore */ }
       setFinalizeBusy(false, { panelId, enableBtn });
     }
@@ -1551,145 +1327,7 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "試聽版完成！同一條旅途旋律已加人聲。可升級完整版，或用自己的聲音再做一版。");
-      },
-      onError: async (e) => {
-        if (e.status === 402 || e.detail?.code === "quota_exhausted") {
-          await refreshQuotaPanels({ forceShowVoice: true });
-          setStatus(
-            $("voiceQuotaStatus") || $("voiceStatus"),
-            e.message || "本月成品次數已用完，請先升級或加購。",
-            true,
-          );
-        }
-      },
-    });
-  }
-
-  async function ensurePaidForFullSong() {
-    if (!journey?.id) throw new Error("找不到這趟旅程");
-    if (journey.full_song_unlocked) {
-      return { can_full_song: true };
-    }
-    const unlocked = await api(`/api/journey/${journey.id}/unlock-full`, {
-      method: "POST",
-      body: "{}",
-    });
-    journey.full_song_unlocked = true;
-    if (unlocked.account) await refreshQuotaPanels();
-    syncFullSongUi();
-    return unlocked.account || { can_full_song: true };
-  }
-
-  async function finalizeFull() {
-    const hasTeaser = !!(journey?.final_file || journey?.has_final || journey?.final_url);
-    if (!journey?.id || !hasTeaser) {
-      setStatus($("fullSongStatus"), "請先完成試聽版", true);
-      return;
-    }
-    if (!journey.final_file) journey.final_file = "final.mp3";
-    if (!journey.full_song_unlocked) {
-      try {
-        await ensurePaidForFullSong();
-      } catch (e) {
-        setStatus($("fullSongStatus"), e.message, true);
-        return;
-      }
-    }
-    window.scrollTo({ top: ($("fullUpgradeBlock")?.offsetTop || 0) - 24, behavior: "smooth" });
-    await runProgressJob({
-      steps: FULL_FINALIZE_STEPS,
-      panelPrefix: "full",
-      panelId: "fullFinalizeProgress",
-      enableBtn: "full",
-      statusEl: $("fullSongStatus"),
-      request: async () => {
-        return api(`/api/journey/${journey.id}/finalize-full`, { method: "POST", body: "{}" });
-      },
-      onDone: async (data) => {
-        journey = {
-          ...(journey || {}),
-          status: "done",
-          final_full_file: "final-full.mp3",
-          has_full_final: true,
-          full_song_unlocked: true,
-          ace_duration: data.ace_duration,
-          ace_full: true,
-          ai_singer_id: data.ai_singer_id || journey.ai_singer_id,
-          ai_singer_label: data.ai_singer_label || journey.ai_singer_label,
-          slug: data.slug || journey.slug,
-          share_path: data.share_path || journey.share_path,
-        };
-        persistJourney();
-        syncFullSongUi();
-        setStatus($("resultStatus"), "完整版完成！與試聽版同一條旋律，只是更長、主副歌更完整。");
-        setStatus($("fullSongStatus"), "完整版約 2 分鐘已就緒。");
-      },
-      onError: async (e) => {
-        syncFullSongUi();
-        if (e.status === 402 || e.detail?.code === "full_song_locked") {
-          setStatus(
-            $("fullSongStatus"),
-            e.message || "請先選擇升級完整版，再開始製作。",
-            true,
-          );
-        }
-      },
-    });
-  }
-
-  async function regenTeaser() {
-    if (!journey?.id || !(journey.final_file || journey.has_final)) {
-      setStatus($("teaserRegenStatus"), "請先完成試聽版", true);
-      return;
-    }
-    if (!journey.ai_singer_id && !selectedSinger) {
-      setStatus($("teaserRegenStatus"), "找不到先前的歌手設定，請回上一頁重選音色。", true);
-      return;
-    }
-    await runProgressJob({
-      steps: AI_FINALIZE_STEPS,
-      panelPrefix: "teaser",
-      panelId: "teaserFinalizeProgress",
-      enableBtn: "teaser",
-      statusEl: $("teaserRegenStatus") || $("resultStatus"),
-      request: async () => {
-        if (journey.ai_singer_id || selectedSinger?.id) {
-          await api(`/api/journey/${journey.id}/singer`, {
-            method: "POST",
-            body: JSON.stringify({ singer_id: journey.ai_singer_id || selectedSinger.id }),
-          });
-        }
-        return api(`/api/journey/${journey.id}/finalize`, { method: "POST", body: "{}" });
-      },
-      onDone: async (data) => {
-        journey = {
-          ...(journey || {}),
-          status: "done",
-          final_file: "final.mp3",
-          slug: data.slug || journey.slug,
-          share_path: data.share_path || journey.share_path,
-          ai_singer_id: data.ai_singer_id || journey.ai_singer_id,
-          ai_singer_label: data.ai_singer_label || journey.ai_singer_label,
-          lyrics: data.lyrics || journey.lyrics,
-          title: (data.lyrics && data.lyrics.title) || journey.title,
-          // 重新唱過後，完整版需再製（旋律源已更新）
-          final_full_file: null,
-          has_full_final: false,
-        };
-        persistJourney();
-        showResultFromMeta();
-        if (data.final_url) {
-          $("finalAudio").src = data.final_url + "?t=" + Date.now();
-          $("btnDownload").href = data.final_url;
-        }
-        setStatus($("teaserRegenStatus"), "已用同一條旋律再唱一次，可以再聽看看。");
-        setStatus($("resultStatus"), "試聽版已重新 Cover。若喜歡，再升級完整版。");
-      },
-      onError: async (e) => {
-        if (e.status === 402 || e.detail?.code === "quota_exhausted") {
-          await refreshQuotaPanels({ forceShowVoice: true });
-        }
+        setStatus($("resultStatus"), "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。");
       },
     });
   }
@@ -1793,47 +1431,6 @@
     show("voice");
   });
   $("btnFinalize").addEventListener("click", () => finalize());
-  $("btnUpgradeFull")?.addEventListener("click", () => finalizeFull());
-  $("btnRegenTeaser")?.addEventListener("click", () => regenTeaser());
-  $("btnPayStub")?.addEventListener("click", async () => {
-    try {
-      if (!journey?.id) {
-        setStatus($("fullSongStatus"), "請先完成試聽版", true);
-        return;
-      }
-      if (!journey.final_file && !(journey.has_final || journey.final_url)) {
-        setStatus($("fullSongStatus"), "請先完成試聽版", true);
-        return;
-      }
-      setStatus($("fullSongStatus"), "正在確認升級…");
-      const data = await api(`/api/journey/${journey.id}/unlock-full`, {
-        method: "POST",
-        body: "{}",
-      });
-      journey.full_song_unlocked = true;
-      if (data.account) await refreshQuotaPanels();
-      syncFullSongUi();
-      setStatus(
-        $("fullSongStatus"),
-        "已選擇升級完整版。請按「開始製作完整版」，會沿同一旋律延長。",
-      );
-      $("fullUpgradeSelected")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    } catch (e) {
-      setStatus($("fullSongStatus") || $("resultStatus"), e.message, true);
-    }
-  });
-  $("btnVoiceUpgradePlus")?.addEventListener("click", () => {
-    upgradePlanPlus($("voiceQuotaStatus")).catch((e) => setStatus($("voiceQuotaStatus"), e.message, true));
-  });
-  $("btnVoiceBuyBonus")?.addEventListener("click", () => {
-    buyQuotaBonus($("voiceQuotaStatus")).catch((e) => setStatus($("voiceQuotaStatus"), e.message, true));
-  });
-  $("btnResultUpgradePlus")?.addEventListener("click", () => {
-    upgradePlanPlus($("resultQuotaStatus")).catch((e) => setStatus($("resultQuotaStatus"), e.message, true));
-  });
-  $("btnResultBuyBonus")?.addEventListener("click", () => {
-    buyQuotaBonus($("resultQuotaStatus")).catch((e) => setStatus($("resultQuotaStatus"), e.message, true));
-  });
   document.querySelectorAll(".gender-choice").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectedGender = btn.dataset.gender || "female";
@@ -1870,6 +1467,17 @@
       }
     }
     show("hub");
+  });
+  $("btnPayStub").addEventListener("click", async () => {
+    try {
+      const data = await api("/api/account/pay-stub", {
+        method: "POST",
+        body: JSON.stringify({ paid: true }),
+      });
+      setStatus($("resultStatus"), `已標記付費（開發用）。額度 ${data.account.quota.limit}/月`);
+    } catch (e) {
+      setStatus($("resultStatus"), e.message, true);
+    }
   });
 
   function setAuthVisibility(loggedIn) {
@@ -1914,9 +1522,8 @@
       setAuthVisibility(true);
       fillUserChips(me.account || {});
       if ($("resultStatus") && me.account) {
-        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${formatQuotaLine(me.account) || me.account.email}）`);
+        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${me.account.email}｜本月剩餘 ${me.account.quota?.remaining ?? "∞"} 次）`);
       }
-      refreshQuotaPanels();
       return me;
     } catch (_) {
       localStorage.removeItem(TOKEN_KEY);

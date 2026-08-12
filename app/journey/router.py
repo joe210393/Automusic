@@ -56,16 +56,6 @@ class PayStubBody(BaseModel):
     paid: bool = True
 
 
-class UpgradePlanBody(BaseModel):
-    """開發用：升級方案 free / plus。"""
-    plan: str = "plus"
-
-
-class BuyQuotaBonusBody(BaseModel):
-    """開發用：本月加購成品次數。"""
-    amount: Optional[int] = None
-
-
 class TitleBody(BaseModel):
     title: str
 
@@ -539,28 +529,18 @@ def finalize_journey(
 
     quota = ops_accounts.check_finalize_quota(account_id)
     if not quota.get("allowed"):
-        acc = ops_accounts.get_account(account_id) if account_id else None
         raise HTTPException(
             status_code=402,
-            detail={
-                "code": "quota_exhausted",
-                "message": "本月成品次數已用完，請升級加值方案或加購本月額度後再試",
-                "quota": quota,
-                "upgrades": ops_accounts.list_upgrade_options(acc),
-            },
+            detail="本月免費次數已用完，升級後可繼續完成歌曲",
         )
 
     try:
-        meta = service.run_finalize_ai(journey_id, full=False)
+        meta = service.run_finalize_ai(journey_id)
         ops_accounts.consume_finalize(account_id)
         return {
             "ok": True,
             "status": meta["status"],
             "final_url": f"/api/journey/{journey_id}/audio/final",
-            "final_full_url": (
-                f"/api/journey/{journey_id}/audio/final-full"
-                if meta.get("final_full_file") else None
-            ),
             "final_voice_url": (
                 f"/api/journey/{journey_id}/audio/final-voice"
                 if meta.get("final_voice_file") else None
@@ -570,8 +550,6 @@ def finalize_journey(
             "lyrics": meta.get("lyrics"),
             "ai_singer_id": meta.get("ai_singer_id"),
             "ai_singer_label": meta.get("ai_singer_label"),
-            "ace_duration": meta.get("ace_duration"),
-            "ace_full": bool(meta.get("ace_full")),
             "quota": ops_accounts.check_finalize_quota(account_id),
         }
     except Exception as e:
@@ -580,95 +558,6 @@ def finalize_journey(
         meta["error"] = _friendly(e)
         store.save_meta(journey_id, meta)
         raise HTTPException(status_code=500, detail=_friendly(e))
-
-
-@router.post("/api/journey/{journey_id}/finalize-full")
-def finalize_full_journey(
-    journey_id: str,
-    x_account_token: Optional[str] = Header(None),
-):
-    """付費升級：另存完整版（約 90–120 秒）。"""
-    meta = _meta_or_404(journey_id)
-    if not meta.get("final_file"):
-        raise HTTPException(status_code=400, detail="請先完成 AI 試聽版")
-
-    account_id = meta.get("account_id")
-    acc = None
-    if x_account_token:
-        acc = ops_accounts.get_by_token(x_account_token)
-        if acc:
-            account_id = acc["id"]
-            meta["account_id"] = account_id
-            store.save_meta(journey_id, meta)
-    if not acc and account_id:
-        acc = ops_accounts.get_account(account_id)
-
-    unlocked = bool(meta.get("full_song_unlocked"))
-    if not (unlocked or ops_accounts.can_full_song(acc=acc)):
-        raise HTTPException(
-            status_code=402,
-            detail={
-                "code": "full_song_locked",
-                "message": "請先解鎖後再製作完整歌曲（可點「先解鎖升級」）",
-            },
-        )
-
-    try:
-        meta = service.run_finalize_full(journey_id)
-        return {
-            "ok": True,
-            "status": meta["status"],
-            "final_url": f"/api/journey/{journey_id}/audio/final",
-            "final_full_url": f"/api/journey/{journey_id}/audio/final-full",
-            "share_path": f"/s/{meta['slug']}",
-            "slug": meta["slug"],
-            "lyrics": meta.get("lyrics"),
-            "ai_singer_id": meta.get("ai_singer_id"),
-            "ai_singer_label": meta.get("ai_singer_label"),
-            "ace_duration": meta.get("ace_duration"),
-            "ace_full": True,
-            "quota": ops_accounts.check_finalize_quota(account_id) if account_id else None,
-        }
-    except Exception as e:
-        meta = store.load_meta(journey_id)
-        # 試聽版已在時，不要把整趟旅程打成 error
-        if meta.get("final_file"):
-            meta["status"] = "done"
-            meta["error"] = _friendly(e)
-            meta["finalize_progress"] = None
-        else:
-            meta["status"] = "error"
-            meta["error"] = _friendly(e)
-        store.save_meta(journey_id, meta)
-        raise HTTPException(status_code=500, detail=_friendly(e))
-
-
-@router.post("/api/journey/{journey_id}/unlock-full")
-def unlock_full_song(
-    journey_id: str,
-    x_account_token: Optional[str] = Header(None),
-):
-    """開發用：解鎖本趟完整歌曲。登入時一併升級加值方案。金流之後再接。"""
-    meta = _meta_or_404(journey_id)
-    if not meta.get("final_file"):
-        raise HTTPException(status_code=400, detail="請先完成 AI 試聽版")
-
-    meta["full_song_unlocked"] = True
-    account_view = None
-    if x_account_token:
-        acc = ops_accounts.get_by_token(x_account_token)
-        if acc:
-            meta["account_id"] = acc["id"]
-            updated = ops_accounts.set_plan(acc["id"], ops_accounts.PLAN_PLUS)
-            account_view = ops_accounts.public_account_view(updated)
-    store.save_meta(journey_id, meta)
-    return {
-        "ok": True,
-        "full_song_unlocked": True,
-        "journey_id": journey_id,
-        "account": account_view,
-        "stub": True,
-    }
 
 
 @router.post("/api/journey/{journey_id}/finalize-voice")
@@ -701,8 +590,6 @@ def get_audio(journey_id: str, kind: str):
         name = meta.get("preview_file")
     elif kind == "final":
         name = meta.get("final_file")
-    elif kind in ("final-full", "final_full"):
-        name = meta.get("final_full_file")
     elif kind in ("final-voice", "final_voice"):
         name = meta.get("final_voice_file")
     else:
@@ -727,7 +614,6 @@ def share_payload(slug: str):
     brand = dest.get("brand", {})
     lyrics = meta.get("lyrics") or {}
     has_voice = bool(meta.get("final_voice_file"))
-    has_full = bool(meta.get("final_full_file"))
     return {
         "slug": slug,
         "title": lyrics.get("title") or meta.get("title") or "我的旅行歌曲",
@@ -742,10 +628,8 @@ def share_payload(slug: str):
         "verse": lyrics.get("verse"),
         "chorus": lyrics.get("chorus"),
         "audio_url": f"/api/share/{slug}/audio",
-        "audio_full_url": f"/api/share/{slug}/audio-full" if has_full else None,
         "audio_voice_url": f"/api/share/{slug}/audio-voice" if has_voice else None,
         "has_voice_final": has_voice,
-        "has_full_final": has_full,
         "ai_singer_label": meta.get("ai_singer_label"),
         "core_line": brand.get("coreLine"),
         "cta_path": "/",
@@ -757,7 +641,7 @@ def share_audio(slug: str):
     meta = store.find_by_slug(slug)
     if not meta:
         raise HTTPException(status_code=404, detail="找不到這首歌")
-    name = meta.get("final_full_file") or meta.get("final_file") or meta.get("preview_file")
+    name = meta.get("final_file") or meta.get("preview_file")
     if not name:
         raise HTTPException(status_code=404, detail="音檔尚未準備好")
     path = store.output_dir(meta["id"]) / name
@@ -765,21 +649,6 @@ def share_audio(slug: str):
         raise HTTPException(status_code=404, detail="音檔不存在")
     media = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
     return FileResponse(path, media_type=media, filename=f"{slug}{path.suffix}")
-
-
-@router.get("/api/share/{slug}/audio-full")
-def share_audio_full(slug: str):
-    meta = store.find_by_slug(slug)
-    if not meta:
-        raise HTTPException(status_code=404, detail="找不到這首歌")
-    name = meta.get("final_full_file")
-    if not name:
-        raise HTTPException(status_code=404, detail="完整版尚未準備好")
-    path = store.output_dir(meta["id"]) / name
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="音檔不存在")
-    media = "audio/mpeg" if path.suffix.lower() == ".mp3" else "audio/wav"
-    return FileResponse(path, media_type=media, filename=f"{slug}-full{path.suffix}")
 
 
 @router.get("/api/share/{slug}/audio-voice")
@@ -846,47 +715,11 @@ def account_pay_stub(
     body: PayStubBody,
     x_account_token: Optional[str] = Header(None),
 ):
-    """開發用：標記付費（等同升級加值方案）。之後以金流 webhook 取代。"""
+    """開發用：標記付費。之後以金流 webhook 取代。"""
     if not x_account_token:
         raise HTTPException(status_code=401, detail="尚未登入")
     acc = ops_accounts.get_by_token(x_account_token)
     if not acc:
         raise HTTPException(status_code=401, detail="登入已失效")
     updated = ops_accounts.set_paid(acc["id"], body.paid)
-    return {"account": ops_accounts.public_account_view(updated)}
-
-
-@router.post("/api/account/upgrade-plan")
-def account_upgrade_plan(
-    body: UpgradePlanBody,
-    x_account_token: Optional[str] = Header(None),
-):
-    """開發用：升級／降級方案（free／plus）。金流之後再接。"""
-    if not x_account_token:
-        raise HTTPException(status_code=401, detail="尚未登入")
-    acc = ops_accounts.get_by_token(x_account_token)
-    if not acc:
-        raise HTTPException(status_code=401, detail="登入已失效")
-    try:
-        updated = ops_accounts.set_plan(acc["id"], (body.plan or "plus").strip().lower())
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
-    return {"account": ops_accounts.public_account_view(updated)}
-
-
-@router.post("/api/account/buy-quota-bonus")
-def account_buy_quota_bonus(
-    body: BuyQuotaBonusBody,
-    x_account_token: Optional[str] = Header(None),
-):
-    """開發用：本月加購成品次數。金流之後再接。"""
-    if not x_account_token:
-        raise HTTPException(status_code=401, detail="尚未登入")
-    acc = ops_accounts.get_by_token(x_account_token)
-    if not acc:
-        raise HTTPException(status_code=401, detail="登入已失效")
-    try:
-        updated = ops_accounts.add_quota_bonus(acc["id"], body.amount)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"account": ops_accounts.public_account_view(updated)}

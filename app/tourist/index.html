@@ -293,16 +293,7 @@
         <div class="flow-body">
           <div class="panel">
             <h2>選一個 AI 歌手</h2>
-            <p class="lead">我們會把你剛聽過的旅途伴奏 Cover 成唱歌版（約 45 秒試聽）。旋律不變，只加人聲。</p>
-            <p class="meta-line" id="voiceQuotaNote" hidden></p>
-            <div class="quota-upgrade" id="voiceQuotaUpgrade" hidden>
-              <p class="lead" id="voiceQuotaBlurb">本月成品次數不夠時，可升級方案或加購本月額度（金流之後再接）。</p>
-              <div class="actions">
-                <button type="button" class="primary" id="btnVoiceUpgradePlus">升級加值方案</button>
-                <button type="button" class="secondary" id="btnVoiceBuyBonus">加購本月成品</button>
-              </div>
-              <p class="status" id="voiceQuotaStatus"></p>
-            </div>
+            <p class="lead">選擇明亮系或沉穩系風格，AI 會為你唱出完整旅行歌曲（含人聲與編曲）。</p>
             <div class="gender-row" id="genderRow" role="group" aria-label="選擇聲線群組">
               <button type="button" class="choice gender-choice selected" data-gender="female">明亮系</button>
               <button type="button" class="choice gender-choice" data-gender="male">沉穩系</button>
@@ -318,7 +309,7 @@
             </div>
             <div class="nav-row">
               <button class="secondary" data-back="compose" id="btnVoiceBack">返回</button>
-              <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌試聽版</button>
+              <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌版</button>
             </div>
             <p class="status" id="voiceStatus"></p>
           </div>
@@ -341,76 +332,14 @@
             <p class="meta-line" id="finalMeta"></p>
 
             <div class="version-block">
-              <h3 class="version-label">AI 唱歌試聽版</h3>
+              <h3 class="version-label">AI 唱歌版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
-              <p class="lead" id="aiTeaserNote">約 45 秒 · 用你旅途旋律 Cover 加人聲</p>
               <audio id="finalAudio" controls></audio>
               <div class="actions">
-                <a class="btn btn-primary" id="btnDownload" href="#" download>下載試聽版</a>
-                <button type="button" class="secondary" id="btnRegenTeaser">不太喜歡？同一旋律再唱一次</button>
-                <button type="button" class="secondary" id="btnCopyShare">分享給朋友</button>
-                <button type="button" class="secondary" id="btnNewTrip">再做一趟</button>
+                <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 唱歌版</a>
+                <button class="secondary" id="btnCopyShare">分享給朋友</button>
+                <button class="secondary" id="btnNewTrip">再做一趟</button>
               </div>
-              <div id="teaserFinalizeProgress" class="finalize-progress" hidden>
-                <div class="pct-row">
-                  <span id="teaserFinalizePctLabel">重新 Cover 中</span>
-                  <strong id="teaserFinalizePct">0%</strong>
-                </div>
-                <div class="pct-bar" aria-hidden="true"><i id="teaserFinalizePctBar"></i></div>
-                <ul class="progress-list" id="teaserFinalizeSteps"></ul>
-              </div>
-              <p class="status" id="teaserRegenStatus"></p>
-            </div>
-
-            <div class="version-block full-upgrade" id="fullUpgradeBlock">
-              <h3 class="version-label">升級完整歌曲</h3>
-              <p class="lead">好聽的話，可升級成約 2 分鐘、主歌／副歌更完整的版本。仍 Cover 同一條旅途旋律，不會另寫新歌。</p>
-
-              <div id="fullSongReady" hidden>
-                <audio id="finalFullAudio" controls></audio>
-                <div class="actions">
-                  <a class="btn btn-primary" id="btnDownloadFull" href="#" download>下載完整版</a>
-                </div>
-              </div>
-
-              <div id="fullUpgradeOffer" class="full-upgrade-offer">
-                <button type="button" class="primary full-upgrade-choose" id="btnPayStub">
-                  升級完整版（主歌＋副歌）
-                </button>
-                <p class="hint">開發階段先點選解鎖；之後再接金流。</p>
-              </div>
-
-              <div id="fullUpgradeSelected" class="full-upgrade-selected" hidden>
-                <p class="full-upgrade-badge" id="fullUpgradeBadge">已選擇升級完整版</p>
-                <p class="lead">接下來會把你剛聽的試聽版，沿同一旋律延長成完整歌曲。</p>
-                <button type="button" class="primary full-upgrade-start" id="btnUpgradeFull">
-                  開始製作完整版（約 2 分鐘）
-                </button>
-              </div>
-
-              <div id="fullFinalizeProgress" class="finalize-progress full-making" hidden>
-                <p class="full-making-title">正在延長同一條旅途旋律</p>
-                <p class="full-making-sub">完整版製作中，大約 2 分鐘內完成，請稍候。</p>
-                <div class="pct-row">
-                  <span id="fullFinalizePctLabel">製作完整版</span>
-                  <strong id="fullFinalizePct">0%</strong>
-                </div>
-                <div class="pct-bar" aria-hidden="true"><i id="fullFinalizePctBar"></i></div>
-                <p class="full-making-elapsed" id="fullMakeElapsed">已進行 0 秒</p>
-                <ul class="progress-list" id="fullFinalizeSteps"></ul>
-              </div>
-              <p class="status" id="fullSongStatus"></p>
-            </div>
-
-            <div class="version-block" id="monthlyQuotaBlock">
-              <h3 class="version-label">本月成品額度</h3>
-              <p class="meta-line" id="resultQuotaNote"></p>
-              <p class="lead">免費方案次數有限；升級加值可提高每月成品次數，也可單獨加購本月額度。</p>
-              <div class="actions" id="resultQuotaActions">
-                <button type="button" class="primary" id="btnResultUpgradePlus">升級加值方案</button>
-                <button type="button" class="secondary" id="btnResultBuyBonus">加購本月成品</button>
-              </div>
-              <p class="status" id="resultQuotaStatus"></p>
             </div>
 
             <div class="version-block" id="voiceVersionBlock" hidden>
@@ -464,6 +393,7 @@
                 <a class="btn btn-primary" href="/me" data-auth="user" hidden>我的旅程</a>
                 <a class="btn btn-primary" href="/login?next=/me" data-auth="guest">登入</a>
                 <a class="btn btn-secondary" href="/register?next=/me" data-auth="guest">註冊</a>
+                <button class="secondary" id="btnPayStub">升級（開發用）</button>
               </div>
               <div id="library" style="margin-top:14px;" hidden></div>
             </div>
