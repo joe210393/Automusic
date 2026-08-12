@@ -145,7 +145,7 @@
   }
 
   async function initHub() {
-    $("brandMark").textContent = "聲之旅";
+    $("brandMark").textContent = "蘇澳拾音";
     document.title = "把旅行變成一首歌";
     const data = await api("/api/destinations");
     const list = $("stationList");
@@ -192,7 +192,7 @@
       b.subhead || `在${place}的山海與日常裡，收集聲音，創造屬於你的旋律回憶。`;
     $("stationCore").textContent = b.coreLine || "";
     $("btnStart").textContent = b.cta || "開始創作你的歌曲";
-    $("brandMark").textContent = `${place} · 聲之旅`;
+    $("brandMark").textContent = (!place || place === "蘇澳") ? "蘇澳拾音" : `${place} · 蘇澳拾音`;
     document.title = b.headline || `${place}｜把旅行變成一首歌`;
 
     const photo = STATION_PHOTO[destId] || STATION_PHOTO.default;
@@ -1758,7 +1758,7 @@
     destId = "";
     localStorage.removeItem(DEST_KEY);
     localStorage.removeItem(JOURNEY_KEY);
-    $("brandMark").textContent = "聲之旅";
+    $("brandMark").textContent = "蘇澳拾音";
     document.title = "把旅行變成一首歌";
     show("hub");
   });

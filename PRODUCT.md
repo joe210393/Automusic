@@ -30,6 +30,7 @@ Destination content packs (stations → routes → sound tasks → moods) drive 
 
 ## Brand commitments
 - Product name: Automusic
+- Tourist-facing brand: 蘇澳拾音（SU'AO SOUND）
 - Station naming pattern: 「{地名}站」
 - Core line in use: 不是來做一首歌，是把這趟旅行帶回家
 

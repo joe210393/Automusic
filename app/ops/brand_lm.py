@@ -78,7 +78,7 @@ def generate_brand_copy(place: str, hints: str = "") -> Tuple[Dict[str, str], st
         "避免空洞行銷腔與誇飾。只輸出一個 JSON 物件，不要 markdown。"
     )
     user = (
-        f"為旅遊音樂體驗「聲之旅」撰寫目的地品牌首頁文案。\n"
+        f"為旅遊音樂體驗「蘇澳拾音」撰寫目的地品牌首頁文案。\n"
         f"地名：{place}\n"
         f"{'補充：' + hints if hints else ''}\n"
         "請輸出 JSON：\n"
