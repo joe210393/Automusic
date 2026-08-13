@@ -118,6 +118,21 @@ def create_journey(destination: str = "suao", account_id: Optional[str] = None) 
         "account_id": account_id,
         "error": None,
         "token_usage": {"total": 0, "by_kind": {}, "events": []},
+        "compute_usage": {
+            "llm": {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "calls": 0,
+            },
+            "music": {
+                "runs": 0,
+                "duration_sec": 0.0,
+                "elapsed_ms": 0,
+                "units": 0,
+            },
+            "events": [],
+        },
     }
     save_meta(jid, meta)
     try:
@@ -436,6 +451,12 @@ def list_all_journeys(
                 int((meta.get("token_usage") or {}).get("total") or 0)
                 or (1 if meta.get("final_file") else 0)  # 舊資料：有成品則估 1 TOKEN
             ),
+            "compute_usage": meta.get("compute_usage")
+            or {
+                "llm": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0},
+                "music": {"runs": 0, "duration_sec": 0.0, "elapsed_ms": 0, "units": 0},
+                "events": [],
+            },
         })
     out.sort(key=lambda x: x.get("updated") or x.get("created") or "", reverse=True)
     total = len(out)

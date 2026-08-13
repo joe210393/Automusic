@@ -3,6 +3,8 @@
 
 TOKEN = 成品額度次數（不是 LLM API token）。
 每首歌（journey）會累積 token_usage，帳號／全站也有 ledger。
+
+實際運算見 app.ops.metering（LLM usage + 做歌 music_units）。
 """
 from __future__ import annotations
 
@@ -177,6 +179,7 @@ def ops_summary(days: int = 14) -> Dict[str, Any]:
     """營運儀表板數字 + 統計圖表資料。"""
     from app.journey import store as journey_store
     from app.ops import accounts as ops_accounts
+    from app.ops import metering as ops_metering
 
     days = max(7, min(int(days or 14), 60))
     visits = _read_jsonl(VISITS_PATH)
@@ -198,11 +201,13 @@ def ops_summary(days: int = 14) -> Dict[str, Any]:
     active_keys = set()
     dest_counts: Dict[str, int] = {}
     status_counts: Dict[str, int] = {}
+    metas: List[dict] = []
     for path in journey_store.JOURNEYS_ROOT.glob("*/meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
         except Exception:
             continue
+        metas.append(meta)
         games += 1
         dest = str(meta.get("destination") or "—")
         dest_counts[dest] = dest_counts.get(dest, 0) + 1
@@ -261,6 +266,20 @@ def ops_summary(days: int = 14) -> Dict[str, Any]:
     if not token_by_kind and tokens_on_songs:
         token_by_kind["ai_finalize"] = tokens_on_songs
 
+    compute = ops_metering.aggregate_from_journeys(metas)
+    # 日趨勢：從 compute ledger 補 LLM／做歌
+    for d, bucket in daily.items():
+        bucket["llm_tokens"] = 0
+        bucket["music_units"] = 0
+    for row in ops_metering.read_compute_ledger():
+        d = _day_key(row.get("at"))
+        if d not in day_set:
+            continue
+        if row.get("channel") == "llm":
+            daily[d]["llm_tokens"] += int(row.get("total_tokens") or 0)
+        elif row.get("channel") == "music":
+            daily[d]["music_units"] += int(row.get("units") or 0)
+
     recent_tokens = list(reversed(ledger[-30:]))
     recent_purchases = list(reversed(purchases[-20:]))
     dest_sorted = sorted(
@@ -279,9 +298,14 @@ def ops_summary(days: int = 14) -> Dict[str, Any]:
             "with_sounds": with_sounds,
             "with_final": with_final,
             "tokens_spent": tokens_spent,
+            "llm_tokens": compute["llm_tokens"],
+            "music_units": compute["music_units"],
+            "music_runs": compute["music_runs"],
         },
+        "compute": compute,
         "destinations": dest_sorted,
         "recent_tokens": recent_tokens,
+        "recent_compute": ops_metering.recent_compute(30),
         "recent_purchases": recent_purchases,
         "token_costs": dict(TOKEN_COSTS),
         "charts": {

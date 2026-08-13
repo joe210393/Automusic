@@ -394,9 +394,24 @@ def regenerate_lyrics(journey_id: str):
     if not keywords:
         raise HTTPException(status_code=400, detail="請先填寫歌詞關鍵字")
     lyrics = _generate_lyrics(keywords, meta.get("engine_style") or "pop")
+    llm_usage = lyrics.pop("llm_usage", None)
     meta["lyrics"] = lyrics
     if lyrics.get("title") and not str(meta.get("title") or "").strip():
         meta["title"] = str(lyrics["title"]).strip()[:40]
+    if llm_usage:
+        try:
+            from app.ops import metering as ops_metering
+
+            ops_metering.record_llm_usage(
+                meta,
+                journey_id=journey_id,
+                kind="lyrics_regen",
+                usage=llm_usage,
+                model=llm_usage.get("model"),
+                save=False,
+            )
+        except Exception as e:
+            print(f"[journey] llm metering skip: {e}")
     store.save_meta(journey_id, meta)
     return {"ok": True, "lyrics": lyrics}
 

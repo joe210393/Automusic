@@ -91,9 +91,24 @@ def run_compose(journey_id: str) -> dict:
         raise RuntimeError("請先填寫歌詞關鍵字")
 
     lyrics = _generate_lyrics(keywords, engine_style)
+    llm_usage = lyrics.pop("llm_usage", None)
     meta["lyrics"] = lyrics
     if lyrics.get("title") and not str(meta.get("title") or "").strip():
         meta["title"] = str(lyrics["title"]).strip()[:40]
+    if llm_usage:
+        try:
+            from app.ops import metering as ops_metering
+
+            ops_metering.record_llm_usage(
+                meta,
+                journey_id=journey_id,
+                kind="lyrics",
+                usage=llm_usage,
+                model=llm_usage.get("model"),
+                save=False,
+            )
+        except Exception as e:
+            print(f"[journey] llm metering skip: {e}")
     store.save_meta(journey_id, meta)
 
     # 3) 伴奏預覽（無人聲）
@@ -152,6 +167,7 @@ def run_finalize_ai(journey_id: str) -> dict:
     def _prog(pct: int, label: str) -> None:
         _set_finalize_progress(meta, pct, label)
 
+    ace_stats: dict = {}
     try:
         _ace.generate_to_file(
             lyrics=meta["lyrics"],
@@ -162,10 +178,30 @@ def run_finalize_ai(journey_id: str) -> dict:
             duration_sec=45.0,
             out_path=out,
             progress=_prog,
+            stats=ace_stats,
         )
     except Exception as e:
         print(f"[journey] ACE-Step failed: {e}")
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
+
+    if ace_stats:
+        try:
+            from app.ops import metering as ops_metering
+
+            ops_metering.record_music_usage(
+                meta,
+                journey_id=journey_id,
+                kind="ai_finalize",
+                duration_sec=float(ace_stats.get("duration_sec") or 45),
+                inference_steps=int(ace_stats.get("inference_steps") or 8),
+                elapsed_ms=int(ace_stats.get("elapsed_ms") or 0),
+                engine=str(ace_stats.get("engine") or "acestep"),
+                model=ace_stats.get("model"),
+                via=ace_stats.get("via"),
+                save=False,
+            )
+        except Exception as e:
+            print(f"[journey] music metering skip: {e}")
 
     meta["final_file"] = "final.mp3"
     meta["final_engine"] = "acestep"
@@ -261,15 +297,22 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
             )
             if resp.status_code != 200:
                 continue
-            message = resp.json()["choices"][0]["message"]
+            payload = resp.json()
+            message = payload["choices"][0]["message"]
             parsed = parse_lyrics_from_message(message)
             if parsed:
-                return {
+                from app.ops.metering import extract_openai_usage
+
+                usage = extract_openai_usage(payload) or {}
+                out = {
                     "title": parsed["title"],
                     "verse": parsed["verse"],
                     "chorus": parsed["chorus"],
                     "source": "lm_studio",
                 }
+                if usage:
+                    out["llm_usage"] = {**usage, "model": model}
+                return out
         except Exception as e:
             print(f"[journey] lyrics LM fail ({url}): {e}")
             continue

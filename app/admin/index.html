@@ -60,7 +60,7 @@
             <button id="btnRefreshOps" class="secondary" type="button">重新整理</button>
           </div>
         </div>
-        <p class="hint">一眼掌握進站、使用、帳號、遊戲與購買。時間為台灣 UTC+8。</p>
+        <p class="hint">一眼掌握進站、使用、帳號、遊戲與購買。TOKEN＝成品額度；LLM／做歌＝實際運算。時間為台灣 UTC+8。</p>
         <div id="opsKpis" class="ops-kpi-grid" aria-live="polite"></div>
       </div>
 
@@ -70,8 +70,12 @@
         </div>
         <div class="ops-charts">
           <figure class="ops-chart">
-            <figcaption>每日趨勢：進站／遊戲／TOKEN</figcaption>
+            <figcaption>每日趨勢：進站／遊戲／額度 TOKEN</figcaption>
             <div id="chartDaily" class="ops-chart-canvas" role="img" aria-label="每日趨勢圖"></div>
+          </figure>
+          <figure class="ops-chart">
+            <figcaption>每日運算：LLM tokens／做歌單位</figcaption>
+            <div id="chartCompute" class="ops-chart-canvas" role="img" aria-label="運算用量趨勢圖"></div>
           </figure>
           <figure class="ops-chart">
             <figcaption>轉換漏斗</figcaption>
@@ -90,8 +94,8 @@
 
       <div class="ops-split">
         <div class="card">
-          <h2>TOKEN 消耗（最近）</h2>
-          <p class="hint">每首歌製作會登記 TOKEN；AI 成品預設 1 點。</p>
+          <h2>額度 TOKEN（最近）</h2>
+          <p class="hint">產品額度：AI 成品預設 1 點。LLM／做歌見下方 KPI 與活動明細。</p>
           <div class="ops-table-wrap">
             <table class="ops-table">
               <thead>
@@ -177,7 +181,7 @@
                 <th>作品</th>
                 <th>旅人</th>
                 <th>狀態</th>
-                <th>TOKEN</th>
+                <th>額度／LLM／做歌</th>
                 <th>錄音</th>
                 <th>成品</th>
               </tr>

@@ -232,7 +232,9 @@
       { key: "accounts", label: "帳號數", blurb: "已註冊", value: k.accounts },
       { key: "games", label: "遊戲數", blurb: "旅程總數", value: k.games },
       { key: "purchases", label: "購買人次", blurb: "升級／付費", value: k.purchases },
-      { key: "tokens", label: "TOKEN 總消耗", blurb: "全站累計", value: k.tokens_spent },
+      { key: "tokens", label: "額度 TOKEN", blurb: "成品額度（非 LLM）", value: k.tokens_spent },
+      { key: "llm", label: "LLM tokens", blurb: "作詞等 API 用量", value: k.llm_tokens },
+      { key: "music", label: "做歌單位", blurb: "ACE 估算計算量", value: k.music_units },
     ];
     $("opsKpis").innerHTML = tiles
       .map(
@@ -247,7 +249,11 @@
     const charts = data.charts || {};
     renderLineChart($("chartDaily"), charts.daily || [], {
       keys: ["visits", "games", "tokens"],
-      labels: { visits: "進站", games: "遊戲", tokens: "TOKEN" },
+      labels: { visits: "進站", games: "遊戲", tokens: "額度" },
+    });
+    renderLineChart($("chartCompute"), charts.daily || [], {
+      keys: ["llm_tokens", "music_units"],
+      labels: { llm_tokens: "LLM", music_units: "做歌" },
     });
     renderFunnel($("chartFunnel"), charts.funnel || []);
     renderHBarChart(
@@ -466,11 +472,13 @@
         ${esc(formatTaipei(j.updated || j.created))} · ${esc(j.destination || "—")} · 路線 ${esc(j.route_id || "未選")} · 心情 ${esc(j.mood_id || "未選")}
         ${j.nickname ? ` · 暱稱「${esc(j.nickname)}」` : ""}
         · ID <code>${esc(j.id)}</code>
-        · TOKEN <strong>${esc(j.tokens_used ?? (j.token_usage && j.token_usage.total) ?? 0)}</strong>
+        · 額度 <strong>${esc(j.tokens_used ?? (j.token_usage && j.token_usage.total) ?? 0)}</strong>
+        · LLM <strong>${esc((j.compute_usage && j.compute_usage.llm && j.compute_usage.llm.total_tokens) || 0)}</strong>
+        · 做歌 <strong>${esc((j.compute_usage && j.compute_usage.music && j.compute_usage.music.units) || 0)}</strong>
       </p>
       <div class="activity-detail-grid">
         <div class="activity-block">
-          <h3>TOKEN 明細</h3>
+          <h3>額度 TOKEN</h3>
           ${
             (j.token_usage && (j.token_usage.events || []).length)
               ? (j.token_usage.events || [])
@@ -479,7 +487,35 @@
                       `<p>${esc(formatTaipei(ev.at))} · ${esc(TOKEN_KIND_LABEL[ev.kind] || ev.kind)} · ${esc(ev.tokens ?? 0)} 點</p>`
                   )
                   .join("")
-              : "<p class='hint'>此歌尚無 TOKEN 紀錄（舊資料或未製作成品）。</p>"
+              : "<p class='hint'>此歌尚無額度紀錄（舊資料或未製作成品）。</p>"
+          }
+          <h3 style="margin-top:14px">運算用量</h3>
+          ${
+            (() => {
+              const cu = j.compute_usage || {};
+              const llm = cu.llm || {};
+              const music = cu.music || {};
+              const events = cu.events || [];
+              if (!llm.total_tokens && !music.units && !events.length) {
+                return "<p class='hint'>尚無 LLM／做歌計量（新完成的旅程才會寫入）。</p>";
+              }
+              const head = `<p>LLM ${esc(llm.total_tokens || 0)}（入 ${esc(llm.prompt_tokens || 0)}／出 ${esc(llm.completion_tokens || 0)} · ${esc(llm.calls || 0)} 次）</p>
+                <p>做歌 ${esc(music.units || 0)} 單位 · ${esc(music.runs || 0)} 次 · 約 ${esc(Math.round((music.elapsed_ms || 0) / 1000))} 秒</p>`;
+              const rows = events.length
+                ? events
+                    .slice()
+                    .reverse()
+                    .slice(0, 12)
+                    .map((ev) => {
+                      if (ev.channel === "llm") {
+                        return `<p class="dim">${esc(formatTaipei(ev.at))} · ${esc(ev.kind)} · ${esc(ev.total_tokens || 0)} tokens</p>`;
+                      }
+                      return `<p class="dim">${esc(formatTaipei(ev.at))} · ${esc(ev.kind)} · ${esc(ev.units || 0)} 單位 · ${esc(ev.duration_sec || 0)}s</p>`;
+                    })
+                    .join("")
+                : "";
+              return head + rows;
+            })()
           }
         </div>
         <div class="activity-block">
@@ -558,6 +594,10 @@
         : "匿名遊客";
       const status = STATUS_LABEL[j.status] || j.status || "—";
       const tokens = j.tokens_used ?? (j.token_usage && j.token_usage.total) ?? 0;
+      const llmTok =
+        (j.compute_usage && j.compute_usage.llm && j.compute_usage.llm.total_tokens) || 0;
+      const musicU =
+        (j.compute_usage && j.compute_usage.music && j.compute_usage.music.units) || 0;
       tr.innerHTML = `
         <td class="num">${esc(formatTaipei(j.updated || j.created))}</td>
         <td>
@@ -566,7 +606,7 @@
         </td>
         <td>${who}</td>
         <td><span class="activity-badge">${esc(status)}</span></td>
-        <td class="num"><strong>${esc(tokens)}</strong></td>
+        <td class="num"><strong>${esc(tokens)}</strong><span class="dim"> / ${esc(llmTok)} / ${esc(musicU)}</span></td>
         <td class="num">${j.sound_count || 0}</td>
         <td class="num">${j.final_file ? "有" : "—"}</td>
       `;

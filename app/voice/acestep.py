@@ -201,7 +201,9 @@ def _generate_via_local_api(
     duration_sec: float,
     out_path: Path,
     progress: ProgressCb = None,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> Path:
+    t0 = time.time()
     if progress:
         progress(20, "連線 AI 唱歌引擎")
 
@@ -216,6 +218,7 @@ def _generate_via_local_api(
     )
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
+    inference_steps = 8
 
     body: Dict[str, Any] = {
         "prompt": prompt,
@@ -232,7 +235,7 @@ def _generate_via_local_api(
         "audio_duration": duration_sec,
         "time_signature": "4",
         "batch_size": 1,
-        "inference_steps": 8,
+        "inference_steps": inference_steps,
     }
     if bpm_i:
         body["bpm"] = bpm_i
@@ -315,6 +318,17 @@ def _generate_via_local_api(
             out_path.write_bytes(ar.content)
             if progress:
                 progress(95, "輸出成品")
+            if stats is not None:
+                stats.update(
+                    {
+                        "engine": "acestep",
+                        "model": ACESTEP_MODEL,
+                        "via": "local",
+                        "duration_sec": float(duration_sec),
+                        "inference_steps": int(inference_steps),
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                    }
+                )
             return out_path
         if status == 2:
             err = row.get("error") or row.get("message") or row.get("result") or "unknown"
@@ -337,7 +351,11 @@ def _generate_via_remote(
     duration_sec: float,
     out_path: Path,
     progress: ProgressCb = None,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> Path:
+    t0 = time.time()
+    duration_sec = max(20.0, min(90.0, float(duration_sec)))
+    inference_steps = 8
     if progress:
         progress(20, "連線本機 AI 唱歌引擎")
     payload = {
@@ -373,6 +391,17 @@ def _generate_via_remote(
                 progress(90, "輸出成品")
             out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_bytes(r.content)
+            if stats is not None:
+                stats.update(
+                    {
+                        "engine": "acestep",
+                        "model": ACESTEP_MODEL,
+                        "via": "remote",
+                        "duration_sec": float(duration_sec),
+                        "inference_steps": int(inference_steps),
+                        "elapsed_ms": int((time.time() - t0) * 1000),
+                    }
+                )
             return out_path
         except Exception as e:
             last_err = str(e)
@@ -391,10 +420,12 @@ def generate_to_file(
     out_path: Path,
     progress: ProgressCb = None,
     force_local: bool = False,
+    stats: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """
     產生整曲並寫入 out_path。
     force_local=True 時只打本機 :8001（給 /acestep/generate 代理用）。
+    若傳入 stats=dict，會寫入 duration_sec / inference_steps / elapsed_ms 等計量欄位。
     """
     if force_local or local_available():
         return _generate_via_local_api(
@@ -406,6 +437,7 @@ def generate_to_file(
             duration_sec=duration_sec,
             out_path=out_path,
             progress=progress,
+            stats=stats,
         )
     if ACESTEP_REMOTE_URLS:
         return _generate_via_remote(
@@ -417,6 +449,7 @@ def generate_to_file(
             duration_sec=duration_sec,
             out_path=out_path,
             progress=progress,
+            stats=stats,
         )
     raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
 
