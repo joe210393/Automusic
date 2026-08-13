@@ -84,9 +84,147 @@
     full_upgrade: "完整版",
   };
 
+  function chartEmpty(msg) {
+    return `<p class="hint ops-chart-empty">${esc(msg || "尚無資料")}</p>`;
+  }
+
+  function renderLineChart(el, series, opts = {}) {
+    if (!el) return;
+    const rows = series || [];
+    if (!rows.length) {
+      el.innerHTML = chartEmpty();
+      return;
+    }
+    const keys = opts.keys || ["visits", "games", "tokens"];
+    const colors = opts.colors || {
+      visits: "#1a9b9b",
+      games: "#0e2f45",
+      tokens: "#e8873a",
+      finals: "#6b8cae",
+      purchases: "#b85c38",
+    };
+    const labels = opts.labels || {
+      visits: "進站",
+      games: "遊戲",
+      tokens: "TOKEN",
+      finals: "成品",
+      purchases: "購買",
+    };
+    const w = 560;
+    const h = 220;
+    const pad = { t: 16, r: 16, b: 36, l: 36 };
+    const innerW = w - pad.l - pad.r;
+    const innerH = h - pad.t - pad.b;
+    let maxY = 0;
+    rows.forEach((r) => {
+      keys.forEach((k) => {
+        maxY = Math.max(maxY, Number(r[k] || 0));
+      });
+    });
+    maxY = Math.max(1, maxY);
+    const n = rows.length;
+    const xAt = (i) => pad.l + (n <= 1 ? innerW / 2 : (i / (n - 1)) * innerW);
+    const yAt = (v) => pad.t + innerH - (Number(v || 0) / maxY) * innerH;
+
+    const paths = keys
+      .map((k) => {
+        const pts = rows
+          .map((r, i) => `${i === 0 ? "M" : "L"}${xAt(i).toFixed(1)},${yAt(r[k]).toFixed(1)}`)
+          .join(" ");
+        return `<path d="${pts}" fill="none" stroke="${colors[k] || "#1a9b9b"}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />`;
+      })
+      .join("");
+
+    const dots = keys
+      .map((k) =>
+        rows
+          .map((r, i) => {
+            const v = Number(r[k] || 0);
+            if (!v && maxY > 3) return "";
+            return `<circle cx="${xAt(i).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="3" fill="${colors[k] || "#1a9b9b"}"><title>${esc(r.date)} ${esc(labels[k] || k)}：${v}</title></circle>`;
+          })
+          .join("")
+      )
+      .join("");
+
+    const xLabels = rows
+      .map((r, i) => {
+        if (n > 10 && i % 2 === 1 && i !== n - 1) return "";
+        const short = String(r.date || "").slice(5);
+        return `<text x="${xAt(i).toFixed(1)}" y="${h - 10}" text-anchor="middle" class="ops-axis">${esc(short)}</text>`;
+      })
+      .join("");
+
+    const legend = keys
+      .map(
+        (k) =>
+          `<span class="ops-legend-item"><i style="background:${colors[k]}"></i>${esc(labels[k] || k)}</span>`
+      )
+      .join("");
+
+    el.innerHTML = `
+      <div class="ops-legend">${legend}</div>
+      <svg viewBox="0 0 ${w} ${h}" class="ops-svg" role="presentation">
+        <line x1="${pad.l}" y1="${pad.t}" x2="${pad.l}" y2="${pad.t + innerH}" class="ops-grid" />
+        <line x1="${pad.l}" y1="${pad.t + innerH}" x2="${pad.l + innerW}" y2="${pad.t + innerH}" class="ops-grid" />
+        <text x="${pad.l - 8}" y="${pad.t + 4}" text-anchor="end" class="ops-axis">${maxY}</text>
+        <text x="${pad.l - 8}" y="${pad.t + innerH}" text-anchor="end" class="ops-axis">0</text>
+        ${paths}${dots}${xLabels}
+      </svg>`;
+  }
+
+  function renderHBarChart(el, items, opts = {}) {
+    if (!el) return;
+    const rows = (items || []).filter((x) => Number(x.value || x.games || x.tokens || x.count || 0) >= 0);
+    if (!rows.length) {
+      el.innerHTML = chartEmpty();
+      return;
+    }
+    const labelKey = opts.labelKey || "label";
+    const valueKey = opts.valueKey || "value";
+    const maxV = Math.max(1, ...rows.map((r) => Number(r[valueKey] || 0)));
+    el.innerHTML = `<div class="ops-hbar">${rows
+      .map((r) => {
+        const label = r[labelKey] ?? r.id ?? r.kind ?? r.status ?? "—";
+        const value = Number(r[valueKey] || 0);
+        const pct = Math.max(2, Math.round((value / maxV) * 100));
+        return `<div class="ops-hbar-row">
+          <span class="ops-hbar-label" title="${esc(label)}">${esc(label)}</span>
+          <div class="ops-hbar-track"><div class="ops-hbar-fill" style="width:${pct}%"></div></div>
+          <span class="ops-hbar-val">${value.toLocaleString("zh-TW")}</span>
+        </div>`;
+      })
+      .join("")}</div>`;
+  }
+
+  function renderFunnel(el, items) {
+    if (!el) return;
+    const rows = items || [];
+    if (!rows.length) {
+      el.innerHTML = chartEmpty();
+      return;
+    }
+    const maxV = Math.max(1, ...rows.map((r) => Number(r.value || 0)));
+    el.innerHTML = `<div class="ops-funnel">${rows
+      .map((r, i) => {
+        const value = Number(r.value || 0);
+        const pct = Math.max(18, Math.round((value / maxV) * 100));
+        const prev = i === 0 ? value : Number(rows[i - 1].value || 0);
+        const rate = prev > 0 ? Math.round((value / prev) * 100) : 0;
+        return `<div class="ops-funnel-step">
+          <div class="ops-funnel-bar" style="width:${pct}%">
+            <strong>${esc(r.label)}</strong>
+            <span>${value.toLocaleString("zh-TW")}${i ? ` · ${rate}%` : ""}</span>
+          </div>
+        </div>`;
+      })
+      .join("")}</div>`;
+  }
+
   async function renderOps() {
     setStatus($("opsStatus"), "載入中…");
-    const data = await api("/api/admin/ops");
+    const days = $("opsDays")?.value || "14";
+    const data = await api(`/api/admin/ops?days=${encodeURIComponent(days)}`);
     const k = data.kpis || {};
     const tiles = [
       { key: "visits", label: "進站人數", blurb: "開始旅程次數", value: k.visits },
@@ -105,6 +243,26 @@
       </article>`
       )
       .join("");
+
+    const charts = data.charts || {};
+    renderLineChart($("chartDaily"), charts.daily || [], {
+      keys: ["visits", "games", "tokens"],
+      labels: { visits: "進站", games: "遊戲", tokens: "TOKEN" },
+    });
+    renderFunnel($("chartFunnel"), charts.funnel || []);
+    renderHBarChart(
+      $("chartDest"),
+      (charts.destinations || []).map((d) => ({ label: d.id, value: d.games })),
+      { labelKey: "label", valueKey: "value" }
+    );
+    renderHBarChart(
+      $("chartTokens"),
+      (charts.token_by_kind || []).map((d) => ({
+        label: TOKEN_KIND_LABEL[d.kind] || d.kind,
+        value: d.tokens,
+      })),
+      { labelKey: "label", valueKey: "value" }
+    );
 
     const tokenBody = $("opsTokenBody");
     const recent = data.recent_tokens || [];
@@ -137,7 +295,7 @@
           .join("")
       : `<p class="hint">尚無旅程資料。</p>`;
 
-    setStatus($("opsStatus"), `更新於 ${formatTaipei(data.updated)}`);
+    setStatus($("opsStatus"), `更新於 ${formatTaipei(data.updated)} · 圖表區間 ${charts.days || days} 日`);
   }
 
   function setTitle(text) {
@@ -692,6 +850,13 @@
 
   $("btnGoNewDest").addEventListener("click", () => go("/new"));
   $("btnRefreshOps")?.addEventListener("click", async () => {
+    try {
+      await renderOps();
+    } catch (e) {
+      setStatus($("opsStatus"), e.message, "error");
+    }
+  });
+  $("opsDays")?.addEventListener("change", async () => {
     try {
       await renderOps();
     } catch (e) {

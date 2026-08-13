@@ -48,11 +48,46 @@
       <div class="card ops-hero">
         <div class="card-head">
           <h2>營運狀況</h2>
-          <button id="btnRefreshOps" class="secondary" type="button">重新整理</button>
+          <div class="ops-head-actions">
+            <label class="ops-range">
+              <span class="sr-only">統計區間</span>
+              <select id="opsDays">
+                <option value="7">近 7 日</option>
+                <option value="14" selected>近 14 日</option>
+                <option value="30">近 30 日</option>
+              </select>
+            </label>
+            <button id="btnRefreshOps" class="secondary" type="button">重新整理</button>
+          </div>
         </div>
         <p class="hint">一眼掌握進站、使用、帳號、遊戲與購買。時間為台灣 UTC+8。</p>
         <div id="opsKpis" class="ops-kpi-grid" aria-live="polite"></div>
       </div>
+
+      <div class="card ops-charts-card">
+        <div class="card-head">
+          <h2>統計圖表</h2>
+        </div>
+        <div class="ops-charts">
+          <figure class="ops-chart">
+            <figcaption>每日趨勢：進站／遊戲／TOKEN</figcaption>
+            <div id="chartDaily" class="ops-chart-canvas" role="img" aria-label="每日趨勢圖"></div>
+          </figure>
+          <figure class="ops-chart">
+            <figcaption>轉換漏斗</figcaption>
+            <div id="chartFunnel" class="ops-chart-canvas" role="img" aria-label="轉換漏斗圖"></div>
+          </figure>
+          <figure class="ops-chart">
+            <figcaption>目的地熱度</figcaption>
+            <div id="chartDest" class="ops-chart-canvas" role="img" aria-label="目的地熱度圖"></div>
+          </figure>
+          <figure class="ops-chart">
+            <figcaption>TOKEN 類型分布</figcaption>
+            <div id="chartTokens" class="ops-chart-canvas" role="img" aria-label="TOKEN 類型分布圖"></div>
+          </figure>
+        </div>
+      </div>
+
       <div class="ops-split">
         <div class="card">
           <h2>TOKEN 消耗（最近）</h2>

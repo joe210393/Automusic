@@ -11,7 +11,9 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from app.util.timeutil import now_iso
+from datetime import timedelta
+
+from app.util.timeutil import now_iso, now_taipei, parse_to_taipei
 
 _persistent = Path("/voice")
 _default = (
@@ -157,11 +159,26 @@ def record_token_spend(
     return {"entry": entry, "journey_tokens": totals}
 
 
-def ops_summary() -> Dict[str, Any]:
-    """營運儀表板數字。"""
+def _day_key(value: Optional[str]) -> Optional[str]:
+    dt = parse_to_taipei(value)
+    return dt.strftime("%Y-%m-%d") if dt else None
+
+
+def _empty_daily(days: int = 14) -> Dict[str, Dict[str, int]]:
+    today = now_taipei().date()
+    out: Dict[str, Dict[str, int]] = {}
+    for i in range(days - 1, -1, -1):
+        d = (today - timedelta(days=i)).strftime("%Y-%m-%d")
+        out[d] = {"visits": 0, "games": 0, "tokens": 0, "finals": 0, "purchases": 0}
+    return out
+
+
+def ops_summary(days: int = 14) -> Dict[str, Any]:
+    """營運儀表板數字 + 統計圖表資料。"""
     from app.journey import store as journey_store
     from app.ops import accounts as ops_accounts
 
+    days = max(7, min(int(days or 14), 60))
     visits = _read_jsonl(VISITS_PATH)
     purchases = _read_jsonl(PURCHASES_PATH)
     ledger = _read_jsonl(LEDGER_PATH)
@@ -170,6 +187,9 @@ def ops_summary() -> Dict[str, Any]:
     account_n = len(accounts)
     paid_n = sum(1 for a in accounts if a.get("paid"))
 
+    daily = _empty_daily(days)
+    day_set = set(daily.keys())
+
     # 旅程掃描
     games = 0
     with_sounds = 0
@@ -177,6 +197,7 @@ def ops_summary() -> Dict[str, Any]:
     tokens_on_songs = 0
     active_keys = set()
     dest_counts: Dict[str, int] = {}
+    status_counts: Dict[str, int] = {}
     for path in journey_store.JOURNEYS_ROOT.glob("*/meta.json"):
         try:
             meta = json.loads(path.read_text(encoding="utf-8"))
@@ -185,6 +206,8 @@ def ops_summary() -> Dict[str, Any]:
         games += 1
         dest = str(meta.get("destination") or "—")
         dest_counts[dest] = dest_counts.get(dest, 0) + 1
+        st = str(meta.get("status") or "—")
+        status_counts[st] = status_counts.get(st, 0) + 1
         if meta.get("sounds"):
             with_sounds += 1
         if meta.get("final_file"):
@@ -197,36 +220,91 @@ def ops_summary() -> Dict[str, Any]:
         else:
             active_keys.add(f"j:{meta.get('id') or path.parent.name}")
 
+        created_day = _day_key(meta.get("created"))
+        if created_day in day_set:
+            daily[created_day]["games"] += 1
+            if meta.get("final_file"):
+                daily[created_day]["finals"] += 1
+
+    # 進站 log → 日趨勢；無 log 時用旅程 created 近似 visits
+    if visits:
+        for row in visits:
+            d = _day_key(row.get("at"))
+            if d in day_set:
+                daily[d]["visits"] += 1
+    else:
+        for d, bucket in daily.items():
+            bucket["visits"] = bucket["games"]
+
+    for row in ledger:
+        d = _day_key(row.get("at"))
+        if d in day_set:
+            daily[d]["tokens"] += int(row.get("tokens") or 0)
+
+    for row in purchases:
+        d = _day_key(row.get("at"))
+        if d in day_set:
+            daily[d]["purchases"] += 1
+
     # 進站：有 visit log 用 log，否則用旅程數近似
     visit_n = len(visits) if visits else games
-    # 使用人數：有錄音或有成品的去重主體
     users_n = len(active_keys)
 
     tokens_spent = sum(int(r.get("tokens") or 0) for r in ledger)
     if tokens_spent == 0:
         tokens_spent = tokens_on_songs
 
+    token_by_kind: Dict[str, int] = {}
+    for row in ledger:
+        kind = str(row.get("kind") or "other")
+        token_by_kind[kind] = token_by_kind.get(kind, 0) + int(row.get("tokens") or 0)
+    if not token_by_kind and tokens_on_songs:
+        token_by_kind["ai_finalize"] = tokens_on_songs
+
     recent_tokens = list(reversed(ledger[-30:]))
     recent_purchases = list(reversed(purchases[-20:]))
+    dest_sorted = sorted(
+        [{"id": k, "games": v} for k, v in dest_counts.items()],
+        key=lambda x: -x["games"],
+    )
 
     return {
         "kpis": {
-            "visits": visit_n,              # 進站人數（旅程啟動）
-            "users": users_n,               # 使用人數（有互動的去重）
-            "accounts": account_n,          # 帳號數
-            "games": games,                 # 遊戲數（旅程）
-            "purchases": len(purchases) if purchases else paid_n,  # 購買人次
+            "visits": visit_n,
+            "users": users_n,
+            "accounts": account_n,
+            "games": games,
+            "purchases": len(purchases) if purchases else paid_n,
             "paid_accounts": paid_n,
             "with_sounds": with_sounds,
             "with_final": with_final,
             "tokens_spent": tokens_spent,
         },
-        "destinations": sorted(
-            [{"id": k, "games": v} for k, v in dest_counts.items()],
-            key=lambda x: -x["games"],
-        ),
+        "destinations": dest_sorted,
         "recent_tokens": recent_tokens,
         "recent_purchases": recent_purchases,
         "token_costs": dict(TOKEN_COSTS),
+        "charts": {
+            "days": days,
+            "daily": [
+                {"date": d, **vals}
+                for d, vals in daily.items()
+            ],
+            "funnel": [
+                {"key": "visits", "label": "進站", "value": visit_n},
+                {"key": "sounds", "label": "有錄音", "value": with_sounds},
+                {"key": "final", "label": "有成品", "value": with_final},
+                {"key": "paid", "label": "付費帳號", "value": paid_n},
+            ],
+            "destinations": dest_sorted[:8],
+            "token_by_kind": [
+                {"kind": k, "tokens": v}
+                for k, v in sorted(token_by_kind.items(), key=lambda x: -x[1])
+            ],
+            "status": [
+                {"status": k, "count": v}
+                for k, v in sorted(status_counts.items(), key=lambda x: -x[1])
+            ],
+        },
         "updated": now_iso(),
     }

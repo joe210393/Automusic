@@ -21,10 +21,9 @@ def month_key() -> str:
     return now_taipei().strftime("%Y-%m")
 
 
-def format_display(value: str | None) -> str:
-    """後端／除錯用顯示；前端另有 Intl 格式化。"""
+def parse_to_taipei(value: str | None) -> datetime | None:
     if not value:
-        return "—"
+        return None
     try:
         text = str(value).strip()
         if text.endswith("Z"):
@@ -33,6 +32,14 @@ def format_display(value: str | None) -> str:
             dt = datetime.fromisoformat(text)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=TAIPEI)
-        return dt.astimezone(TAIPEI).strftime("%Y-%m-%d %H:%M")
+        return dt.astimezone(TAIPEI)
     except Exception:
-        return str(value)
+        return None
+
+
+def format_display(value: str | None) -> str:
+    """後端／除錯用顯示；前端另有 Intl 格式化。"""
+    dt = parse_to_taipei(value)
+    if not dt:
+        return str(value) if value else "—"
+    return dt.strftime("%Y-%m-%d %H:%M")
