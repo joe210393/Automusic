@@ -113,6 +113,18 @@ def admin_status():
     }
 
 
+@router.get("/api/admin/ops")
+def admin_ops(
+    x_admin_token: Optional[str] = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    """營運儀表板：進站／使用／帳號／遊戲／購買／TOKEN。"""
+    from app.ops import usage as ops_usage
+
+    _require_admin(x_admin_token, authorization)
+    return ops_usage.ops_summary()
+
+
 @router.post("/api/admin/login")
 def admin_login(
     x_admin_token: Optional[str] = Header(default=None),

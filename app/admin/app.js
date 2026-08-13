@@ -36,10 +36,11 @@
   function parseHash() {
     const raw = (location.hash || "#/").replace(/^#/, "") || "/";
     const parts = raw.split("/").filter(Boolean);
-    // /, /new, /activity, /:dest, /:dest/brand, /:dest/routes, /:dest/routes/new, /:dest/routes/:id, /:dest/moods
+    // /, /activity, /content, /new, /:dest/...
     if (!parts.length) return { page: "home" };
-    if (parts[0] === "new") return { page: "new-dest" };
     if (parts[0] === "activity") return { page: "activity" };
+    if (parts[0] === "content") return { page: "content" };
+    if (parts[0] === "new") return { page: "new-dest" };
     const destId = parts[0];
     if (parts.length === 1) return { page: "dest", destId };
     if (parts[1] === "brand") return { page: "brand", destId };
@@ -60,9 +61,83 @@
     document.querySelectorAll(".page").forEach((el) => el.classList.add("hidden"));
     const page = $(`page-${name}`);
     if (page) page.classList.remove("hidden");
-    $("navHome").hidden = name === "login" || name === "home";
+    const topNav = $("topNav");
+    if (topNav) topNav.hidden = name === "login";
+    document.querySelectorAll("#topNav .link").forEach((a) => {
+      a.classList.toggle("is-current", a.getAttribute("href") === `#/${name === "home" ? "" : name}`.replace(/\/$/, "") || a.getAttribute("href") === "#/");
+    });
+    if ($("navOps")) $("navOps").classList.toggle("is-current", name === "home");
+    if ($("navActivity")) $("navActivity").classList.toggle("is-current", name === "activity");
+    if ($("navContent")) {
+      $("navContent").classList.toggle(
+        "is-current",
+        ["content", "new-dest", "dest", "brand", "routes", "route-edit", "moods"].includes(name)
+      );
+    }
     const shell = document.querySelector(".shell");
-    if (shell) shell.classList.toggle("shell--wide", name === "activity");
+    if (shell) shell.classList.toggle("shell--wide", name === "activity" || name === "home");
+  }
+
+  const TOKEN_KIND_LABEL = {
+    ai_finalize: "AI 成品",
+    voice_finalize: "聲紋版",
+    full_upgrade: "完整版",
+  };
+
+  async function renderOps() {
+    setStatus($("opsStatus"), "載入中…");
+    const data = await api("/api/admin/ops");
+    const k = data.kpis || {};
+    const tiles = [
+      { key: "visits", label: "進站人數", blurb: "開始旅程次數", value: k.visits },
+      { key: "users", label: "使用人數", blurb: "有互動的旅人", value: k.users },
+      { key: "accounts", label: "帳號數", blurb: "已註冊", value: k.accounts },
+      { key: "games", label: "遊戲數", blurb: "旅程總數", value: k.games },
+      { key: "purchases", label: "購買人次", blurb: "升級／付費", value: k.purchases },
+      { key: "tokens", label: "TOKEN 總消耗", blurb: "全站累計", value: k.tokens_spent },
+    ];
+    $("opsKpis").innerHTML = tiles
+      .map(
+        (t) => `<article class="ops-kpi" data-k="${esc(t.key)}">
+        <p class="ops-kpi-label">${esc(t.label)}</p>
+        <p class="ops-kpi-value">${Number(t.value || 0).toLocaleString("zh-TW")}</p>
+        <p class="ops-kpi-blurb">${esc(t.blurb)}</p>
+      </article>`
+      )
+      .join("");
+
+    const tokenBody = $("opsTokenBody");
+    const recent = data.recent_tokens || [];
+    if (!recent.length) {
+      tokenBody.innerHTML = `<tr><td colspan="5" class="hint">尚無 TOKEN 紀錄。完成一首 AI 歌後會出現。</td></tr>`;
+    } else {
+      tokenBody.innerHTML = recent
+        .map((r) => {
+          const kind = TOKEN_KIND_LABEL[r.kind] || r.kind || "—";
+          return `<tr>
+            <td class="num">${esc(formatTaipei(r.at))}</td>
+            <td>${esc(kind)}</td>
+            <td class="num"><strong>${esc(r.tokens ?? 0)}</strong></td>
+            <td><code>${esc((r.journey_id || "").slice(0, 10) || "—")}</code></td>
+            <td class="dim">${esc(r.account_id === "anonymous" ? "匿名" : (r.account_id || "—").slice(0, 10))}</td>
+          </tr>`;
+        })
+        .join("");
+    }
+
+    const dests = data.destinations || [];
+    $("opsDestBody").innerHTML = dests.length
+      ? dests
+          .map(
+            (d) => `<div class="ops-dest-row">
+          <strong>${esc(d.id)}</strong>
+          <span>${Number(d.games || 0).toLocaleString("zh-TW")} 趟</span>
+        </div>`
+          )
+          .join("")
+      : `<p class="hint">尚無旅程資料。</p>`;
+
+    setStatus($("opsStatus"), `更新於 ${formatTaipei(data.updated)}`);
   }
 
   function setTitle(text) {
@@ -233,8 +308,22 @@
         ${esc(formatTaipei(j.updated || j.created))} · ${esc(j.destination || "—")} · 路線 ${esc(j.route_id || "未選")} · 心情 ${esc(j.mood_id || "未選")}
         ${j.nickname ? ` · 暱稱「${esc(j.nickname)}」` : ""}
         · ID <code>${esc(j.id)}</code>
+        · TOKEN <strong>${esc(j.tokens_used ?? (j.token_usage && j.token_usage.total) ?? 0)}</strong>
       </p>
       <div class="activity-detail-grid">
+        <div class="activity-block">
+          <h3>TOKEN 明細</h3>
+          ${
+            (j.token_usage && (j.token_usage.events || []).length)
+              ? (j.token_usage.events || [])
+                  .map(
+                    (ev) =>
+                      `<p>${esc(formatTaipei(ev.at))} · ${esc(TOKEN_KIND_LABEL[ev.kind] || ev.kind)} · ${esc(ev.tokens ?? 0)} 點</p>`
+                  )
+                  .join("")
+              : "<p class='hint'>此歌尚無 TOKEN 紀錄（舊資料或未製作成品）。</p>"
+          }
+        </div>
         <div class="activity-block">
           <h3>玩了什麼</h3>
           <p>關鍵字：${kw}</p>
@@ -296,7 +385,7 @@
     const journeys = data.journeys || [];
     activityCache = journeys;
     if (!journeys.length) {
-      root.innerHTML = `<tr><td colspan="6" class="hint">尚無符合的遊客紀錄。</td></tr>`;
+      root.innerHTML = `<tr><td colspan="7" class="hint">尚無符合的遊客紀錄。</td></tr>`;
       renderActivityPager(data);
       setStatus($("activityStatus"), "");
       return;
@@ -310,6 +399,7 @@
         ? `${acc.display_name || "旅人"}<br><span class="dim">${esc(acc.email || "")}</span>`
         : "匿名遊客";
       const status = STATUS_LABEL[j.status] || j.status || "—";
+      const tokens = j.tokens_used ?? (j.token_usage && j.token_usage.total) ?? 0;
       tr.innerHTML = `
         <td class="num">${esc(formatTaipei(j.updated || j.created))}</td>
         <td>
@@ -318,6 +408,7 @@
         </td>
         <td>${who}</td>
         <td><span class="activity-badge">${esc(status)}</span></td>
+        <td class="num"><strong>${esc(tokens)}</strong></td>
         <td class="num">${j.sound_count || 0}</td>
         <td class="num">${j.final_file ? "有" : "—"}</td>
       `;
@@ -514,7 +605,12 @@
       switch (state.page) {
         case "home":
           showPage("home");
-          setTitle("目的地列表");
+          setTitle("營運總覽");
+          await renderOps();
+          break;
+        case "content":
+          showPage("content");
+          setTitle("內容管理");
           await refreshDestList();
           break;
         case "activity":
@@ -584,19 +680,23 @@
     }
   });
 
-  $("btnLogout").addEventListener("click", () => {
+  function doLogout() {
     token = "";
     sessionStorage.removeItem(TOKEN_KEY);
     destCache = null;
     go("/");
     showPage("login");
-    setTitle("內容後台");
-  });
+    setTitle("營運後台");
+  }
+  $("btnLogoutTop")?.addEventListener("click", doLogout);
 
   $("btnGoNewDest").addEventListener("click", () => go("/new"));
-  $("navHome").addEventListener("click", (e) => {
-    e.preventDefault();
-    go("/");
+  $("btnRefreshOps")?.addEventListener("click", async () => {
+    try {
+      await renderOps();
+    } catch (e) {
+      setStatus($("opsStatus"), e.message, "error");
+    }
   });
 
   $("btnCreateDest").addEventListener("click", async () => {

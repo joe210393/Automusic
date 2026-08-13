@@ -155,35 +155,63 @@ def check_finalize_quota(account_id: Optional[str]) -> Dict[str, Any]:
     }
 
 
-def consume_finalize(account_id: Optional[str]) -> None:
-    if not account_id:
-        return
-    acc = get_account(account_id)
-    if not acc:
-        return
-    month = _month_key()
-    usage = acc.setdefault("usage", {})
-    bucket = usage.setdefault(month, {"finalize": 0})
-    bucket["finalize"] = int(bucket.get("finalize", 0)) + 1
-    save_account(acc)
+def consume_finalize(
+    account_id: Optional[str],
+    *,
+    journey_id: Optional[str] = None,
+    meta: Optional[dict] = None,
+    kind: str = "ai_finalize",
+) -> Dict[str, Any]:
+    """扣額度並登記 TOKEN（寫入帳號 ledger + 旅程 token_usage）。"""
+    from app.ops import usage as ops_usage
+
+    # 月額度計數仍保留（匿名不計）
+    if account_id:
+        acc = get_account(account_id)
+        if acc:
+            month = _month_key()
+            usage = acc.setdefault("usage", {})
+            bucket = usage.setdefault(month, {"finalize": 0, "tokens": 0})
+            if kind == "ai_finalize":
+                bucket["finalize"] = int(bucket.get("finalize", 0)) + 1
+            save_account(acc)
+
+    return ops_usage.record_token_spend(
+        kind=kind,
+        journey_id=journey_id,
+        account_id=account_id,
+        meta=meta,
+    )
 
 
 def set_paid(account_id: str, paid: bool = True) -> Optional[dict]:
     acc = get_account(account_id)
     if not acc:
         return None
+    was_paid = bool(acc.get("paid"))
     acc["paid"] = paid
     save_account(acc)
+    if paid and not was_paid:
+        from app.ops import usage as ops_usage
+
+        ops_usage.record_purchase(
+            account_id=account_id,
+            email=str(acc.get("email") or ""),
+            kind="paid_plan",
+        )
     return acc
 
 
 def public_account_view(acc: dict) -> dict:
+    month = _month_key()
+    bucket = (acc.get("usage") or {}).get(month) or {}
     return {
         "id": acc["id"],
         "email": acc["email"],
         "display_name": acc.get("display_name"),
         "paid": bool(acc.get("paid")),
         "quota": check_finalize_quota(acc["id"]),
+        "tokens_used_month": int(bucket.get("tokens") or bucket.get("finalize") or 0),
     }
 
 

@@ -117,8 +117,19 @@ def create_journey(destination: str = "suao", account_id: Optional[str] = None) 
         "share_public": False,
         "account_id": account_id,
         "error": None,
+        "token_usage": {"total": 0, "by_kind": {}, "events": []},
     }
     save_meta(jid, meta)
+    try:
+        from app.ops import usage as ops_usage
+
+        ops_usage.record_visit(
+            journey_id=jid,
+            destination=destination,
+            account_id=account_id,
+        )
+    except Exception as e:
+        print(f"[journey] visit log skip: {e}")
     return meta
 
 
@@ -420,6 +431,11 @@ def list_all_journeys(
             "preview_url": f"/api/journey/{jid}/audio/preview" if meta.get("preview_file") else None,
             "final_url": f"/api/journey/{jid}/audio/final" if meta.get("final_file") else None,
             "error": meta.get("error"),
+            "token_usage": meta.get("token_usage") or {"total": 0, "by_kind": {}, "events": []},
+            "tokens_used": (
+                int((meta.get("token_usage") or {}).get("total") or 0)
+                or (1 if meta.get("final_file") else 0)  # 舊資料：有成品則估 1 TOKEN
+            ),
         })
     out.sort(key=lambda x: x.get("updated") or x.get("created") or "", reverse=True)
     total = len(out)

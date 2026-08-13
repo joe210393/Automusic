@@ -43,6 +43,7 @@ voiceprint/
 # 遊客旅程／帳號資料（本機與 /voice 掛載）
 journeys/
 accounts/
+ops_data/
 # 後台可編輯的內容覆寫（僅專案根目錄；seed 仍在 app/content/destinations）
 /content/
 

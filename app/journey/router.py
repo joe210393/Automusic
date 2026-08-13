@@ -536,7 +536,13 @@ def finalize_journey(
 
     try:
         meta = service.run_finalize_ai(journey_id)
-        ops_accounts.consume_finalize(account_id)
+        spend = ops_accounts.consume_finalize(
+            account_id,
+            journey_id=journey_id,
+            meta=meta,
+            kind="ai_finalize",
+        )
+        meta = store.load_meta(journey_id)
         return {
             "ok": True,
             "status": meta["status"],
@@ -551,6 +557,7 @@ def finalize_journey(
             "ai_singer_id": meta.get("ai_singer_id"),
             "ai_singer_label": meta.get("ai_singer_label"),
             "quota": ops_accounts.check_finalize_quota(account_id),
+            "token_usage": meta.get("token_usage") or spend.get("journey_tokens"),
         }
     except Exception as e:
         meta = store.load_meta(journey_id)
@@ -562,10 +569,17 @@ def finalize_journey(
 
 @router.post("/api/journey/{journey_id}/finalize-voice")
 def finalize_voice_journey(journey_id: str):
-    """同旅程加值：製作聲紋版，不另扣額度。"""
-    _meta_or_404(journey_id)
+    """同旅程加值：製作聲紋版（登記 TOKEN；預設 0 點）。"""
+    meta = _meta_or_404(journey_id)
     try:
         meta = service.run_finalize_voice(journey_id)
+        spend = ops_accounts.consume_finalize(
+            meta.get("account_id"),
+            journey_id=journey_id,
+            meta=meta,
+            kind="voice_finalize",
+        )
+        meta = store.load_meta(journey_id)
         return {
             "ok": True,
             "status": meta["status"],
@@ -574,6 +588,7 @@ def finalize_voice_journey(journey_id: str):
             "share_path": f"/s/{meta['slug']}",
             "slug": meta["slug"],
             "lyrics": meta.get("lyrics"),
+            "token_usage": meta.get("token_usage") or spend.get("journey_tokens"),
         }
     except Exception as e:
         meta = store.load_meta(journey_id)
