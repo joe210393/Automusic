@@ -690,6 +690,7 @@ class AceStepGenerateRequest(BaseModel):
     singer_id: Optional[str] = None
     engine_style: Optional[str] = None
     duration_sec: float = 45.0
+    material: Optional[dict] = None
 
 
 @app.get("/acestep/health")
@@ -719,6 +720,7 @@ def acestep_generate(req: AceStepGenerateRequest):
             singer_id=req.singer_id,
             engine_style=req.engine_style,
             duration_sec=float(req.duration_sec or 45.0),
+            material=req.material,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ACE-Step 產生失敗: {e}") from e

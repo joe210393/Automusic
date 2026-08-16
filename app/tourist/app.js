@@ -322,7 +322,116 @@
     selectedMood = (destination.moodStyles || []).find((m) => m.id === journey.mood_id) || null;
   }
 
+  function fillSoundTrace(prefix, meta) {
+    const rootId = prefix === "result" ? "resultSoundTrace" : "soundTrace";
+    const root = $(rootId);
+    if (!root) return;
+    let trace = (meta && meta.sound_trace) || null;
+    if (!trace || !((trace.effects || []).length || (trace.collected || []).length)) {
+      // 舊旅程：現場組一份對照（後端新資料會帶 sound_trace）
+      const m = (meta && meta.material) || {};
+      const collected = (meta?.sounds || []).map((s) => ({
+        slot: s.slot,
+        label: s.label || s.slot || "旅行聲音",
+      }));
+      const effects = [];
+      if (m.mood) effects.push({ key: "明暗感覺", value: m.mood });
+      if (meta?.key || m.root) effects.push({ key: "調性／主音", value: meta?.key || m.root });
+      if (meta?.bpm != null || m.bpm != null) {
+        effects.push({ key: "速度", value: `${Math.round(meta?.bpm ?? m.bpm)} BPM` });
+      }
+      if (m.contour) {
+        effects.push({
+          key: "旋律輪廓",
+          value: m.energy != null ? `${m.contour}（能量約 ${m.energy} 音/秒）` : m.contour,
+        });
+      }
+      if (m.num_material_notes) {
+        effects.push({
+          key: "寫進旋律的動機",
+          value: `從錄音抓到 ${m.num_material_notes} 個聲音事件，編成主旋律片段`,
+        });
+      }
+      if (m.progression) effects.push({ key: "和弦走向", value: m.progression });
+      if (m.style || meta?.engine_style) {
+        effects.push({ key: "編曲風格", value: m.style || meta.engine_style });
+      }
+      const moodLabel = selectedMood?.label
+        || (destination?.moodStyles || []).find((x) => x.id === meta?.mood_id)?.label;
+      if (moodLabel) effects.push({ key: "你選的感覺", value: moodLabel });
+      trace = {
+        headline: "你收集的聲音，這樣變成歌",
+        summary:
+          "現場原音不會整段疊進成品（避免變吵），但會分析出明暗、速度、輪廓與音高動機，寫進旋律；AI 唱歌會沿用這些參數與你的歌詞來完成整曲。",
+        collected,
+        effects,
+        into_final: [
+          "旋律調性與速度（BPM／Key）",
+          "由錄音輪廓推導的主旋律走向",
+          "風格與感覺卡決定的編排語氣",
+          "你的故事關鍵字寫成的歌詞",
+        ],
+      };
+    }
+
+    const titleEl = $(prefix === "result" ? "resultSoundTraceTitle" : "soundTraceTitle");
+    const summaryEl = $(prefix === "result" ? "resultSoundTraceSummary" : "soundTraceSummary");
+    const collectedEl = $(prefix === "result" ? "resultSoundTraceCollected" : "soundTraceCollected");
+    const effectsEl = $(prefix === "result" ? "resultSoundTraceEffects" : "soundTraceEffects");
+    const intoEl = $(prefix === "result" ? "resultSoundTraceInto" : "soundTraceInto");
+
+    if (titleEl) titleEl.textContent = trace.headline || "你收集的聲音，這樣變成歌";
+    if (summaryEl) summaryEl.textContent = trace.summary || "";
+    if (collectedEl) {
+      const items = trace.collected || [];
+      collectedEl.innerHTML = "";
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.className = "dim";
+        li.textContent = "尚未記錄收集項目";
+        collectedEl.appendChild(li);
+      } else {
+        items.forEach((c) => {
+          const li = document.createElement("li");
+          li.textContent = c.label || c.slot || "旅行聲音";
+          collectedEl.appendChild(li);
+        });
+      }
+    }
+    if (effectsEl) {
+      const items = trace.effects || [];
+      effectsEl.innerHTML = "";
+      if (!items.length) {
+        const li = document.createElement("li");
+        li.innerHTML = "<span>效果</span><strong>創作後會顯示</strong>";
+        effectsEl.appendChild(li);
+      } else {
+        items.forEach((e) => {
+          const li = document.createElement("li");
+          const span = document.createElement("span");
+          span.textContent = e.key || "";
+          const strong = document.createElement("strong");
+          strong.textContent = e.value || "";
+          li.appendChild(span);
+          li.appendChild(strong);
+          effectsEl.appendChild(li);
+        });
+      }
+    }
+    if (intoEl) {
+      const items = trace.into_final || [];
+      intoEl.innerHTML = "";
+      items.forEach((t) => {
+        const li = document.createElement("li");
+        li.textContent = t;
+        intoEl.appendChild(li);
+      });
+    }
+    root.hidden = false;
+  }
+
   function fillEduPanel(meta) {
+    fillSoundTrace("", meta);
     const m = (meta && meta.material) || {};
     if ($("eduMood")) $("eduMood").textContent = m.mood || "—";
     if ($("eduKey")) $("eduKey").textContent = (meta && meta.key) || "—";
@@ -341,13 +450,8 @@
       $("eduContour").textContent = bits.length ? bits.join(" · ") : "—";
     }
     if ($("eduNote")) {
-      const parts = [];
-      const moodLabel = selectedMood?.label
-        || (destination?.moodStyles || []).find((x) => x.id === meta?.mood_id)?.label;
-      if (moodLabel) parts.push(`你選的感覺：${moodLabel}`);
-      if (m.progression) parts.push(`和弦進行：${m.progression}`);
-      parts.push("這些來自你的旅行聲音與感覺選擇，決定旋律與伴奏的走向。");
-      $("eduNote").textContent = parts.join(" ");
+      $("eduNote").textContent =
+        "詳細參數如上。重點：有收音才推得出這組調性／速度／輪廓；沒有你的聲音，旋律不會長成這樣。";
     }
   }
 
@@ -393,8 +497,9 @@
     }
     syncVoiceVersionUi();
     setupResultVoiceprintUi();
+    fillSoundTrace("result", journey);
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你的 AI 唱歌版。想用人聲再做一版，可在下方開啟自己的聲音。");
+    setStatus($("resultStatus"), "這是你的 AI 唱歌版。上方可看你收集的聲音如何寫進這首歌。");
   }
 
   async function resumeJourney(id) {

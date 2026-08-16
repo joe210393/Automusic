@@ -33,6 +33,97 @@ def primary_sound_path(meta: dict) -> Optional[Path]:
     return None
 
 
+def build_sound_trace(meta: dict, destination: Optional[dict] = None) -> dict:
+    """
+    給旅人看的「收音 → 歌曲」對照：說明原音不會直接疊進成品，
+    但調性／速度／輪廓／動機有寫進旋律與後續生成參數。
+    """
+    dest = destination or load_destination(meta.get("destination") or "suao") or {}
+    route = None
+    for r in dest.get("routes") or []:
+        if r.get("id") == meta.get("route_id"):
+            route = r
+            break
+    label_by_slot = {}
+    for t in (route or {}).get("soundTasks") or []:
+        if t.get("id"):
+            label_by_slot[str(t["id"])] = t.get("label") or t["id"]
+
+    collected = []
+    for s in meta.get("sounds") or []:
+        if not isinstance(s, dict):
+            continue
+        slot = str(s.get("slot") or "")
+        collected.append(
+            {
+                "slot": slot,
+                "label": s.get("label") or label_by_slot.get(slot) or slot or "旅行聲音",
+            }
+        )
+
+    mat = meta.get("material") if isinstance(meta.get("material"), dict) else {}
+    mood_label = None
+    for m in dest.get("moodStyles") or []:
+        if m.get("id") == meta.get("mood_id"):
+            mood_label = m.get("label")
+            break
+
+    effects = []
+    if mat.get("mood"):
+        effects.append({"key": "明暗感覺", "value": str(mat["mood"])})
+    if meta.get("key") or mat.get("root"):
+        effects.append(
+            {
+                "key": "調性／主音",
+                "value": str(meta.get("key") or mat.get("root") or "—"),
+            }
+        )
+    if meta.get("bpm") is not None or mat.get("bpm") is not None:
+        bpm = meta.get("bpm") if meta.get("bpm") is not None else mat.get("bpm")
+        effects.append({"key": "速度", "value": f"{int(round(float(bpm)))} BPM"})
+    if mat.get("contour"):
+        energy = mat.get("energy")
+        contour = str(mat["contour"])
+        if energy is not None:
+            contour = f"{contour}（能量約 {energy} 音/秒）"
+        effects.append({"key": "旋律輪廓", "value": contour})
+    if mat.get("num_material_notes"):
+        effects.append(
+            {
+                "key": "寫進旋律的動機",
+                "value": f"從錄音抓到 {int(mat['num_material_notes'])} 個聲音事件，編成主旋律片段",
+            }
+        )
+    if mat.get("progression"):
+        effects.append({"key": "和弦走向", "value": str(mat["progression"])})
+    if mat.get("style") or meta.get("engine_style"):
+        effects.append(
+            {
+                "key": "編曲風格",
+                "value": str(mat.get("style") or meta.get("engine_style")),
+            }
+        )
+    if mood_label:
+        effects.append({"key": "你選的感覺", "value": str(mood_label)})
+
+    return {
+        "collected": collected,
+        "effects": effects,
+        "headline": "你收集的聲音，這樣變成歌",
+        "summary": (
+            "現場原音不會整段疊進成品（避免變吵），"
+            "但會分析出明暗、速度、輪廓與音高動機，寫進旋律；"
+            "AI 唱歌會沿用這些參數與你的歌詞來完成整曲。"
+        ),
+        "into_final": [
+            "旋律調性與速度（BPM／Key）",
+            "由錄音輪廓推導的主旋律走向",
+            "風格與感覺卡決定的編排語氣",
+            "你的故事關鍵字寫成的歌詞",
+        ],
+    }
+
+
 def run_compose(journey_id: str) -> dict:
     """素材→旋律→歌詞→伴奏預覽。"""
     meta = store.load_meta(journey_id)
@@ -74,6 +165,7 @@ def run_compose(journey_id: str) -> dict:
     if style_id:
         meta["engine_style"] = style_id
         engine_style = style_id
+    meta["sound_trace"] = build_sound_trace(meta, dest)
     store.save_meta(journey_id, meta)
 
     # 2) 歌詞
@@ -202,6 +294,7 @@ def run_finalize_ai(journey_id: str) -> dict:
             out_path=out,
             progress=_prog,
             stats=ace_stats,
+            material=meta.get("material") if isinstance(meta.get("material"), dict) else None,
         )
     except Exception as e:
         print(f"[journey] ACE-Step failed: {e}")

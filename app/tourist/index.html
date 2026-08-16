@@ -257,8 +257,18 @@
             <div id="composeResult" style="display:none;">
               <p class="station-name">你的旅行歌曲誕生了</p>
               <h2 id="songTitle" class="song-title"></h2>
-              <div class="edu-panel" id="eduPanel" aria-label="音樂小教室">
-                <p class="edu-title">音樂小教室</p>
+              <div class="sound-trace" id="soundTrace" aria-label="你的聲音變成了什麼">
+                <p class="sound-trace-title" id="soundTraceTitle">你收集的聲音，這樣變成歌</p>
+                <p class="sound-trace-summary" id="soundTraceSummary"></p>
+                <p class="sound-trace-sub">你收集了</p>
+                <ul class="sound-trace-chips" id="soundTraceCollected"></ul>
+                <p class="sound-trace-sub">它們產生了這些效果</p>
+                <ul class="edu-list" id="soundTraceEffects"></ul>
+                <p class="sound-trace-sub">寫進最後的歌</p>
+                <ul class="sound-trace-into" id="soundTraceInto"></ul>
+              </div>
+              <div class="edu-panel" id="eduPanel" aria-label="音樂參數" hidden>
+                <p class="edu-title">音樂參數</p>
                 <ul class="edu-list">
                   <li><span>旅行聲音調性</span><strong id="eduMood">—</strong></li>
                   <li><span>旋律調名</span><strong id="eduKey">—</strong></li>
@@ -335,6 +345,16 @@
             <p class="station-name">我的旅行歌曲</p>
             <h2 id="finalTitle">《旅行之歌》</h2>
             <p class="meta-line" id="finalMeta"></p>
+            <div class="sound-trace" id="resultSoundTrace" aria-label="你的聲音變成了什麼" hidden>
+              <p class="sound-trace-title" id="resultSoundTraceTitle">你收集的聲音，這樣變成歌</p>
+              <p class="sound-trace-summary" id="resultSoundTraceSummary"></p>
+              <p class="sound-trace-sub">你收集了</p>
+              <ul class="sound-trace-chips" id="resultSoundTraceCollected"></ul>
+              <p class="sound-trace-sub">它們產生了這些效果</p>
+              <ul class="edu-list" id="resultSoundTraceEffects"></ul>
+              <p class="sound-trace-sub">寫進最後的歌</p>
+              <ul class="sound-trace-into" id="resultSoundTraceInto"></ul>
+            </div>
 
             <div class="version-block">
               <h3 class="version-label">AI 唱歌版</h3>

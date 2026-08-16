@@ -185,6 +185,60 @@ button:focus-visible,
   line-height: 1.45;
 }
 
+.sound-trace {
+  margin: 14px 0 18px;
+  padding: 14px 14px 12px;
+  border: 1px solid color-mix(in srgb, var(--ink) 12%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel, #fff) 92%, var(--accent, #c4a574) 8%);
+}
+.sound-trace-title {
+  margin: 0 0 6px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+.sound-trace-summary {
+  margin: 0 0 12px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.sound-trace-sub {
+  margin: 10px 0 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--muted);
+}
+.sound-trace-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sound-trace-chips li {
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--ink);
+}
+.sound-trace-into {
+  margin: 0;
+  padding-left: 1.1em;
+  color: var(--ink);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+.sound-trace-into li {
+  margin: 0.2em 0;
+}
+
 .compose-busy #btnMoodNext,
 .compose-busy #btnRegenLyrics,
 .compose-busy #btnRemakePreview,
