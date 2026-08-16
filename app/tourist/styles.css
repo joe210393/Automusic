@@ -187,9 +187,29 @@ button:focus-visible,
 
 .compose-busy #btnMoodNext,
 .compose-busy #btnRegenLyrics,
+.compose-busy #btnRemakePreview,
 .compose-busy #btnToVoice {
   pointer-events: none;
   opacity: 0.55;
+}
+
+.preview-bed {
+  margin: 16px 0 8px;
+}
+.preview-label {
+  margin: 0 0 4px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.preview-hint {
+  margin: 0 0 10px;
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.preview-bed audio {
+  width: 100%;
 }
 
 button, .btn {

@@ -111,9 +111,10 @@ def run_compose(journey_id: str) -> dict:
             print(f"[journey] llm metering skip: {e}")
     store.save_meta(journey_id, meta)
 
-    # 3) 伴奏預覽（無人聲）
-    _step(meta, "編排伴奏")
+    # 3) 伴奏預覽（無人聲／真實樂器 SoundFont）
+    _step(meta, "編排真實樂器伴奏")
     store.save_meta(journey_id, meta)
+    meta["arrange_seed"] = secrets.randbelow(10**9)
     preview_path = _render_arrangement(meta, use_voiceprint=False)
     out_name = Path(preview_path).name
     dest_file = store.output_dir(journey_id) / out_name
@@ -121,6 +122,28 @@ def run_compose(journey_id: str) -> dict:
     meta["preview_file"] = out_name
     meta["status"] = "preview"
     _step(meta, "旅行歌曲誕生了")
+    store.save_meta(journey_id, meta)
+    return meta
+
+
+def run_remake_preview(journey_id: str) -> dict:
+    """同一旋律／歌詞，只重抽真實樂器編曲（不重跑 ACE、不重作詞）。"""
+    meta = store.load_meta(journey_id)
+    if not meta.get("notes") or not meta.get("lyrics"):
+        raise RuntimeError("請先完成創作")
+
+    meta["arrange_seed"] = secrets.randbelow(10**9)
+    meta["error"] = None
+    _step(meta, "換一版真實樂器伴奏")
+    store.save_meta(journey_id, meta)
+
+    preview_path = _render_arrangement(meta, use_voiceprint=False)
+    out_name = Path(preview_path).name
+    dest_file = store.output_dir(journey_id) / out_name
+    shutil.copyfile(preview_path, dest_file)
+    meta["preview_file"] = out_name
+    if meta.get("status") not in ("done", "finalizing"):
+        meta["status"] = "preview"
     store.save_meta(journey_id, meta)
     return meta
 
@@ -376,7 +399,10 @@ def _render_arrangement(meta: dict, *, use_voiceprint: bool = False, vocal_mode:
     bpm = float(meta["bpm"])
     key = meta["key"]
     style = meta.get("engine_style")
-    seed = abs(hash(meta["id"] + f"-{vocal_mode}")) % (10**9)
+    if meta.get("arrange_seed") is not None:
+        seed = int(meta["arrange_seed"]) % (10**9)
+    else:
+        seed = abs(hash(meta["id"] + f"-{vocal_mode}")) % (10**9)
     duration = 60
     # AI 版：完整編曲＋主旋律（暫不走 DiffSinger，避免鬼聲）
     # voiceprint 版：關主旋律 MIDI，改混入人聲

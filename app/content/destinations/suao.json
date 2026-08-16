@@ -113,6 +113,48 @@
       "emoji": "❤️",
       "engineStyle": "rnb",
       "blurb": "兩個人的海與傍晚"
+    },
+    {
+      "id": "fishing_folk",
+      "label": "漁村民謠",
+      "emoji": "🪕",
+      "engineStyle": "folk",
+      "blurb": "像港邊有人撥弦哼歌"
+    },
+    {
+      "id": "harbor_jazz",
+      "label": "港邊爵士夜",
+      "emoji": "🎷",
+      "engineStyle": "jazz",
+      "blurb": "傍晚碼頭，慢一點的節奏"
+    },
+    {
+      "id": "island_groove",
+      "label": "島嶼節奏",
+      "emoji": "🏝️",
+      "engineStyle": "bossa",
+      "blurb": "有陽光、有搖晃的步伐"
+    },
+    {
+      "id": "road_trip",
+      "label": "公路暢快",
+      "emoji": "🚗",
+      "engineStyle": "country",
+      "blurb": "開著車沿著海岸往前"
+    },
+    {
+      "id": "night_market",
+      "label": "夜市熱絡",
+      "emoji": "🍜",
+      "engineStyle": "funk",
+      "blurb": "人聲、香味與跳跳的節奏"
+    },
+    {
+      "id": "surprise",
+      "label": "今日驚喜",
+      "emoji": "✨",
+      "engineStyle": "auto",
+      "blurb": "交給旅行當天的運氣挑樂風"
     }
   ],
   "storyPrompts": {

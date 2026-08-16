@@ -67,6 +67,7 @@
       map: '<path d="M9 4l6 2 6-2v14l-6 2-6-2-6 2V6l6-2z" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9 4v14M15 6v14" fill="none" stroke="currentColor" stroke-width="1.8"/>',
       music: '<path d="M9 18V6l10-2v12" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="7" cy="18" r="2.5"/><circle cx="17" cy="16" r="2.5"/>',
       heart: '<path d="M12 20s-7-4.5-7-10a4 4 0 017-2 4 4 0 017 2c0 5.5-7 10-7 10z" fill="none" stroke="currentColor" stroke-width="1.8"/>',
+      spark: '<path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="2.2" fill="currentColor"/>',
     };
     return `<div class="choice-icon" aria-hidden="true"><svg viewBox="0 0 24 24">${icons[kind] || icons.map}</svg></div>`;
   }
@@ -364,7 +365,7 @@
       }
       setStatus($("composeStatus"), journey.status === "error"
         ? (journey.error || "上次創作失敗，可再試一次")
-        : "這是你上次的創作。想換感覺可按「換一個版本」。");
+        : "這是你上次的創作。可聽真實樂器伴奏；「換伴奏」只換編曲，「換一個版本」會重做旋律與歌詞。");
     } else {
       $("composeResult").style.display = "none";
       setStatus($("composeStatus"), "尚未完成創作。請選心情後再生成。");
@@ -810,7 +811,8 @@
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "choice";
-      const moodIcon = (m.id === "romance") ? "heart" : "music";
+      const moodIcon =
+        m.id === "romance" ? "heart" : m.id === "surprise" ? "spark" : "music";
       btn.innerHTML = `${iconSvg(moodIcon)}<strong>${m.label}</strong><span>${m.blurb || ""}</span>`;
       btn.addEventListener("click", () => {
         list.querySelectorAll(".choice").forEach((c) => c.classList.remove("selected"));
@@ -828,6 +830,7 @@
     document.body.classList.toggle("compose-busy", !!busy);
     if ($("btnMoodNext")) $("btnMoodNext").disabled = busy || !selectedMood;
     if ($("btnRegenLyrics")) $("btnRegenLyrics").disabled = !!busy;
+    if ($("btnRemakePreview")) $("btnRemakePreview").disabled = !!busy;
     if ($("btnToVoice")) $("btnToVoice").disabled = !!busy;
   }
 
@@ -841,7 +844,7 @@
     setComposeBusy(true);
     const ul = $("composeProgress");
     ul.style.display = "";
-    ul.innerHTML = ["整理旅行聲音", "創作旋律", "完成歌詞", "編排伴奏", "旅行歌曲誕生了"]
+    ul.innerHTML = ["整理旅行聲音", "創作旋律", "完成歌詞", "編排真實樂器伴奏", "旅行歌曲誕生了"]
       .map((t) => `<li>${t}</li>`).join("");
     const first = ul.querySelector("li");
     if (first) first.classList.add("active");
@@ -877,7 +880,7 @@
       const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
       $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
       $("composeResult").style.display = "block";
-      setStatus($("composeStatus"), "完成！先聽聽伴奏版，確認歌詞後再用你的聲音唱。想再換感覺可按「換一個版本」。");
+      setStatus($("composeStatus"), "完成！先聽真實樂器伴奏試聽；確認歌詞後再選 AI 歌手唱完整版。「換伴奏」只換樂器編排，「換一個版本」會重做旋律與歌詞。");
       setupVoiceLines(ly);
     } catch (e) {
       clearInterval(tick);
@@ -1425,7 +1428,30 @@
   $("btnKeep").addEventListener("click", () => keepRecording());
   $("btnCollectNext").addEventListener("click", () => show("story"));
   $("btnMoodNext").addEventListener("click", () => runCompose());
+  $("btnRemakePreview")?.addEventListener("click", () => remakePreview());
   $("btnRegenLyrics").addEventListener("click", () => startRegenVersion());
+
+  async function remakePreview() {
+    if (!journey?.id) return;
+    setComposeBusy(true);
+    setStatus($("composeStatus"), "正在換一版真實樂器伴奏…（旋律與歌詞不變）");
+    try {
+      const data = await api(`/api/journey/${journey.id}/preview/remake`, {
+        method: "POST",
+        body: "{}",
+      });
+      journey = data.meta || journey;
+      persistJourney();
+      fillEduPanel(journey);
+      const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
+      $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+      setStatus($("composeStatus"), "已換一版真實樂器伴奏。喜歡再按「這就是我的故事」繼續。");
+    } catch (e) {
+      setStatus($("composeStatus"), e.message, true);
+    } finally {
+      setComposeBusy(false);
+    }
+  }
   $("btnToVoice").addEventListener("click", async () => {
     await renderSingers();
     show("voice");

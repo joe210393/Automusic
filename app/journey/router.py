@@ -374,6 +374,22 @@ def compose_journey(journey_id: str):
         raise HTTPException(status_code=500, detail=_friendly(e))
 
 
+@router.post("/api/journey/{journey_id}/preview/remake")
+def remake_preview(journey_id: str):
+    """同一旋律／歌詞，只重抽真實樂器伴奏。"""
+    _meta_or_404(journey_id)
+    try:
+        meta = service.run_remake_preview(journey_id)
+        return {
+            "ok": True,
+            "status": meta["status"],
+            "preview_url": f"/api/journey/{journey_id}/audio/preview",
+            "meta": meta,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=_friendly(e))
+
+
 @router.post("/api/journey/{journey_id}/lyrics/regenerate")
 def regenerate_lyrics(journey_id: str):
     meta = _meta_or_404(journey_id)

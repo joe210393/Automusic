@@ -270,10 +270,15 @@
               </div>
               <div class="lyrics-block"><h3>主歌</h3><div id="verseText"></div></div>
               <div class="lyrics-block"><h3>副歌</h3><div id="chorusText"></div></div>
-              <audio id="previewAudio" controls></audio>
+              <div class="preview-bed">
+                <p class="preview-label">真實樂器伴奏試聽</p>
+                <p class="hint preview-hint">這段是 SoundFont 真樂器編曲預覽；下一步的 AI 唱歌會是完整演唱版，聽感會不同。</p>
+                <audio id="previewAudio" controls></audio>
+              </div>
               <div class="actions">
-                <button class="secondary" id="btnRegenLyrics">換一個版本</button>
-                <button class="primary" id="btnToVoice">這就是我的故事</button>
+                <button class="secondary" id="btnRemakePreview" type="button">換伴奏</button>
+                <button class="secondary" id="btnRegenLyrics" type="button">換一個版本</button>
+                <button class="primary" id="btnToVoice" type="button">這就是我的故事</button>
               </div>
             </div>
             <p class="status" id="composeStatus"></p>
