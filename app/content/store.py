@@ -25,14 +25,35 @@ DEST_DIR = CONTENT_ROOT / "destinations"
 
 
 def _ensure_seeded() -> None:
-    """首次啟動：把內建 seed 複製到可寫目錄（已存在的檔案不覆蓋）。"""
+    """首次啟動複製 seed；之後若 seed contentRevision 較新，升級可寫檔（保留 routes／brand）。"""
     DEST_DIR.mkdir(parents=True, exist_ok=True)
     if not _BUNDLE.exists():
         return
+    upgraded = False
     for src in _BUNDLE.glob("*.json"):
         dst = DEST_DIR / src.name
         if not dst.exists():
             shutil.copy2(src, dst)
+            upgraded = True
+            continue
+        try:
+            bundled = _read_json(src) or {}
+            current = _read_json(dst) or {}
+        except Exception:
+            continue
+        b_rev = int(bundled.get("contentRevision") or 0)
+        c_rev = int(current.get("contentRevision") or 0)
+        if b_rev <= c_rev:
+            continue
+        # seed 較新：同步感覺卡（觀光體驗核心），保留後台改過的 brand／routes
+        if bundled.get("moodStyles"):
+            current["moodStyles"] = bundled["moodStyles"]
+        current["contentRevision"] = b_rev
+        _write_json(dst, current)
+        upgraded = True
+        print(f"[content] upgraded {src.stem} moodStyles → revision {b_rev}")
+    if upgraded:
+        clear_caches()
 
 
 def clear_caches() -> None:
