@@ -1241,6 +1241,38 @@
     "完成": 100,
   };
 
+  /** AI 完整版約 90 秒音訊，本機生成常需數分鐘；聲紋版通常較短。 */
+  const FINALIZE_BASELINE_SEC = {
+    ai: 180,
+    voice: 90,
+  };
+
+  function formatClock(totalSec) {
+    const s = Math.max(0, Math.floor(totalSec || 0));
+    const m = Math.floor(s / 60);
+    const r = String(s % 60).padStart(2, "0");
+    return `${m}:${r}`;
+  }
+
+  function formatRemainHint(sec) {
+    const s = Math.max(0, Math.round(sec || 0));
+    if (s < 15) return "即將完成";
+    if (s < 60) return `預估還需約 ${s} 秒`;
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    if (r < 15) return `預估還需約 ${m} 分鐘`;
+    return `預估還需約 ${m} 分 ${r} 秒`;
+  }
+
+  function nextStepPct(steps, label, pct) {
+    const idx = Math.max(0, steps.findIndex((s) => s === label));
+    for (let i = idx + 1; i < steps.length; i += 1) {
+      const p = STEP_PCT[steps[i]];
+      if (p != null && p > pct) return p;
+    }
+    return 99;
+  }
+
   async function loadSingerCatalog() {
     if (singerCatalog.length) return singerCatalog;
     const data = await api("/api/singers");
@@ -1315,7 +1347,12 @@
   function setFinalizeBusy(busy, { panelId = "finalizeProgress", enableBtn = null } = {}) {
     document.body.classList.toggle("finalize-busy", !!busy);
     const panel = $(panelId);
-    if (panel) panel.hidden = !busy;
+    if (panel) {
+      panel.hidden = !busy;
+      if (busy) {
+        try { panel.scrollIntoView({ behavior: "smooth", block: "center" }); } catch (_) { /* ignore */ }
+      }
+    }
     if (enableBtn === "ai" && $("btnFinalize")) {
       $("btnFinalize").disabled = busy || !selectedSinger;
     }
@@ -1337,7 +1374,6 @@
     if (!ul) return;
     let activeIdx = steps.findIndex((s) => s === label);
     if (activeIdx < 0) {
-      // 依百分比找最近步驟，但不亂跳：取不大於目前 pct 的最大步驟
       activeIdx = 0;
       steps.forEach((t, i) => {
         const p = STEP_PCT[t];
@@ -1350,25 +1386,66 @@
     }).join("");
   }
 
-  async function runProgressJob({ steps, panelPrefix, panelId, enableBtn, request, onDone, statusEl }) {
-    setFinalizeBusy(true, { panelId, enableBtn });
-    renderProgress(panelPrefix, steps, STEP_PCT[steps[0]] || 8, steps[0]);
-    setStatus(statusEl, "正在製作，請稍候…");
+  function updateFinalizeClock(panelPrefix, startedAt, pct, kind) {
+    const elapsedEl = $(panelPrefix === "voice" ? "voiceFinalizeElapsed" : "finalizeElapsed");
+    const etaEl = $(panelPrefix === "voice" ? "voiceFinalizeEta" : "finalizeEta");
+    const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
+    if (elapsedEl) elapsedEl.textContent = `已過 ${formatClock(elapsed)}`;
+    if (!etaEl) return;
+    const safePct = Math.max(0, Math.min(99, Number(pct) || 0));
+    const baseline = FINALIZE_BASELINE_SEC[kind] || FINALIZE_BASELINE_SEC.ai;
+    let remain;
+    if (safePct < 8) {
+      remain = baseline;
+    } else {
+      const byRate = elapsed * ((100 - safePct) / Math.max(safePct, 1));
+      const byBaseline = Math.max(0, baseline - elapsed);
+      const w = Math.min(1, safePct / 55);
+      remain = byRate * w + byBaseline * (1 - w);
+    }
+    if (safePct >= 97) remain = Math.min(remain, 12);
+    etaEl.textContent = formatRemainHint(remain);
+  }
 
+  async function runProgressJob({
+    steps,
+    panelPrefix,
+    panelId,
+    enableBtn,
+    request,
+    onDone,
+    statusEl,
+    kind = "ai",
+  }) {
+    setFinalizeBusy(true, { panelId, enableBtn });
+    const startedAt = Date.now();
     let stopPoll = false;
-    let lastPct = 0;
+    let lastPct = STEP_PCT[steps[0]] || 8;
     let lastLabel = steps[0];
+    let serverPct = lastPct;
+    let lastServerAt = startedAt;
+
+    renderProgress(panelPrefix, steps, lastPct, lastLabel);
+    updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
+    setStatus(
+      statusEl,
+      kind === "ai"
+        ? "正在製作約 1 分 30 秒的完整版，通常需要數分鐘，請稍候…"
+        : "正在製作你的聲音版，請稍候…"
+    );
 
     function applyServerProgress(fp) {
       if (!fp || fp.pct == null) return;
       const label = fp.label || lastLabel;
-      // 百分比以步驟表為準，避免伺服器與前端兩套數字互搶
       const mapped = STEP_PCT[label] != null ? STEP_PCT[label] : Number(fp.pct);
-      const next = Math.max(lastPct, Math.min(99, Math.round(mapped)));
-      if (next === lastPct && label === lastLabel) return;
-      lastPct = next;
+      const next = Math.max(serverPct, Math.min(99, Math.round(mapped)));
+      if (next === serverPct && label === lastLabel) return;
+      serverPct = next;
+      lastPct = Math.max(lastPct, next);
       lastLabel = label;
+      lastServerAt = Date.now();
       renderProgress(panelPrefix, steps, lastPct, label);
+      updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
     }
 
     const poll = (async () => {
@@ -1379,7 +1456,18 @@
             applyServerProgress(meta.finalize_progress || {});
           }
         } catch (_) { /* ignore */ }
-        await new Promise((r) => setTimeout(r, 700));
+
+        // 伺服器步驟停住時緩慢往下一步逼近，避免進度像卡住
+        const stalledMs = Date.now() - lastServerAt;
+        if (stalledMs > 1800 && lastPct < 96) {
+          const ceiling = Math.min(96, nextStepPct(steps, lastLabel, lastPct) - 1);
+          if (lastPct < ceiling) {
+            lastPct = Math.min(ceiling, lastPct + 0.35);
+            renderProgress(panelPrefix, steps, lastPct, lastLabel);
+          }
+        }
+        updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
+        await new Promise((r) => setTimeout(r, 450));
       }
     })();
 
@@ -1388,6 +1476,9 @@
       stopPoll = true;
       lastPct = 100;
       renderProgress(panelPrefix, steps, 100, "完成");
+      updateFinalizeClock(panelPrefix, startedAt, 100, kind);
+      const etaEl = $(panelPrefix === "voice" ? "voiceFinalizeEta" : "finalizeEta");
+      if (etaEl) etaEl.textContent = "完成！";
       await onDone(data);
     } catch (e) {
       stopPoll = true;
@@ -1409,6 +1500,7 @@
       panelPrefix: "ai",
       panelId: "finalizeProgress",
       enableBtn: "ai",
+      kind: "ai",
       statusEl: $("voiceStatus"),
       request: async () => {
         await api(`/api/journey/${journey.id}/singer`, {
@@ -1446,6 +1538,7 @@
       panelPrefix: "voice",
       panelId: "voiceFinalizeProgress",
       enableBtn: "voice",
+      kind: "voice",
       statusEl: $("resultVoiceStatus"),
       request: () => api(`/api/journey/${journey.id}/finalize-voice`, { method: "POST", body: "{}" }),
       onDone: async (data) => {
