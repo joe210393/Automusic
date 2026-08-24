@@ -689,7 +689,7 @@ class AceStepGenerateRequest(BaseModel):
     key: Optional[str] = None
     singer_id: Optional[str] = None
     engine_style: Optional[str] = None
-    duration_sec: float = 90.0
+    duration_sec: float = 45.0
     material: Optional[dict] = None
 
 
@@ -719,7 +719,7 @@ def acestep_generate(req: AceStepGenerateRequest):
             key=req.key,
             singer_id=req.singer_id,
             engine_style=req.engine_style,
-            duration_sec=float(req.duration_sec or _ace.ACESTEP_DURATION_SEC or 90.0),
+            duration_sec=float(req.duration_sec or _ace.ACESTEP_DURATION_SEC or 45.0),
             material=req.material,
         )
     except Exception as e:

@@ -24,7 +24,7 @@ ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "1").strip().lower() not in ("0
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 # 旅程成品預設長度（秒）；本機 API 上限 clamp 在 90
-ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "90"))
+ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
 ACESTEP_REMOTE_URLS: List[str] = [
@@ -123,14 +123,8 @@ def format_lyrics(lyrics: dict) -> str:
         parts.append(f"[Verse]\n{verse}")
     if chorus:
         parts.append(f"[Chorus]\n{chorus}")
-    if verse:
-        # 第二主歌：拉長至約 90 秒時較不易空轉
-        parts.append(f"[Verse]\n{verse}")
-    if chorus:
+        # 再唱一次副歌，拉長人聲段落
         parts.append(f"[Chorus]\n{chorus}")
-        parts.append(f"[Bridge]\n{chorus}")
-        parts.append(f"[Chorus]\n{chorus}")
-        parts.append(f"[Outro]\n{chorus}")
     text = "\n\n".join(parts).strip()
     if not text:
         return ""
