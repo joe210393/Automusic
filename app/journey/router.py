@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 from typing import List, Optional
 
@@ -17,6 +18,31 @@ from app.ops import accounts as ops_accounts
 router = APIRouter(tags=["journey"])
 
 SAFE_SLOT = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+
+# 避免同一旅程重複開工；Zeabur 閘道對長連線常 60s 左右 502，故 finalize 改非同步
+_finalize_lock = threading.Lock()
+_finalize_inflight: set[str] = set()
+
+
+def _finalize_key(journey_id: str, kind: str) -> str:
+    return f"{kind}:{journey_id}"
+
+
+def _spawn_finalize(journey_id: str, kind: str, account_id: Optional[str], worker) -> None:
+    key = _finalize_key(journey_id, kind)
+    with _finalize_lock:
+        if key in _finalize_inflight:
+            return
+        _finalize_inflight.add(key)
+
+    def _run() -> None:
+        try:
+            worker()
+        finally:
+            with _finalize_lock:
+                _finalize_inflight.discard(key)
+
+    threading.Thread(target=_run, name=f"finalize-{kind}-{journey_id}", daemon=True).start()
 
 
 class StoryBody(BaseModel):
@@ -87,9 +113,42 @@ def _require_journey_owner(meta: dict, token: Optional[str]):
 
 def _friendly(err: Exception) -> str:
     msg = str(err) or "製作暫時無法完成"
-    if any(k in msg.lower() for k in ("ngrok", "timeout", "connection", "fluidsynth", "soundfont")):
+    low = msg.lower()
+    if any(
+        k in low
+        for k in (
+            "ngrok",
+            "timeout",
+            "connection",
+            "fluidsynth",
+            "soundfont",
+            "bad gateway",
+            "502",
+            "gateway",
+        )
+    ):
         return "製作服務暫時繁忙，請稍後再試"
     return msg
+
+
+def _finalize_result_payload(meta: dict) -> dict:
+    jid = meta["id"]
+    return {
+        "ok": True,
+        "status": meta.get("status"),
+        "final_url": f"/api/journey/{jid}/audio/final" if meta.get("final_file") else None,
+        "final_voice_url": (
+            f"/api/journey/{jid}/audio/final-voice"
+            if meta.get("final_voice_file")
+            else None
+        ),
+        "share_path": f"/s/{meta['slug']}" if meta.get("slug") else None,
+        "slug": meta.get("slug"),
+        "lyrics": meta.get("lyrics"),
+        "ai_singer_id": meta.get("ai_singer_id"),
+        "ai_singer_label": meta.get("ai_singer_label"),
+        "error": meta.get("error"),
+    }
 
 
 # ---------- 內容包 ----------
@@ -549,6 +608,10 @@ def finalize_journey(
     journey_id: str,
     x_account_token: Optional[str] = Header(None),
 ):
+    """
+    非同步開工 AI 成品。立刻回 accepted，避免 Zeabur／ngrok 長連線 Bad Gateway。
+    前端輪詢 GET /api/journey/{id}，直到 status=done 或 error。
+    """
     meta = _meta_or_404(journey_id)
     account_id = meta.get("account_id")
     if x_account_token:
@@ -558,6 +621,12 @@ def finalize_journey(
             meta["account_id"] = account_id
             store.save_meta(journey_id, meta)
 
+    if meta.get("status") == "done" and meta.get("final_file"):
+        payload = _finalize_result_payload(meta)
+        payload["accepted"] = True
+        payload["quota"] = ops_accounts.check_finalize_quota(account_id)
+        return payload
+
     quota = ops_accounts.check_finalize_quota(account_id)
     if not quota.get("allowed"):
         raise HTTPException(
@@ -565,68 +634,97 @@ def finalize_journey(
             detail="本月免費次數已用完，升級後可繼續完成歌曲",
         )
 
-    try:
-        meta = service.run_finalize_ai(journey_id)
-        spend = ops_accounts.consume_finalize(
-            account_id,
-            journey_id=journey_id,
-            meta=meta,
-            kind="ai_finalize",
-        )
-        meta = store.load_meta(journey_id)
+    if _finalize_key(journey_id, "ai") in _finalize_inflight:
         return {
             "ok": True,
-            "status": meta["status"],
-            "final_url": f"/api/journey/{journey_id}/audio/final",
-            "final_voice_url": (
-                f"/api/journey/{journey_id}/audio/final-voice"
-                if meta.get("final_voice_file") else None
-            ),
-            "share_path": f"/s/{meta['slug']}",
-            "slug": meta["slug"],
-            "lyrics": meta.get("lyrics"),
-            "ai_singer_id": meta.get("ai_singer_id"),
-            "ai_singer_label": meta.get("ai_singer_label"),
-            "quota": ops_accounts.check_finalize_quota(account_id),
-            "token_usage": meta.get("token_usage") or spend.get("journey_tokens"),
+            "accepted": True,
+            "status": "finalizing",
+            "finalize_progress": meta.get("finalize_progress"),
         }
-    except Exception as e:
-        meta = store.load_meta(journey_id)
-        meta["status"] = "error"
-        meta["error"] = _friendly(e)
-        store.save_meta(journey_id, meta)
-        raise HTTPException(status_code=500, detail=_friendly(e))
+
+    meta["status"] = "finalizing"
+    meta["error"] = None
+    meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
+    store.save_meta(journey_id, meta)
+
+    def _worker() -> None:
+        try:
+            done = service.run_finalize_ai(journey_id)
+            ops_accounts.consume_finalize(
+                account_id,
+                journey_id=journey_id,
+                meta=done,
+                kind="ai_finalize",
+            )
+        except Exception as e:
+            print(f"[journey] async finalize failed {journey_id}: {e}")
+            try:
+                m = store.load_meta(journey_id)
+                m["status"] = "error"
+                m["error"] = _friendly(e)
+                store.save_meta(journey_id, m)
+            except Exception as save_err:
+                print(f"[journey] async finalize error save failed: {save_err}")
+
+    _spawn_finalize(journey_id, "ai", account_id, _worker)
+    return {
+        "ok": True,
+        "accepted": True,
+        "status": "finalizing",
+        "finalize_progress": meta.get("finalize_progress"),
+    }
 
 
 @router.post("/api/journey/{journey_id}/finalize-voice")
 def finalize_voice_journey(journey_id: str):
-    """同旅程加值：製作聲紋版（登記 TOKEN；預設 0 點）。"""
+    """同旅程加值：非同步製作聲紋版（避免長連線 502）。"""
     meta = _meta_or_404(journey_id)
-    try:
-        meta = service.run_finalize_voice(journey_id)
-        spend = ops_accounts.consume_finalize(
-            meta.get("account_id"),
-            journey_id=journey_id,
-            meta=meta,
-            kind="voice_finalize",
-        )
-        meta = store.load_meta(journey_id)
+    account_id = meta.get("account_id")
+
+    if meta.get("final_voice_file") and meta.get("status") in ("done", "finalized"):
+        payload = _finalize_result_payload(meta)
+        payload["accepted"] = True
+        return payload
+
+    if _finalize_key(journey_id, "voice") in _finalize_inflight:
         return {
             "ok": True,
-            "status": meta["status"],
-            "final_url": f"/api/journey/{journey_id}/audio/final",
-            "final_voice_url": f"/api/journey/{journey_id}/audio/final-voice",
-            "share_path": f"/s/{meta['slug']}",
-            "slug": meta["slug"],
-            "lyrics": meta.get("lyrics"),
-            "token_usage": meta.get("token_usage") or spend.get("journey_tokens"),
+            "accepted": True,
+            "status": "finalizing",
+            "finalize_progress": meta.get("finalize_progress"),
         }
-    except Exception as e:
-        meta = store.load_meta(journey_id)
-        meta["status"] = "error"
-        meta["error"] = _friendly(e)
-        store.save_meta(journey_id, meta)
-        raise HTTPException(status_code=500, detail=_friendly(e))
+
+    meta["status"] = "finalizing"
+    meta["error"] = None
+    meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
+    store.save_meta(journey_id, meta)
+
+    def _worker() -> None:
+        try:
+            done = service.run_finalize_voice(journey_id)
+            ops_accounts.consume_finalize(
+                account_id,
+                journey_id=journey_id,
+                meta=done,
+                kind="voice_finalize",
+            )
+        except Exception as e:
+            print(f"[journey] async voice finalize failed {journey_id}: {e}")
+            try:
+                m = store.load_meta(journey_id)
+                m["status"] = "error"
+                m["error"] = _friendly(e)
+                store.save_meta(journey_id, m)
+            except Exception as save_err:
+                print(f"[journey] async voice finalize error save failed: {save_err}")
+
+    _spawn_finalize(journey_id, "voice", account_id, _worker)
+    return {
+        "ok": True,
+        "accepted": True,
+        "status": "finalizing",
+        "finalize_progress": meta.get("finalize_progress"),
+    }
 
 
 @router.get("/api/journey/{journey_id}/audio/{kind}")

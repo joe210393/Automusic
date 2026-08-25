@@ -1472,7 +1472,42 @@
     })();
 
     try {
-      const data = await request();
+      const started = await request();
+      // 非同步 finalize：accepted 後改輪詢旅程狀態，避免長連線 Bad Gateway
+      let data = started;
+      if (started && started.accepted && started.status === "finalizing") {
+        const deadline = Date.now() + 15 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 800));
+          const meta = await api(`/api/journey/${journey.id}`);
+          if (meta.status === "finalizing") {
+            applyServerProgress(meta.finalize_progress || {});
+            continue;
+          }
+          if (meta.status === "error") {
+            throw new Error(meta.error || "製作失敗，請稍後再試");
+          }
+          if (meta.status === "done" || meta.status === "finalized") {
+            data = {
+              ok: true,
+              status: meta.status,
+              slug: meta.slug,
+              share_path: meta.share_public ? `/s/${meta.slug}` : `/s/${meta.slug}`,
+              lyrics: meta.lyrics,
+              ai_singer_id: meta.ai_singer_id,
+              ai_singer_label: meta.ai_singer_label,
+              final_url: meta.final_file ? `/api/journey/${journey.id}/audio/final` : null,
+              final_voice_url: meta.final_voice_file
+                ? `/api/journey/${journey.id}/audio/final-voice`
+                : null,
+            };
+            break;
+          }
+        }
+        if (!(data && (data.status === "done" || data.status === "finalized"))) {
+          throw new Error("製作逾時，請稍後再試");
+        }
+      }
       stopPoll = true;
       lastPct = 100;
       renderProgress(panelPrefix, steps, 100, "完成");
@@ -1482,7 +1517,12 @@
       await onDone(data);
     } catch (e) {
       stopPoll = true;
-      setStatus(statusEl, e.message, true);
+      const msg = String(e && e.message ? e.message : e);
+      const friendly =
+        /bad gateway|502|gateway|timeout|failed to fetch/i.test(msg)
+          ? "製作服務暫時繁忙，請稍後再試"
+          : msg;
+      setStatus(statusEl, friendly, true);
     } finally {
       stopPoll = true;
       try { await poll; } catch (_) { /* ignore */ }

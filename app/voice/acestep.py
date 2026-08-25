@@ -146,7 +146,21 @@ def local_available(timeout: float = 1.5) -> bool:
     return bool(local_status(timeout=timeout).get("ok"))
 
 
-def remote_available(timeout: float = 3.0) -> bool:
+def remote_status(timeout: float = 3.0) -> Dict[str, Any]:
+    """經 ngrok 探測本機 Automusic /acestep/health（給 Zeabur health 用）。"""
+    out: Dict[str, Any] = {
+        "ok": False,
+        "via": "remote",
+        "url": None,
+        "loaded_model": None,
+        "loaded_lm_model": None,
+        "llm_initialized": False,
+        "thinking_requested": ACESTEP_THINKING,
+        "thinking_effective": False,
+        "shift": ACESTEP_SHIFT,
+        "production_caption": ACESTEP_PRODUCTION_CAPTION,
+        "error": None,
+    }
     for base in ACESTEP_REMOTE_URLS:
         try:
             r = requests.get(
@@ -154,13 +168,31 @@ def remote_available(timeout: float = 3.0) -> bool:
                 headers={"ngrok-skip-browser-warning": "1"},
                 timeout=timeout,
             )
-            if r.status_code == 200:
-                data = r.json()
-                if isinstance(data, dict) and data.get("ok"):
-                    return True
-        except Exception:
+            if r.status_code != 200:
+                continue
+            data = r.json()
+            if not isinstance(data, dict) or not data.get("ok"):
+                continue
+            out["ok"] = True
+            out["url"] = base
+            out["loaded_model"] = data.get("loaded_model")
+            out["loaded_lm_model"] = data.get("loaded_lm_model")
+            out["llm_initialized"] = bool(data.get("llm_initialized"))
+            out["thinking_effective"] = bool(data.get("thinking_effective"))
+            if data.get("shift") is not None:
+                out["shift"] = data.get("shift")
+            if data.get("production_caption") is not None:
+                out["production_caption"] = data.get("production_caption")
+            out["error"] = data.get("error")
+            return out
+        except Exception as e:
+            out["error"] = str(e)
             continue
-    return False
+    return out
+
+
+def remote_available(timeout: float = 3.0) -> bool:
+    return bool(remote_status(timeout=timeout).get("ok"))
 
 
 def is_available(timeout: float = 1.5) -> bool:

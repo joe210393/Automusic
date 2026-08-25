@@ -317,8 +317,10 @@ async def health():
     acoustic = can_render_acoustic_locally()
     # health 上標記本機引擎；雲端另以 remote 判斷
     ace_status = _ace.local_status()
-    ace_local = bool(ace_status.get("ok"))
-    ace_ok = ace_local or _ace.is_available()
+    if not ace_status.get("ok"):
+        ace_status = _ace.remote_status()
+    ace_local = bool(_ace.local_available())
+    ace_ok = ace_local or bool(ace_status.get("ok"))
     ready = (_svs.is_available() and _vc.is_available() and acoustic) or ace_ok
     return {
         "ok": ready,
@@ -331,7 +333,7 @@ async def health():
         "acestep_thinking_effective": ace_status.get("thinking_effective"),
         "acestep_shift": ace_status.get("shift"),
         "acestep_production_caption": ace_status.get("production_caption"),
-        "acestep_warn": ace_status.get("error") if ace_local else None,
+        "acestep_warn": ace_status.get("error") if ace_ok else None,
         "diffsinger": _svs.is_available(),
         "seed_vc": _vc.is_available(),
         "lm_studio": lm_ok,
