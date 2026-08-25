@@ -301,6 +301,18 @@ def run_finalize_ai(journey_id: str) -> dict:
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
 
     if ace_stats:
+        meta["ace_params"] = {
+            "model": ace_stats.get("model"),
+            "shift": ace_stats.get("shift"),
+            "thinking": ace_stats.get("thinking"),
+            "thinking_effective": ace_stats.get("thinking_effective"),
+            "loaded_lm_model": ace_stats.get("loaded_lm_model"),
+            "inference_steps": ace_stats.get("inference_steps"),
+            "production_caption": ace_stats.get("production_caption"),
+            "caption_chars": ace_stats.get("caption_chars"),
+            "seed": ace_stats.get("seed"),
+            "elapsed_ms": ace_stats.get("elapsed_ms"),
+        }
         try:
             from app.ops import metering as ops_metering
 

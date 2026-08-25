@@ -21,10 +21,27 @@ ACESTEP_API_KEY = (os.getenv("ACESTEP_API_KEY") or "").strip()
 ACESTEP_MODEL = os.getenv("ACESTEP_MODEL", "acestep-v15-turbo")
 # thinking=true 用 5Hz LM 規劃，人聲明顯較穩；需本機 ACE-Step 已載入 LM
 ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "1").strip().lower() not in ("0", "false", "no")
+# Turbo 官方建議 shift=3.0；設為 off/none 則不傳（A/B 對照用）
+_ACESTEP_SHIFT_RAW = (os.getenv("ACESTEP_SHIFT", "3.0") or "").strip().lower()
+ACESTEP_SHIFT: Optional[float]
+if _ACESTEP_SHIFT_RAW in ("", "off", "none", "default"):
+    ACESTEP_SHIFT = None
+else:
+    try:
+        ACESTEP_SHIFT = float(_ACESTEP_SHIFT_RAW)
+    except ValueError:
+        ACESTEP_SHIFT = 3.0
+# 1=完整編曲 caption（預設）；0=舊短 prompt（A/B）
+ACESTEP_PRODUCTION_CAPTION = os.getenv("ACESTEP_PRODUCTION_CAPTION", "1").strip().lower() not in (
+    "0",
+    "false",
+    "no",
+)
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 # 旅程成品預設長度（秒）；本機 API 上限 clamp 在 90
 ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
+ACESTEP_INFERENCE_STEPS = int(os.getenv("ACESTEP_INFERENCE_STEPS", "8"))
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
 ACESTEP_REMOTE_URLS: List[str] = [
@@ -76,18 +93,57 @@ def _headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     return h
 
 
-def local_available(timeout: float = 1.5) -> bool:
-    """只檢查本機 ACE-Step :8001（給 /acestep/health 用，避免遠端遞迴）。"""
+def local_status(timeout: float = 1.5) -> Dict[str, Any]:
+    """
+    本機 ACE-Step :8001 狀態（含 5Hz LM 是否真的載入）。
+    官方 health 會回 llm_initialized / loaded_lm_model。
+    """
+    out: Dict[str, Any] = {
+        "ok": False,
+        "url": ACESTEP_URL,
+        "models_initialized": False,
+        "llm_initialized": False,
+        "loaded_model": None,
+        "loaded_lm_model": None,
+        "thinking_requested": ACESTEP_THINKING,
+        "thinking_effective": False,
+        "shift": ACESTEP_SHIFT,
+        "production_caption": ACESTEP_PRODUCTION_CAPTION,
+        "error": None,
+    }
     try:
         r = requests.get(f"{ACESTEP_URL}/health", timeout=timeout)
         if r.status_code != 200:
-            return False
-        data = r.json()
-        if isinstance(data, dict) and "code" in data:
-            return int(data.get("code") or 0) == 200
-        return True
-    except Exception:
-        return False
+            out["error"] = f"HTTP {r.status_code}"
+            return out
+        wrap = r.json()
+        if isinstance(wrap, dict) and "code" in wrap and int(wrap.get("code") or 0) != 200:
+            out["error"] = str(wrap.get("error") or wrap)
+            return out
+        data = wrap.get("data") if isinstance(wrap, dict) and "data" in wrap else wrap
+        if not isinstance(data, dict):
+            out["ok"] = True
+            return out
+        out["ok"] = True
+        out["models_initialized"] = bool(data.get("models_initialized"))
+        out["llm_initialized"] = bool(data.get("llm_initialized"))
+        out["loaded_model"] = data.get("loaded_model")
+        lm = data.get("loaded_lm_model")
+        out["loaded_lm_model"] = lm
+        lm_name = str(lm or "").strip().lower()
+        lm_ok = bool(data.get("llm_initialized")) and lm_name not in ("", "none", "null", "no lm")
+        out["thinking_effective"] = bool(ACESTEP_THINKING and lm_ok)
+        if ACESTEP_THINKING and not lm_ok:
+            out["error"] = "thinking=true 但 5Hz LM 未載入（No LM）"
+        return out
+    except Exception as e:
+        out["error"] = str(e)
+        return out
+
+
+def local_available(timeout: float = 1.5) -> bool:
+    """只檢查本機 ACE-Step :8001（給 /acestep/health 用，避免遠端遞迴）。"""
+    return bool(local_status(timeout=timeout).get("ok"))
 
 
 def remote_available(timeout: float = 3.0) -> bool:
@@ -148,32 +204,27 @@ def build_prompt(
     engine_style: Optional[str],
     title: Optional[str] = None,
     material: Optional[dict] = None,
+    bpm: Optional[float] = None,
+    key: Optional[str] = None,
 ) -> str:
-    base = SINGER_PROMPTS.get(
-        singer_id or "",
-        "Mandarin pop song with natural lead vocals singing Chinese lyrics, travel memory, full arrangement",
+    """預設走 music_director 完整編曲 caption；ACESTEP_PRODUCTION_CAPTION=0 可回舊短 prompt。"""
+    from app.voice import music_director as _dir
+
+    if not ACESTEP_PRODUCTION_CAPTION:
+        return _dir.build_legacy_prompt(
+            singer_id=singer_id,
+            engine_style=engine_style,
+            title=title,
+            material=material,
+        )
+    return _dir.build_production_caption(
+        singer_id=singer_id,
+        engine_style=engine_style,
+        title=title,
+        material=material,
+        bpm=bpm,
+        key=key,
     )
-    bits = [
-        base,
-        "lead vocal must be clearly audible and sing the given Mandarin lyrics",
-        "not instrumental-only",
-        "not a karaoke backing track without singer",
-        "melody and groove inspired by on-site travel field recordings (not a raw nature bed under the mix)",
-    ]
-    if engine_style:
-        bits.append(str(engine_style))
-    if title:
-        bits.append(f"song about: {title}")
-    mat = material if isinstance(material, dict) else {}
-    if mat.get("mood"):
-        bits.append(f"overall color from recording: {mat['mood']}")
-    if mat.get("contour"):
-        bits.append(f"melodic contour from recording: {mat['contour']}")
-    if mat.get("root"):
-        bits.append(f"tonal center hinted by recording root {mat['root']}")
-    if mat.get("energy") is not None:
-        bits.append(f"activity from recording density about {mat['energy']} events/sec")
-    return ", ".join(bits)
 
 
 def _parse_result_payload(raw: Any) -> Optional[dict]:
@@ -230,10 +281,12 @@ def _generate_via_local_api(
         engine_style=engine_style,
         title=lyrics.get("title"),
         material=material,
+        bpm=bpm,
+        key=key,
     )
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
-    inference_steps = 8
+    inference_steps = int(ACESTEP_INFERENCE_STEPS)
 
     body: Dict[str, Any] = {
         "prompt": prompt,
@@ -252,6 +305,8 @@ def _generate_via_local_api(
         "batch_size": 1,
         "inference_steps": inference_steps,
     }
+    if ACESTEP_SHIFT is not None:
+        body["shift"] = float(ACESTEP_SHIFT)
     if bpm_i:
         body["bpm"] = bpm_i
     key_scale = format_key_scale(key)
@@ -259,6 +314,20 @@ def _generate_via_local_api(
         body["key_scale"] = key_scale
     if ACESTEP_API_KEY:
         body["ai_token"] = ACESTEP_API_KEY
+
+    lm_status = local_status(timeout=2.0)
+    print(
+        "[acestep] generate "
+        f"model={ACESTEP_MODEL} steps={inference_steps} shift={ACESTEP_SHIFT} "
+        f"thinking={ACESTEP_THINKING} thinking_effective={lm_status.get('thinking_effective')} "
+        f"lm={lm_status.get('loaded_lm_model')} caption_chars={len(prompt)} "
+        f"production_caption={ACESTEP_PRODUCTION_CAPTION}"
+    )
+    if ACESTEP_THINKING and not lm_status.get("thinking_effective"):
+        print(
+            "[acestep] WARN thinking=true but 5Hz LM not loaded — "
+            f"{lm_status.get('error') or lm_status.get('loaded_lm_model')}"
+        )
 
     r = requests.post(
         f"{ACESTEP_URL}/release_task",
@@ -341,6 +410,13 @@ def _generate_via_local_api(
                         "via": "local",
                         "duration_sec": float(duration_sec),
                         "inference_steps": int(inference_steps),
+                        "shift": ACESTEP_SHIFT,
+                        "thinking": ACESTEP_THINKING,
+                        "thinking_effective": bool(lm_status.get("thinking_effective")),
+                        "loaded_lm_model": lm_status.get("loaded_lm_model"),
+                        "production_caption": ACESTEP_PRODUCTION_CAPTION,
+                        "caption_chars": len(prompt),
+                        "seed": item.get("seed") or item.get("seeds"),
                         "elapsed_ms": int((time.time() - t0) * 1000),
                     }
                 )
@@ -371,7 +447,7 @@ def _generate_via_remote(
 ) -> Path:
     t0 = time.time()
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
-    inference_steps = 8
+    inference_steps = int(ACESTEP_INFERENCE_STEPS)
     if progress:
         progress(20, "連線本機 AI 唱歌引擎")
     payload = {
@@ -416,6 +492,9 @@ def _generate_via_remote(
                         "via": "remote",
                         "duration_sec": float(duration_sec),
                         "inference_steps": int(inference_steps),
+                        "shift": ACESTEP_SHIFT,
+                        "thinking": ACESTEP_THINKING,
+                        "production_caption": ACESTEP_PRODUCTION_CAPTION,
                         "elapsed_ms": int((time.time() - t0) * 1000),
                     }
                 )

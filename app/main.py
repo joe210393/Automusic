@@ -316,13 +316,22 @@ async def health():
 
     acoustic = can_render_acoustic_locally()
     # health 上標記本機引擎；雲端另以 remote 判斷
-    ace_local = _ace.local_available()
+    ace_status = _ace.local_status()
+    ace_local = bool(ace_status.get("ok"))
     ace_ok = ace_local or _ace.is_available()
     ready = (_svs.is_available() and _vc.is_available() and acoustic) or ace_ok
     return {
         "ok": ready,
         "acestep": ace_ok,
         "acestep_local": ace_local,
+        "acestep_model": ace_status.get("loaded_model") or _ace.ACESTEP_MODEL,
+        "acestep_lm": ace_status.get("loaded_lm_model"),
+        "acestep_llm_initialized": ace_status.get("llm_initialized"),
+        "acestep_thinking": ace_status.get("thinking_requested"),
+        "acestep_thinking_effective": ace_status.get("thinking_effective"),
+        "acestep_shift": ace_status.get("shift"),
+        "acestep_production_caption": ace_status.get("production_caption"),
+        "acestep_warn": ace_status.get("error") if ace_local else None,
         "diffsinger": _svs.is_available(),
         "seed_vc": _vc.is_available(),
         "lm_studio": lm_ok,
@@ -695,11 +704,22 @@ class AceStepGenerateRequest(BaseModel):
 
 @app.get("/acestep/health")
 def acestep_health():
-    """本機 ACE-Step 是否就緒（給雲端 Zeabur 探測；只查 :8001）。"""
+    """本機 ACE-Step 是否就緒（給雲端 Zeabur 探測；只查 :8001）。含 5Hz LM 狀態。"""
     from app.voice import acestep as _ace
 
-    ok = _ace.local_available()
-    return {"ok": ok, "url": _ace.ACESTEP_URL}
+    status = _ace.local_status()
+    return {
+        "ok": bool(status.get("ok")),
+        "url": status.get("url") or _ace.ACESTEP_URL,
+        "loaded_model": status.get("loaded_model"),
+        "loaded_lm_model": status.get("loaded_lm_model"),
+        "llm_initialized": status.get("llm_initialized"),
+        "thinking_requested": status.get("thinking_requested"),
+        "thinking_effective": status.get("thinking_effective"),
+        "shift": status.get("shift"),
+        "production_caption": status.get("production_caption"),
+        "error": status.get("error"),
+    }
 
 
 @app.post("/acestep/generate")
