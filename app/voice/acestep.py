@@ -206,19 +206,24 @@ def is_available(timeout: float = 1.5) -> bool:
 
 
 def format_lyrics(lyrics: dict) -> str:
-    """ACE-Step 建議結構標籤；避免空歌詞被當成 instrumental。"""
+    """ACE-Step 結構：Intro → Verse → Pre-Chorus → Chorus → Outro（45 秒好唱）。"""
     title = (lyrics.get("title") or "").strip()
     verse = (lyrics.get("verse") or "").strip()
+    pre = (lyrics.get("prechorus") or lyrics.get("pre_chorus") or "").strip()
     chorus = (lyrics.get("chorus") or "").strip()
     parts = []
     if title:
         parts.append(f"[Intro]\n{title}")
     if verse:
         parts.append(f"[Verse]\n{verse}")
+    if pre:
+        parts.append(f"[Pre-Chorus]\n{pre}")
     if chorus:
         parts.append(f"[Chorus]\n{chorus}")
-        # 再唱一次副歌，拉長人聲段落
-        parts.append(f"[Chorus]\n{chorus}")
+        # 短 outro：副歌末句或歌名，避免再整段副歌佔滿 45 秒
+        outro_line = chorus.strip().split("\n")[-1].strip() if chorus.strip() else title
+        if outro_line:
+            parts.append(f"[Outro]\n{outro_line}")
     text = "\n\n".join(parts).strip()
     if not text:
         return ""
@@ -244,6 +249,7 @@ def build_prompt(
     material: Optional[dict] = None,
     bpm: Optional[float] = None,
     key: Optional[str] = None,
+    route_id: Optional[str] = None,
 ) -> str:
     """預設走 music_director 完整編曲 caption；ACESTEP_PRODUCTION_CAPTION=0 可回舊短 prompt。"""
     from app.voice import music_director as _dir
@@ -262,6 +268,7 @@ def build_prompt(
         material=material,
         bpm=bpm,
         key=key,
+        route_id=route_id,
     )
 
 
@@ -332,6 +339,7 @@ def _generate_via_local_api(
     progress: ProgressCb = None,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
+    route_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """呼叫本機 ACE release_task；下載 batch 結果為 lossless 檔，回傳 candidates。"""
     t0 = time.time()
@@ -349,6 +357,7 @@ def _generate_via_local_api(
         material=material,
         bpm=bpm,
         key=key,
+        route_id=route_id,
     )
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
@@ -541,6 +550,7 @@ def _generate_via_remote(
     progress: ProgressCb = None,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
+    route_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """經 ngrok 打本機 /acestep/generate；batch>1 時回 ZIP。"""
     import io
@@ -563,6 +573,7 @@ def _generate_via_remote(
         "material": material or {},
         "batch_size": batch_size,
         "audio_format": fmt,
+        "route_id": route_id,
     }
     last_err = None
     out_dir = Path(out_dir)
@@ -689,6 +700,7 @@ def generate_candidates(
     force_local: bool = False,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
+    route_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     產生 1～N 首候選（預設 batch=ACESTEP_BATCH_SIZE），寫入 out_dir。
@@ -713,6 +725,7 @@ def generate_candidates(
             progress=progress,
             stats=stats,
             material=material,
+            route_id=route_id,
         )
         if force_local or local_available():
             return _generate_via_local_api(**kwargs)
@@ -795,6 +808,7 @@ def generate_batch_package(
     batch_size: Optional[int] = None,
     audio_format: Optional[str] = None,
     material: Optional[dict] = None,
+    route_id: Optional[str] = None,
     stats: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
@@ -823,6 +837,7 @@ def generate_batch_package(
             force_local=True,
             stats=stats,
             material=material,
+            route_id=route_id,
         )
         if not cands:
             raise RuntimeError("ACE-Step 未產出音檔")

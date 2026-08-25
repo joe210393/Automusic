@@ -185,6 +185,7 @@ class AILyricsResponse(BaseModel):
     title: str
     verse: str    # 主歌，多行以換行分隔
     chorus: str   # 副歌，多行以換行分隔
+    prechorus: str = ""  # 預副歌 2 句
     source: str = "lm_studio"  # lm_studio（本地 AI）或 template（模板備援）
     detail: Optional[str] = None  # 備援時說明原因（逾時／解析失敗等）
 
@@ -704,6 +705,7 @@ class AceStepGenerateRequest(BaseModel):
     material: Optional[dict] = None
     batch_size: Optional[int] = None
     audio_format: Optional[str] = None
+    route_id: Optional[str] = None
 
 
 @app.get("/acestep/health")
@@ -749,6 +751,7 @@ def acestep_generate(req: AceStepGenerateRequest):
             batch_size=req.batch_size,
             audio_format=req.audio_format,
             material=req.material,
+            route_id=req.route_id,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ACE-Step 產生失敗: {e}") from e
@@ -844,10 +847,21 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
         "folk": "平靜", "jazz": "平靜",
     }
     result = gen_lyrics(keywords, style_emotion.get(request.style or "", "溫暖"))
+    from app.lyrics.prosody import optimize_lyrics
+
+    polished = optimize_lyrics(
+        {
+            "title": keywords[0] + "之歌",
+            "verse": result["verse"],
+            "chorus": result["chorus"],
+            "prechorus": result.get("prechorus") or "",
+        }
+    )
     return AILyricsResponse(
-        title=keywords[0] + "之歌",
-        verse=result["verse"],
-        chorus=result["chorus"],
+        title=polished["title"],
+        verse=polished["verse"],
+        prechorus=polished.get("prechorus") or "",
+        chorus=polished["chorus"],
         source="template",
         detail=detail,
     )

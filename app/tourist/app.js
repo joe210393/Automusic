@@ -463,6 +463,9 @@
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
       $("verseText").textContent = ly.verse || "";
       $("chorusText").textContent = ly.chorus || "";
+      const pre = ly.prechorus || ly.pre_chorus || "";
+      if ($("prechorusText")) $("prechorusText").textContent = pre;
+      if ($("prechorusBlock")) $("prechorusBlock").hidden = !pre;
       fillEduPanel(journey);
       if (journey.preview_file) {
         $("previewAudio").src = `/api/journey/${journey.id}/audio/preview?t=${Date.now()}`;
@@ -1044,6 +1047,9 @@
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
       $("verseText").textContent = ly.verse || "";
       $("chorusText").textContent = ly.chorus || "";
+      const pre = ly.prechorus || ly.pre_chorus || "";
+      if ($("prechorusText")) $("prechorusText").textContent = pre;
+      if ($("prechorusBlock")) $("prechorusBlock").hidden = !pre;
       fillEduPanel(journey);
       const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
       $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();

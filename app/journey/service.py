@@ -298,6 +298,7 @@ def run_finalize_ai(journey_id: str) -> dict:
             progress=_prog,
             stats=ace_stats,
             material=meta.get("material") if isinstance(meta.get("material"), dict) else None,
+            route_id=meta.get("route_id"),
         )
     except Exception as e:
         print(f"[journey] ACE-Step failed: {e}")
@@ -521,12 +522,15 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
             parsed = parse_lyrics_from_message(message)
             if parsed:
                 from app.ops.metering import extract_openai_usage
+                from app.lyrics.prosody import optimize_lyrics
 
                 usage = extract_openai_usage(payload) or {}
+                polished = optimize_lyrics(parsed)
                 out = {
-                    "title": parsed["title"],
-                    "verse": parsed["verse"],
-                    "chorus": parsed["chorus"],
+                    "title": polished["title"],
+                    "verse": polished["verse"],
+                    "prechorus": polished.get("prechorus") or "",
+                    "chorus": polished["chorus"],
                     "source": "lm_studio",
                 }
                 if usage:
@@ -537,12 +541,22 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
             continue
 
     from app.lyrics.generator import generate_lyrics as gen_lyrics
+    from app.lyrics.prosody import optimize_lyrics
 
     result = gen_lyrics(keywords, "溫暖")
+    polished = optimize_lyrics(
+        {
+            "title": (keywords[0] if keywords else "旅行") + "之歌",
+            "verse": result["verse"],
+            "chorus": result["chorus"],
+            "prechorus": result.get("prechorus") or "",
+        }
+    )
     return {
-        "title": (keywords[0] if keywords else "旅行") + "之歌",
-        "verse": result["verse"],
-        "chorus": result["chorus"],
+        "title": polished["title"],
+        "verse": polished["verse"],
+        "prechorus": polished.get("prechorus") or "",
+        "chorus": polished["chorus"],
         "source": "template",
     }
 

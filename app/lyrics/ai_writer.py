@@ -5,6 +5,7 @@ AI 作詞：把關鍵字＋風格組成給本地 LM（gemma）的提示詞，並
 from typing import Optional
 
 from app.lyrics.lm_json import extract_json_objects, message_text
+from app.lyrics.prosody import optimize_lyrics
 
 # 各風格的作詞語氣指引（與 theory_db.json 的 styles 對應；未列者走預設）
 STYLE_FLAVORS = {
@@ -60,44 +61,51 @@ def build_lyrics_prompts(keywords: list, style: Optional[str]) -> tuple:
     label = STYLE_LABELS.get(style or "", "自由發揮")
 
     system_prompt = (
-        "你是一位資深的中文流行歌曲作詞人，擅長把日常關鍵字寫成有畫面感、適合唱出來的歌詞。\n\n"
+        "你是一位資深的中文流行歌曲作詞人，擅長把日常關鍵字寫成好唱、有畫面的短句歌詞。\n\n"
         "寫作規則：\n"
-        "- 使用繁體中文，口語自然，避免生硬的書面語。\n"
-        "- 主歌（verse）4 句：鋪陳場景與心情，每句 6-10 個字。\n"
-        "- 副歌（chorus）4 句：情緒的高點，每句 5-9 個字，第一句和最後一句可以呼應，好記好唱。\n"
-        "- 關鍵字要自然融入歌詞，不要硬塞、不要全部堆在同一句。\n"
+        "- 使用繁體中文，口語自然，避免生硬書面語與超長句子。\n"
+        "- 主歌（verse）剛好 4 句：鋪陳場景與心情，每句 5-9 個字。\n"
+        "- 預副歌（prechorus）剛好 2 句：情緒往上推、製造張力，每句 5-8 個字。\n"
+        "- 副歌（chorus）剛好 4 句：情緒高點與 hook，每句 5-8 個字；第一句要好記，可與最後一句呼應。\n"
+        "- 禁止把很多資訊塞進同一句；寧可短句也不要長句。\n"
+        "- 關鍵字要自然融入，不要硬塞、不要全部堆在同一句。\n"
         "- 取一個 2-6 個字的歌名。\n"
         "- 不要解釋、不要分析、不要輸出思考過程，直接給出成品。\n\n"
         "回覆格式：只回傳一個 JSON 物件（不要用 markdown 程式碼區塊），句與句之間用 \\n 分隔：\n"
-        '{"title":"歌名","verse":"第一句\\n第二句\\n第三句\\n第四句","chorus":"第一句\\n第二句\\n第三句\\n第四句"}'
+        '{"title":"歌名","verse":"一\\n二\\n三\\n四","prechorus":"一\\n二","chorus":"一\\n二\\n三\\n四"}'
     )
     user_prompt = (
         f"關鍵字：{'、'.join(keywords)}\n"
         f"風格：{label}（{flavor}）\n"
-        "請寫出主歌 4 句＋副歌 4 句，並取歌名。只回傳 JSON 一行或一個物件，不要任何其他文字。"
+        "請寫出主歌 4 句＋預副歌 2 句＋副歌 4 句，並取歌名。只回傳 JSON，不要其他文字。"
     )
     return system_prompt, user_prompt
 
 
 def parse_lyrics_json(text: str) -> Optional[dict]:
     """
-    從 LM 回覆中撈出 {"title","verse","chorus"} JSON。
+    從 LM 回覆中撈出 {"title","verse","chorus","prechorus?"} JSON。
     推理模型可能把最終答案放在思考文字的最後，所以由後往前找候選。
     """
     for parsed in extract_json_objects(text):
         verse = parsed.get("verse")
         chorus = parsed.get("chorus")
-        # 少數模型用陣列回傳句子
+        pre = parsed.get("prechorus") or parsed.get("pre_chorus") or parsed.get("bridge")
         if isinstance(verse, list):
             verse = "\n".join(str(x).strip() for x in verse if str(x).strip())
         if isinstance(chorus, list):
             chorus = "\n".join(str(x).strip() for x in chorus if str(x).strip())
+        if isinstance(pre, list):
+            pre = "\n".join(str(x).strip() for x in pre if str(x).strip())
         if isinstance(verse, str) and isinstance(chorus, str) and verse.strip() and chorus.strip():
-            return {
+            raw = {
                 "title": str(parsed.get("title") or "我們的歌").strip(),
                 "verse": verse.strip(),
                 "chorus": chorus.strip(),
             }
+            if isinstance(pre, str) and pre.strip():
+                raw["prechorus"] = pre.strip()
+            return optimize_lyrics(raw)
     return None
 
 

@@ -7,31 +7,31 @@ from __future__ import annotations
 
 from typing import Dict, List, Optional
 
-# 歌手 → 人聲企劃（英文，給 ACE caption）
+# 歌手 → 人聲企劃（偏清亮、靠前；聽感上常更「好聽」）
 VOCAL_BRIEFS: Dict[str, str] = {
     "female_bright": (
-        "warm bright natural female lead vocal, clear Mandarin diction, "
-        "intimate yet youthful tone, present in the front of the mix"
+        "bright clear natural female lead vocal, excellent diction in Mandarin, "
+        "air and presence in the highs, intimate yet youthful, firmly in front of the mix"
     ),
     "female_warm": (
-        "warm natural female lead vocal, soft but clearly audible Mandarin lyrics, "
-        "intimate midrange tone, emotional but not oversung"
+        "warm but clear natural female lead vocal, soft body with bright intelligible diction, "
+        "present midrange, never muffled, emotional but not oversung"
     ),
     "female_soft": (
-        "gentle intimate soft female lead vocal, breathy but intelligible Mandarin, "
-        "close-mic feel, never buried by the band"
+        "gentle intimate female lead vocal that stays clear and intelligible, "
+        "light air on top, close-mic feel, never buried by the band"
     ),
     "male_deep": (
-        "deep rich male lead vocal, clear Mandarin lyrics, grounded mid-low tone, "
-        "steady delivery with natural presence"
+        "deep rich male lead vocal with clear Mandarin diction and forward presence, "
+        "controlled low end, intelligible and solid without mud"
     ),
     "male_warm": (
-        "warm mid-range male lead vocal, heartfelt Mandarin phrasing, "
-        "clear diction, front-and-center but not shouted"
+        "warm mid-range male lead vocal, clear and present Mandarin phrasing, "
+        "front-and-center with gentle high-end clarity"
     ),
     "male_clear": (
-        "clear strong male lead vocal, uplifting Mandarin pop delivery, "
-        "memorable melodic presence, full-band compatible"
+        "clear strong male lead vocal, bright intelligible Mandarin pop delivery, "
+        "memorable presence, full-band compatible but vocal always wins"
     ),
 }
 
@@ -210,8 +210,9 @@ HUMANIZATION = (
 )
 
 MIX = (
-    "clean modern production, warm stereo image, clear vocal in front, "
-    "controlled low end, radio-ready but not over-compressed"
+    "clean modern production with clear vocal presence, slight air and sparkle on the vocal, "
+    "warm stereo image, vocal firmly in front, controlled low end without mud, "
+    "radio-ready but not over-compressed, instruments support the singer"
 )
 
 NEGATIVES = (
@@ -269,7 +270,9 @@ def _key_phrase(key: Optional[str], material: Optional[dict]) -> str:
 
 def _melody_from_material(base_melody: str, material: Optional[dict]) -> str:
     mat = material if isinstance(material, dict) else {}
-    bits: List[str] = [base_melody]
+    bits: List[str] = []
+    if base_melody and str(base_melody).strip():
+        bits.append(base_melody)
     contour = str(mat.get("contour") or "")
     if "上行" in contour:
         bits.append("overall ascending melodic tendency from the field recording")
@@ -299,16 +302,20 @@ def build_production_caption(
     material: Optional[dict] = None,
     bpm: Optional[float] = None,
     key: Optional[str] = None,
+    route_id: Optional[str] = None,
 ) -> str:
     """編成完整 production caption（英文，逗號／短句結構，適合 ACE prompt/caption）。"""
+    from app.voice.suao_dna import build_melody_brief, resolve_route_dna
+
     style = STYLE_BRIEFS.get(_style_key(engine_style, material), DEFAULT_STYLE)
+    dna = resolve_route_dna(route_id)
     vocal = VOCAL_BRIEFS.get(
         singer_id or "",
-        "natural Mandarin lead vocal singing Chinese lyrics clearly, full-band travel song",
+        "clear present Mandarin lead vocal singing Chinese lyrics intelligibly, full-band travel song",
     )
 
     parts: List[str] = [
-        style["genre"],
+        dna.get("genre_tint") or style["genre"],
         vocal,
     ]
 
@@ -322,17 +329,26 @@ def build_production_caption(
     if tempo_bits:
         parts.append(", ".join(tempo_bits))
 
-    parts.append(_melody_from_material(style["melody"], material))
-    parts.append(style["instruments"])
+    # 旋律：蘇澳 DNA＋現場分析（文字作曲邏輯）
+    parts.append(build_melody_brief(material=material, route_id=route_id, key=key))
+    # 現場 contour／energy 補一句
+    mat_extra = _melody_from_material("", material)
+    if mat_extra.strip(", "):
+        parts.append(mat_extra)
+
+    parts.append(dna.get("instruments") or style["instruments"])
     parts.append(style["arc"])
+    if dna.get("feel"):
+        parts.append(dna["feel"])
     parts.append(HUMANIZATION)
     parts.append(MIX)
     parts.append(NEGATIVES)
 
     if title:
         parts.append(f"song about: {title}")
+    if dna.get("label"):
+        parts.append(f"travel place color: {dna['label']}")
 
-    # 去重空白，保持一行可餵 API
     text = ", ".join(p.strip().rstrip(",") for p in parts if p and str(p).strip())
     return text
 
