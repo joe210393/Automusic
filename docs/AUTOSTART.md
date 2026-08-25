@@ -36,29 +36,52 @@ curl -s http://127.0.0.1:8080/acestep/health | python3 -m json.tool
 | 欄位 | 期望 |
 |------|------|
 | `llm_initialized` | `true` |
-| `loaded_lm_model` | 例如 `acestep-5Hz-lm-1.7B`（**不要**是空／No LM） |
+| `loaded_lm_model` | 例如 `acestep-5Hz-lm-4B`（**不要**是空／No LM） |
 | `thinking_effective` | `true`（Automusic 綜合判斷） |
 
-LaunchAgent 腳本預設：
+LaunchAgent 腳本預設（Sprint 4）：
 
-- DiT：`acestep-v15-turbo`
-- LM：`acestep-5Hz-lm-1.7B`（`ACESTEP_LM_MODEL_PATH`／`ACESTEP_INIT_LLM=true`）
+- DiT：`acestep-v15-xl-turbo`（可退回 `acestep-v15-turbo`）
+- LM：`acestep-5Hz-lm-4B`（`ACESTEP_LM_MODEL_PATH`／`ACESTEP_INIT_LLM=true`；可退回 `1.7B`）
+- **不要**設 `ACESTEP_NO_INIT`（需開機載入模型，health 才反映真實狀態）
 
-若 health 顯示 LM 未載：
+若 health 顯示 LM 未載，或改過 plist 環境變數沒生效：
 
 1. 看 `/tmp/acestep.err.log`
-2. `launchctl kickstart -k "gui/$(id -u)/com.automusic.acestep"`
+2. **改 plist 後必須 bootout + bootstrap**（僅 `kickstart` 不會重讀 env）：
+   ```bash
+   cp ~/Automusic/launchd/com.automusic.acestep.plist ~/Library/LaunchAgents/
+   launchctl bootout "gui/$(id -u)/com.automusic.acestep" 2>/dev/null || true
+   launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/com.automusic.acestep.plist
+   ```
 3. 確認 `scripts/start-acestep-api.sh` 的 `ACESTEP_LM_MODEL_PATH` 不是空
 
 Automusic 預設推論參數（可 env 覆寫）：
 
-- `ACESTEP_SHIFT=3.0`（Turbo 官方建議；設 `off` 則不傳）
-- `ACESTEP_INFERENCE_STEPS=8`
+- `ACESTEP_MODEL=acestep-v15-xl-turbo`（Sprint 4；可退回 `acestep-v15-turbo`）
+- `ACESTEP_LM_MODEL`／LaunchAgent `ACESTEP_LM_MODEL_PATH=acestep-5Hz-lm-4B`（作曲能力較強；可退回 `1.7B`）
+- `ACESTEP_SHIFT=3.0`（Turbo／XL-turbo 官方建議；設 `off` 則不傳）
+- `ACESTEP_INFERENCE_STEPS=8`（xl-sft 建議改 50）
 - `ACESTEP_DURATION_SEC=45`
 - `ACESTEP_BATCH_SIZE=2`（一次兩版供選歌；VRAM 不足可改 `1`）
-- `ACESTEP_AUDIO_FORMAT=wav`（先 lossless，再轉 MP3）
+- `ACESTEP_AUDIO_FORMAT=wav`（先 lossless → 母帶 → MP3）
 - `ACESTEP_PRODUCTION_CAPTION=1`（完整編曲 caption；`0`＝舊短 prompt，A/B 用）
 - `ACESTEP_THINKING=1`
+
+### Sprint 4 模型下載（首次）
+
+```bash
+cd ~/ACE-Step-1.5
+uv run acestep-download --model acestep-v15-xl-turbo
+uv run acestep-download --model acestep-5Hz-lm-4B
+# 然後
+cp ~/Automusic/launchd/com.automusic.acestep.plist ~/Library/LaunchAgents/
+launchctl kickstart -k "gui/$(id -u)/com.automusic.acestep"
+curl -s http://127.0.0.1:8080/acestep/health | python3 -m json.tool
+```
+
+期望：`loaded_model` 含 `xl-turbo`，`loaded_lm_model` 含 `4B`，`thinking_effective=true`。
+
 
 ## 你還要手動開的一件事
 

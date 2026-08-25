@@ -37,6 +37,10 @@
         <string>https://tactually-venerable-inez.ngrok-free.dev</string>
         <key>ACESTEP_THINKING</key>
         <string>1</string>
+        <key>ACESTEP_MODEL</key>
+        <string>acestep-v15-xl-turbo</string>
+        <key>ACESTEP_LM_MODEL</key>
+        <string>acestep-5Hz-lm-4B</string>
     </dict>
     <key>RunAtLoad</key>
     <true/>

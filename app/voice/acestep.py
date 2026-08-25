@@ -18,10 +18,10 @@ import requests
 
 ACESTEP_URL = os.getenv("ACESTEP_URL", "http://127.0.0.1:8001").rstrip("/")
 ACESTEP_API_KEY = (os.getenv("ACESTEP_API_KEY") or "").strip()
-ACESTEP_MODEL = os.getenv("ACESTEP_MODEL", "acestep-v15-turbo")
+ACESTEP_MODEL = os.getenv("ACESTEP_MODEL", "acestep-v15-xl-turbo")
 # thinking=true 用 5Hz LM 規劃，人聲明顯較穩；需本機 ACE-Step 已載入 LM
 ACESTEP_THINKING = os.getenv("ACESTEP_THINKING", "1").strip().lower() not in ("0", "false", "no")
-# Turbo 官方建議 shift=3.0；設為 off/none 則不傳（A/B 對照用）
+# Turbo／XL-turbo 官方建議 shift=3.0；設為 off/none 則不傳（A/B 對照用）
 _ACESTEP_SHIFT_RAW = (os.getenv("ACESTEP_SHIFT", "3.0") or "").strip().lower()
 ACESTEP_SHIFT: Optional[float]
 if _ACESTEP_SHIFT_RAW in ("", "off", "none", "default"):
@@ -41,13 +41,18 @@ ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 # 旅程成品預設長度（秒）；本機 API 上限 clamp 在 90
 ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
-ACESTEP_INFERENCE_STEPS = int(os.getenv("ACESTEP_INFERENCE_STEPS", "8"))
-# Sprint 2：一次產兩版供遊客挑；VRAM 吃緊可設 ACESTEP_BATCH_SIZE=1
+# XL turbo 仍建議 8；若改 xl-sft 可設 ACESTEP_INFERENCE_STEPS=50
+_default_steps = "8"
+if "sft" in ACESTEP_MODEL and "turbo" not in ACESTEP_MODEL:
+    _default_steps = "50"
+ACESTEP_INFERENCE_STEPS = int(os.getenv("ACESTEP_INFERENCE_STEPS", _default_steps))
+# Sprint 2：一次產兩版；XL+4B 記憶體吃緊可設 1
 ACESTEP_BATCH_SIZE = max(1, min(8, int(os.getenv("ACESTEP_BATCH_SIZE", "2"))))
-# 先 lossless 再轉 MP3（勿直接拿 MP3 當母檔）
+# 先 lossless 再母帶／轉 MP3
 ACESTEP_AUDIO_FORMAT = (os.getenv("ACESTEP_AUDIO_FORMAT", "wav") or "wav").strip().lower()
 if ACESTEP_AUDIO_FORMAT not in ("wav", "flac"):
     ACESTEP_AUDIO_FORMAT = "wav"
+ACESTEP_LM_MODEL = os.getenv("ACESTEP_LM_MODEL", "acestep-5Hz-lm-4B")
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
 ACESTEP_REMOTE_URLS: List[str] = [

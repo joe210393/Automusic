@@ -258,6 +258,7 @@ def run_finalize_ai(journey_id: str) -> dict:
     """用選定的 AI 歌手風格合成最終成品（ACE batch 兩版 → WAV→MP3 → 遊客選歌）。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
     from app.main import compress_to_mp3
+    from app.audio.mastering import master_to_mp3
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
@@ -318,17 +319,21 @@ def run_finalize_ai(journey_id: str) -> dict:
             if src.resolve() != mp3_path.resolve():
                 shutil.copy2(src, mp3_path)
         else:
-            converted = compress_to_mp3(str(src))
-            if not converted or not Path(converted).exists():
-                raise RuntimeError("成品轉檔失敗，請稍後再試")
-            converted_p = Path(converted)
-            if converted_p.resolve() != mp3_path.resolve():
-                shutil.copy2(converted_p, mp3_path)
-                if converted_p.parent == out_dir and converted_p.name != mp3_name:
-                    try:
-                        converted_p.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+            mastered = master_to_mp3(str(src), out_mp3=str(mp3_path))
+            if not mastered or not Path(mastered).exists():
+                converted = compress_to_mp3(str(src))
+                if not converted or not Path(converted).exists():
+                    raise RuntimeError("成品轉檔失敗，請稍後再試")
+                converted_p = Path(converted)
+                if converted_p.resolve() != mp3_path.resolve():
+                    shutil.copy2(converted_p, mp3_path)
+                    if converted_p.parent == out_dir and converted_p.name != mp3_name:
+                        try:
+                            converted_p.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+            elif Path(mastered).resolve() != mp3_path.resolve():
+                shutil.copy2(mastered, mp3_path)
         if not mp3_path.exists() or mp3_path.stat().st_size < 1000:
             raise RuntimeError("成品轉檔失敗，請稍後再試")
         final_candidates.append(
@@ -337,6 +342,7 @@ def run_finalize_ai(journey_id: str) -> dict:
                 "file": mp3_name,
                 "seed": c.get("seed"),
                 "label": f"版本 {cid.upper()}",
+                "mastered": True,
             }
         )
 
@@ -359,6 +365,8 @@ def run_finalize_ai(journey_id: str) -> dict:
             "seed": ace_stats.get("seed"),
             "seeds": ace_stats.get("seeds"),
             "elapsed_ms": ace_stats.get("elapsed_ms"),
+            "mastered": True,
+            "lm_model": getattr(_ace, "ACESTEP_LM_MODEL", None),
         }
         try:
             from app.ops import metering as ops_metering

@@ -10,9 +10,11 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:$HOME/.local/bin:$HOME/.cargo/bin:
 export HOME="${HOME:-/Users/hung-weichen}"
 export ACESTEP_LM_BACKEND="${ACESTEP_LM_BACKEND:-mlx}"
 export ACESTEP_INIT_LLM="${ACESTEP_INIT_LLM:-true}"
-export ACESTEP_NO_INIT="${ACESTEP_NO_INIT:-true}"
-export ACESTEP_CONFIG_PATH="${ACESTEP_CONFIG_PATH:-acestep-v15-turbo}"
-export ACESTEP_LM_MODEL_PATH="${ACESTEP_LM_MODEL_PATH:-acestep-5Hz-lm-1.7B}"
+# Sprint 4：開機載入 XL+4B，讓 /health 能反映真實模型（首次啟動較慢）
+export ACESTEP_NO_INIT="${ACESTEP_NO_INIT:-false}"
+# Sprint 4 預設：XL turbo DiT + 4B LM（M4 Pro 64GB）；可覆寫回 turbo / 1.7B
+export ACESTEP_CONFIG_PATH="${ACESTEP_CONFIG_PATH:-acestep-v15-xl-turbo}"
+export ACESTEP_LM_MODEL_PATH="${ACESTEP_LM_MODEL_PATH:-acestep-5Hz-lm-4B}"
 export ACESTEP_API_HOST="$HOST"
 export ACESTEP_API_PORT="$PORT"
 export TOKENIZERS_PARALLELISM=false
@@ -33,6 +35,11 @@ if [[ -z "$UV_BIN" ]]; then
   exit 1
 fi
 
-echo "[acestep] starting API at http://${HOST}:${PORT} (cwd=$ACE_ROOT)"
-exec "$UV_BIN" run --offline acestep-api --host "$HOST" --port "$PORT" --no-init || \
-  exec "$UV_BIN" run acestep-api --host "$HOST" --port "$PORT" --no-init
+NO_INIT_FLAG=()
+case "${ACESTEP_NO_INIT}" in
+  1|true|TRUE|yes|YES) NO_INIT_FLAG=(--no-init) ;;
+esac
+
+echo "[acestep] starting API at http://${HOST}:${PORT} (cwd=$ACE_ROOT model=${ACESTEP_CONFIG_PATH} lm=${ACESTEP_LM_MODEL_PATH} no_init=${ACESTEP_NO_INIT})"
+exec "$UV_BIN" run --offline acestep-api --host "$HOST" --port "$PORT" "${NO_INIT_FLAG[@]}" || \
+  exec "$UV_BIN" run acestep-api --host "$HOST" --port "$PORT" "${NO_INIT_FLAG[@]}"

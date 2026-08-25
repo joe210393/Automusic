@@ -23,11 +23,11 @@
         <key>ACESTEP_INIT_LLM</key>
         <string>true</string>
         <key>ACESTEP_LM_MODEL_PATH</key>
-        <string>acestep-5Hz-lm-1.7B</string>
+        <string>acestep-5Hz-lm-4B</string>
         <key>ACESTEP_NO_INIT</key>
-        <string>true</string>
+        <string>false</string>
         <key>ACESTEP_CONFIG_PATH</key>
-        <string>acestep-v15-turbo</string>
+        <string>acestep-v15-xl-turbo</string>
         <key>ACESTEP_API_HOST</key>
         <string>127.0.0.1</string>
         <key>ACESTEP_API_PORT</key>
