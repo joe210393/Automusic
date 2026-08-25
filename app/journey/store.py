@@ -257,7 +257,7 @@ def display_title(meta: Dict[str, Any]) -> str:
 def resume_screen(status: str) -> str:
     """依旅程狀態建議回到哪個遊客畫面。"""
     s = (status or "").strip()
-    if s in ("done", "finalized"):
+    if s in ("done", "finalized", "choosing"):
         return "result"
     if s in ("voicing", "finalizing"):
         return "result"

@@ -702,6 +702,8 @@ class AceStepGenerateRequest(BaseModel):
     engine_style: Optional[str] = None
     duration_sec: float = 45.0
     material: Optional[dict] = None
+    batch_size: Optional[int] = None
+    audio_format: Optional[str] = None
 
 
 @app.get("/acestep/health")
@@ -720,6 +722,8 @@ def acestep_health():
         "thinking_effective": status.get("thinking_effective"),
         "shift": status.get("shift"),
         "production_caption": status.get("production_caption"),
+        "batch_size": _ace.ACESTEP_BATCH_SIZE,
+        "audio_format": _ace.ACESTEP_AUDIO_FORMAT,
         "error": status.get("error"),
     }
 
@@ -727,26 +731,39 @@ def acestep_health():
 @app.post("/acestep/generate")
 def acestep_generate(req: AceStepGenerateRequest):
     """
-    用本機 ACE-Step 產生含人聲整曲 MP3。
-    雲端 Zeabur 經 ngrok 委託此端點（與 /svs、/vc 相同）。
+    用本機 ACE-Step 產生含人聲整曲。
+    batch=1 → audio/mpeg；batch>1 → application/zip（candidate_* + manifest）。
     """
     from app.voice import acestep as _ace
 
     if not _ace.local_available():
         raise HTTPException(status_code=501, detail="此伺服器未啟動 ACE-Step")
     try:
-        out = _ace.generate_to_tempfile(
+        pkg = _ace.generate_batch_package(
             lyrics=req.lyrics,
             bpm=float(req.bpm),
             key=req.key,
             singer_id=req.singer_id,
             engine_style=req.engine_style,
             duration_sec=float(req.duration_sec or _ace.ACESTEP_DURATION_SEC or 45.0),
+            batch_size=req.batch_size,
+            audio_format=req.audio_format,
             material=req.material,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ACE-Step 產生失敗: {e}") from e
-    return FileResponse(out, media_type="audio/mpeg", filename="acestep.mp3")
+
+    kind = pkg.get("kind")
+    path = pkg["path"]
+    if kind == "zip":
+        return FileResponse(path, media_type="application/zip", filename="acestep-candidates.zip")
+    if kind == "audio":
+        return FileResponse(
+            path,
+            media_type=pkg.get("media_type") or "audio/wav",
+            filename=Path(path).name,
+        )
+    return FileResponse(path, media_type="audio/mpeg", filename="acestep.mp3")
 
 
 @app.post("/generate-lyrics", response_model=LyricsResponse)

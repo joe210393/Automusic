@@ -162,6 +162,10 @@ def record_music_usage(
     engine: str = "acestep",
     model: Optional[str] = None,
     via: Optional[str] = None,
+    shift: Any = None,
+    seed: Any = None,
+    batch_size: Optional[int] = None,
+    audio_format: Optional[str] = None,
     save: bool = True,
 ) -> dict:
     """登記一次做歌（ACE 等）到 journey.meta.compute_usage。"""
@@ -187,6 +191,10 @@ def record_music_usage(
         "engine": engine,
         "model": model,
         "via": via,
+        "shift": shift,
+        "seed": seed,
+        "batch_size": int(batch_size) if batch_size is not None else None,
+        "audio_format": audio_format,
     }
     events = cu.setdefault("events", [])
     events.append(entry)

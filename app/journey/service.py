@@ -255,8 +255,9 @@ def run_finalize(journey_id: str) -> dict:
 
 
 def run_finalize_ai(journey_id: str) -> dict:
-    """用選定的 AI 歌手風格合成最終成品（優先 ACE-Step 整曲人聲；失敗則編曲＋主旋律）。"""
+    """用選定的 AI 歌手風格合成最終成品（ACE batch 兩版 → WAV→MP3 → 遊客選歌）。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
+    from app.main import compress_to_mp3
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
@@ -277,21 +278,23 @@ def run_finalize_ai(journey_id: str) -> dict:
     if not _ace.is_available():
         raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
 
-    out = store.output_dir(journey_id) / "final.mp3"
+    out_dir = store.output_dir(journey_id)
 
     def _prog(pct: int, label: str) -> None:
         _set_finalize_progress(meta, pct, label)
 
     ace_stats: dict = {}
     try:
-        _ace.generate_to_file(
+        candidates_raw = _ace.generate_candidates(
             lyrics=meta["lyrics"],
             bpm=float(meta.get("bpm") or 100),
             key=meta.get("key"),
             singer_id=meta.get("ai_singer_id"),
             engine_style=meta.get("engine_style"),
             duration_sec=float(_ace.ACESTEP_DURATION_SEC or 45.0),
-            out_path=out,
+            out_dir=out_dir,
+            batch_size=int(_ace.ACESTEP_BATCH_SIZE or 2),
+            audio_format=_ace.ACESTEP_AUDIO_FORMAT,
             progress=_prog,
             stats=ace_stats,
             material=meta.get("material") if isinstance(meta.get("material"), dict) else None,
@@ -299,6 +302,46 @@ def run_finalize_ai(journey_id: str) -> dict:
     except Exception as e:
         print(f"[journey] ACE-Step failed: {e}")
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
+
+    if not candidates_raw:
+        raise RuntimeError("AI 唱歌製作失敗，請稍後再試")
+
+    _set_finalize_progress(meta, 90, "轉檔輸出")
+    final_candidates = []
+    for c in candidates_raw:
+        src = Path(c["path"])
+        cid = str(c.get("id") or c.get("index") or "a")
+        mp3_name = f"candidate_{cid}.mp3"
+        mp3_path = out_dir / mp3_name
+        if src.suffix.lower() == ".mp3":
+            if src.resolve() != mp3_path.resolve():
+                shutil.copy2(src, mp3_path)
+        else:
+            converted = compress_to_mp3(str(src))
+            if not converted or not Path(converted).exists():
+                raise RuntimeError("成品轉檔失敗，請稍後再試")
+            converted_p = Path(converted)
+            if converted_p.resolve() != mp3_path.resolve():
+                shutil.copy2(converted_p, mp3_path)
+                if converted_p.parent == out_dir and converted_p.name != mp3_name:
+                    try:
+                        converted_p.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        if not mp3_path.exists() or mp3_path.stat().st_size < 1000:
+            raise RuntimeError("成品轉檔失敗，請稍後再試")
+        final_candidates.append(
+            {
+                "id": cid,
+                "file": mp3_name,
+                "seed": c.get("seed"),
+                "label": f"版本 {cid.upper()}",
+            }
+        )
+
+    # 預設以 A 作為 provisional final（分享／下載暫用）
+    primary = final_candidates[0]
+    shutil.copy2(out_dir / primary["file"], out_dir / "final.mp3")
 
     if ace_stats:
         meta["ace_params"] = {
@@ -310,7 +353,10 @@ def run_finalize_ai(journey_id: str) -> dict:
             "inference_steps": ace_stats.get("inference_steps"),
             "production_caption": ace_stats.get("production_caption"),
             "caption_chars": ace_stats.get("caption_chars"),
+            "batch_size": ace_stats.get("batch_size") or len(final_candidates),
+            "audio_format": ace_stats.get("audio_format"),
             "seed": ace_stats.get("seed"),
+            "seeds": ace_stats.get("seeds"),
             "elapsed_ms": ace_stats.get("elapsed_ms"),
         }
         try:
@@ -326,17 +372,62 @@ def run_finalize_ai(journey_id: str) -> dict:
                 engine=str(ace_stats.get("engine") or "acestep"),
                 model=ace_stats.get("model"),
                 via=ace_stats.get("via"),
+                shift=ace_stats.get("shift"),
+                seed=ace_stats.get("seed"),
+                batch_size=ace_stats.get("batch_size") or len(final_candidates),
+                audio_format=ace_stats.get("audio_format"),
                 save=False,
             )
         except Exception as e:
             print(f"[journey] music metering skip: {e}")
 
+    meta["final_candidates"] = final_candidates
     meta["final_file"] = "final.mp3"
     meta["final_engine"] = "acestep"
-    meta["status"] = "done"
+    meta["final_choice"] = None
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")
-    _set_finalize_progress(meta, 100, "完成")
+    # 兩版以上 → 進入選歌；單版直接完成
+    if len(final_candidates) >= 2:
+        meta["status"] = "choosing"
+        _set_finalize_progress(meta, 100, "請選一首")
+    else:
+        meta["final_choice"] = primary["id"]
+        meta["status"] = "done"
+        _set_finalize_progress(meta, 100, "完成")
+    store.save_meta(journey_id, meta)
+    return meta
+
+
+def pick_final_candidate(journey_id: str, choice: str) -> dict:
+    """遊客從 candidate_a / candidate_b 選定一首寫入 final.mp3。"""
+    meta = store.load_meta(journey_id)
+    cands = meta.get("final_candidates") or []
+    if not cands:
+        raise RuntimeError("尚無可選版本")
+    choice = str(choice or "").strip().lower()
+    picked = None
+    for c in cands:
+        if str(c.get("id")).lower() == choice:
+            picked = c
+            break
+    if not picked and choice.isdigit():
+        idx = int(choice)
+        if 0 <= idx < len(cands):
+            picked = cands[idx]
+    if not picked:
+        raise RuntimeError("請選擇有效的版本")
+    src = store.output_dir(journey_id) / picked["file"]
+    if not src.exists():
+        raise RuntimeError("選中的音檔不存在")
+    dest = store.output_dir(journey_id) / "final.mp3"
+    shutil.copy2(src, dest)
+    meta["final_file"] = "final.mp3"
+    meta["final_choice"] = picked["id"]
+    meta["status"] = "done"
+    meta["share_public"] = True
+    meta["error"] = None
+    store.save_meta(journey_id, meta)
     return meta
 
 

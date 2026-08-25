@@ -294,7 +294,7 @@
 
   function screenForStatus(status) {
     const s = status || "";
-    if (s === "done" || s === "finalized") return "result";
+    if (s === "done" || s === "finalized" || s === "choosing") return "result";
     if (s === "voicing" || s === "finalizing") {
       return journey?.final_file ? "result" : "voice";
     }
@@ -478,6 +478,64 @@
     }
   }
 
+  function renderPickFinal(meta) {
+    const panel = $("pickFinalPanel");
+    const grid = $("pickFinalGrid");
+    if (!panel || !grid) return;
+    const cands = (meta && meta.final_candidates) || (journey && journey.final_candidates) || [];
+    const choice = (meta && meta.final_choice) || (journey && journey.final_choice);
+    const needPick = (meta && meta.status === "choosing") || (!choice && cands.length >= 2);
+    if (!needPick || cands.length < 2) {
+      panel.hidden = true;
+      grid.innerHTML = "";
+      return;
+    }
+    panel.hidden = false;
+    grid.innerHTML = "";
+    cands.forEach((c) => {
+      const id = c.id || c.index;
+      const card = document.createElement("div");
+      card.className = "pick-card" + (choice === id ? " is-selected" : "");
+      const title = c.label || `版本 ${String(id).toUpperCase()}`;
+      const url = `/api/journey/${journey.id}/audio/candidate-${id}?t=${Date.now()}`;
+      card.innerHTML = `
+        <h4>${title}</h4>
+        <audio controls preload="metadata" src="${url}"></audio>
+        <button type="button" class="primary" data-pick="${id}">選這首</button>
+      `;
+      card.querySelector("[data-pick]").addEventListener("click", () => pickFinal(id));
+      grid.appendChild(card);
+    });
+  }
+
+  async function pickFinal(choice) {
+    try {
+      setStatus($("resultStatus"), "正在套用你選的版本…");
+      const data = await api(`/api/journey/${journey.id}/pick-final`, {
+        method: "POST",
+        body: JSON.stringify({ choice: String(choice) }),
+      });
+      journey = {
+        ...(journey || {}),
+        status: data.status || "done",
+        final_file: "final.mp3",
+        final_choice: data.final_choice || choice,
+        final_candidates: data.final_candidates || journey.final_candidates,
+        slug: data.slug || journey.slug,
+        share_path: data.share_path || journey.share_path,
+      };
+      persistJourney();
+      showResultFromMeta();
+      if (data.final_url) {
+        $("finalAudio").src = data.final_url + "?t=" + Date.now();
+        $("btnDownload").href = data.final_url;
+      }
+      setStatus($("resultStatus"), "已選定！可以下載，或在下方用自己的聲音再做一版。");
+    } catch (e) {
+      setStatus($("resultStatus"), e.message || "選歌失敗", true);
+    }
+  }
+
   function showResultFromMeta() {
     const ly = journey.lyrics || {};
     const title = journey.title || ly.title || "旅行之歌";
@@ -489,6 +547,7 @@
         ? `演唱：${journey.ai_singer_label}`
         : "";
     }
+    renderPickFinal(journey);
     if (journey.final_file) {
       const url = `/api/journey/${journey.id}/audio/final?t=${Date.now()}`;
       $("finalAudio").src = url;
@@ -499,7 +558,11 @@
     setupResultVoiceprintUi();
     fillSoundTrace("result", journey);
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
-    setStatus($("resultStatus"), "這是你的 AI 唱歌版。上方可看你收集的聲音如何寫進這首歌。");
+    if (journey.status === "choosing") {
+      setStatus($("resultStatus"), "請先聽兩個版本，選你喜歡的那一首。");
+    } else {
+      setStatus($("resultStatus"), "這是你的 AI 唱歌版。上方可看你收集的聲音如何寫進這首歌。");
+    }
   }
 
   async function resumeJourney(id) {
@@ -1487,7 +1550,7 @@
           if (meta.status === "error") {
             throw new Error(meta.error || "製作失敗，請稍後再試");
           }
-          if (meta.status === "done" || meta.status === "finalized") {
+          if (meta.status === "done" || meta.status === "finalized" || meta.status === "choosing") {
             data = {
               ok: true,
               status: meta.status,
@@ -1500,11 +1563,13 @@
               final_voice_url: meta.final_voice_file
                 ? `/api/journey/${journey.id}/audio/final-voice`
                 : null,
+              final_candidates: meta.final_candidates || [],
+              final_choice: meta.final_choice || null,
             };
             break;
           }
         }
-        if (!(data && (data.status === "done" || data.status === "finalized"))) {
+        if (!(data && (data.status === "done" || data.status === "finalized" || data.status === "choosing"))) {
           throw new Error("製作逾時，請稍後再試");
         }
       }
@@ -1552,7 +1617,7 @@
       onDone: async (data) => {
         journey = {
           ...(journey || {}),
-          status: "done",
+          status: data.status || "done",
           final_file: "final.mp3",
           slug: data.slug,
           share_path: data.share_path,
@@ -1560,6 +1625,8 @@
           ai_singer_label: data.ai_singer_label || selectedSinger.label,
           lyrics: data.lyrics || journey.lyrics,
           title: (data.lyrics && data.lyrics.title) || journey.title,
+          final_candidates: data.final_candidates || [],
+          final_choice: data.final_choice || null,
         };
         persistJourney();
         showResultFromMeta();
@@ -1567,7 +1634,12 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus($("resultStatus"), "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。");
+        setStatus(
+          $("resultStatus"),
+          data.status === "choosing"
+            ? "兩個版本好了，先聽再選你喜歡的那一首。"
+            : "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。"
+        );
       },
     });
   }

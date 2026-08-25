@@ -55,6 +55,8 @@ Automusic 預設推論參數（可 env 覆寫）：
 - `ACESTEP_SHIFT=3.0`（Turbo 官方建議；設 `off` 則不傳）
 - `ACESTEP_INFERENCE_STEPS=8`
 - `ACESTEP_DURATION_SEC=45`
+- `ACESTEP_BATCH_SIZE=2`（一次兩版供選歌；VRAM 不足可改 `1`）
+- `ACESTEP_AUDIO_FORMAT=wav`（先 lossless，再轉 MP3）
 - `ACESTEP_PRODUCTION_CAPTION=1`（完整編曲 caption；`0`＝舊短 prompt，A/B 用）
 - `ACESTEP_THINKING=1`
 

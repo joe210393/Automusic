@@ -42,6 +42,12 @@ ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
 # 旅程成品預設長度（秒）；本機 API 上限 clamp 在 90
 ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
 ACESTEP_INFERENCE_STEPS = int(os.getenv("ACESTEP_INFERENCE_STEPS", "8"))
+# Sprint 2：一次產兩版供遊客挑；VRAM 吃緊可設 ACESTEP_BATCH_SIZE=1
+ACESTEP_BATCH_SIZE = max(1, min(8, int(os.getenv("ACESTEP_BATCH_SIZE", "2"))))
+# 先 lossless 再轉 MP3（勿直接拿 MP3 當母檔）
+ACESTEP_AUDIO_FORMAT = (os.getenv("ACESTEP_AUDIO_FORMAT", "wav") or "wav").strip().lower()
+if ACESTEP_AUDIO_FORMAT not in ("wav", "flac"):
+    ACESTEP_AUDIO_FORMAT = "wav"
 
 _default_remote = "https://tactually-venerable-inez.ngrok-free.dev"
 ACESTEP_REMOTE_URLS: List[str] = [
@@ -259,24 +265,40 @@ def build_prompt(
     )
 
 
-def _parse_result_payload(raw: Any) -> Optional[dict]:
+def _parse_result_items(raw: Any) -> List[dict]:
+    """ACE batch 成功時 result 為 list[{file, seed, ...}]；單首也可能是 dict。"""
     if raw is None:
-        return None
-    if isinstance(raw, list) and raw:
-        item = raw[0]
-        return item if isinstance(item, dict) else None
-    if isinstance(raw, dict):
-        return raw
+        return []
     if isinstance(raw, str):
         try:
-            return _parse_result_payload(json.loads(raw))
+            raw = json.loads(raw)
         except Exception:
-            return None
-    return None
+            return []
+    if isinstance(raw, dict):
+        for key in ("audios", "items", "results", "data"):
+            nested = raw.get(key)
+            if isinstance(nested, list):
+                return [x for x in nested if isinstance(x, dict)]
+        if raw.get("file") or raw.get("audio") or raw.get("path") or raw.get("url"):
+            return [raw]
+        return []
+    if isinstance(raw, list):
+        return [x for x in raw if isinstance(x, dict)]
+    return []
+
+
+def _parse_result_payload(raw: Any) -> Optional[dict]:
+    items = _parse_result_items(raw)
+    return items[0] if items else None
 
 
 def _audio_url_from_result(item: dict, base_url: str) -> Optional[str]:
-    file_ref = item.get("file") or item.get("audio") or item.get("path")
+    file_ref = (
+        item.get("url")
+        or item.get("file")
+        or item.get("audio")
+        or item.get("path")
+    )
     if not file_ref:
         return None
     file_ref = str(file_ref)
@@ -287,6 +309,15 @@ def _audio_url_from_result(item: dict, base_url: str) -> Optional[str]:
     return f"{base_url.rstrip('/')}/v1/audio?path={urllib.parse.quote(file_ref, safe='')}"
 
 
+def _ext_for_format(audio_format: str) -> str:
+    fmt = (audio_format or "wav").lower()
+    if fmt == "flac":
+        return ".flac"
+    if fmt == "mp3":
+        return ".mp3"
+    return ".wav"
+
+
 def _generate_via_local_api(
     *,
     lyrics: dict,
@@ -295,11 +326,14 @@ def _generate_via_local_api(
     singer_id: Optional[str],
     engine_style: Optional[str],
     duration_sec: float,
-    out_path: Path,
+    out_dir: Path,
+    batch_size: int = 1,
+    audio_format: str = ACESTEP_AUDIO_FORMAT,
     progress: ProgressCb = None,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
-) -> Path:
+) -> List[Dict[str, Any]]:
+    """呼叫本機 ACE release_task；下載 batch 結果為 lossless 檔，回傳 candidates。"""
     t0 = time.time()
     if progress:
         progress(20, "連線 AI 唱歌引擎")
@@ -319,6 +353,11 @@ def _generate_via_local_api(
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
     bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
     inference_steps = int(ACESTEP_INFERENCE_STEPS)
+    batch_size = max(1, min(8, int(batch_size or 1)))
+    fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
+    if fmt not in ("wav", "flac", "mp3"):
+        fmt = "wav"
+    ext = _ext_for_format(fmt)
 
     body: Dict[str, Any] = {
         "prompt": prompt,
@@ -330,12 +369,14 @@ def _generate_via_local_api(
         "use_cot_language": False,
         "use_cot_metas": False,
         "instrumental": False,
-        "audio_format": "mp3" if str(out_path).lower().endswith(".mp3") else "wav",
+        "audio_format": fmt,
         "model": ACESTEP_MODEL,
         "audio_duration": duration_sec,
         "time_signature": "4",
-        "batch_size": 1,
+        "batch_size": batch_size,
         "inference_steps": inference_steps,
+        "use_random_seed": True,
+        "allow_lm_batch": batch_size >= 2,
     }
     if ACESTEP_SHIFT is not None:
         body["shift"] = float(ACESTEP_SHIFT)
@@ -351,6 +392,7 @@ def _generate_via_local_api(
     print(
         "[acestep] generate "
         f"model={ACESTEP_MODEL} steps={inference_steps} shift={ACESTEP_SHIFT} "
+        f"batch={batch_size} format={fmt} "
         f"thinking={ACESTEP_THINKING} thinking_effective={lm_status.get('thinking_effective')} "
         f"lm={lm_status.get('loaded_lm_model')} caption_chars={len(prompt)} "
         f"production_caption={ACESTEP_PRODUCTION_CAPTION}"
@@ -392,7 +434,6 @@ def _generate_via_local_api(
                 f"{ACESTEP_URL}/query_result",
                 headers=_headers(),
                 json={"task_id_list": [task_id]},
-                # 首次載入 LM／推理時 worker 會卡住，query 也需較長讀取逾時
                 timeout=120,
             )
         except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
@@ -417,21 +458,40 @@ def _generate_via_local_api(
         status = row.get("status")
         last_status = status
         if status == 1:
-            item = _parse_result_payload(row.get("result"))
-            if not item:
+            items = _parse_result_items(row.get("result"))
+            if not items:
                 raise RuntimeError("ACE-Step 成功但結果為空")
-            audio_url = _audio_url_from_result(item, ACESTEP_URL)
-            if not audio_url:
-                raise RuntimeError(f"ACE-Step 結果缺少音檔: {item}")
             if progress:
                 progress(85, "下載成品")
-            ar = requests.get(audio_url, headers=_headers(), timeout=120)
-            if ar.status_code >= 400:
-                raise RuntimeError(f"ACE-Step 下載音檔失敗 HTTP {ar.status_code}")
-            if len(ar.content) < 5000:
-                raise RuntimeError("ACE-Step 音檔異常過短")
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(ar.content)
+            out_dir = Path(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            candidates: List[Dict[str, Any]] = []
+            seeds: List[Any] = []
+            for i, item in enumerate(items[:batch_size]):
+                audio_url = _audio_url_from_result(item, ACESTEP_URL)
+                if not audio_url:
+                    raise RuntimeError(f"ACE-Step 結果缺少音檔: {item}")
+                ar = requests.get(audio_url, headers=_headers(), timeout=120)
+                if ar.status_code >= 400:
+                    raise RuntimeError(f"ACE-Step 下載音檔失敗 HTTP {ar.status_code}")
+                if len(ar.content) < 5000:
+                    raise RuntimeError("ACE-Step 音檔異常過短")
+                label = "a" if i == 0 else "b" if i == 1 else str(i)
+                name = f"candidate_{label}{ext}"
+                dest = out_dir / name
+                dest.write_bytes(ar.content)
+                seed = item.get("seed")
+                seeds.append(seed)
+                candidates.append(
+                    {
+                        "id": label,
+                        "index": i,
+                        "file": name,
+                        "path": str(dest),
+                        "seed": seed,
+                        "audio_format": fmt,
+                    }
+                )
             if progress:
                 progress(95, "輸出成品")
             if stats is not None:
@@ -448,11 +508,14 @@ def _generate_via_local_api(
                         "loaded_lm_model": lm_status.get("loaded_lm_model"),
                         "production_caption": ACESTEP_PRODUCTION_CAPTION,
                         "caption_chars": len(prompt),
-                        "seed": item.get("seed") or item.get("seeds"),
+                        "batch_size": len(candidates),
+                        "audio_format": fmt,
+                        "seed": seeds[0] if len(seeds) == 1 else seeds,
+                        "seeds": seeds,
                         "elapsed_ms": int((time.time() - t0) * 1000),
                     }
                 )
-            return out_path
+            return candidates
         if status == 2:
             err = row.get("error") or row.get("message") or row.get("result") or "unknown"
             raise RuntimeError(f"ACE-Step 產生失敗: {err}")
@@ -472,14 +535,22 @@ def _generate_via_remote(
     singer_id: Optional[str],
     engine_style: Optional[str],
     duration_sec: float,
-    out_path: Path,
+    out_dir: Path,
+    batch_size: int = 1,
+    audio_format: str = ACESTEP_AUDIO_FORMAT,
     progress: ProgressCb = None,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
-) -> Path:
+) -> List[Dict[str, Any]]:
+    """經 ngrok 打本機 /acestep/generate；batch>1 時回 ZIP。"""
+    import io
+    import zipfile
+
     t0 = time.time()
     duration_sec = max(20.0, min(90.0, float(duration_sec)))
     inference_steps = int(ACESTEP_INFERENCE_STEPS)
+    batch_size = max(1, min(8, int(batch_size or 1)))
+    fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
     if progress:
         progress(20, "連線本機 AI 唱歌引擎")
     payload = {
@@ -490,8 +561,12 @@ def _generate_via_remote(
         "engine_style": engine_style,
         "duration_sec": duration_sec,
         "material": material or {},
+        "batch_size": batch_size,
+        "audio_format": fmt,
     }
     last_err = None
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for base in ACESTEP_REMOTE_URLS:
         try:
             if progress:
@@ -506,16 +581,74 @@ def _generate_via_remote(
                 last_err = f"HTTP {r.status_code}: {r.text[:240]}"
                 continue
             ctype = (r.headers.get("content-type") or "").lower()
-            if "json" in ctype:
-                last_err = f"unexpected json: {r.text[:240]}"
+            candidates: List[Dict[str, Any]] = []
+            seeds: List[Any] = []
+            if "zip" in ctype or (len(r.content) >= 4 and r.content[:2] == b"PK"):
+                if progress:
+                    progress(90, "解壓成品")
+                with zipfile.ZipFile(io.BytesIO(r.content)) as zf:
+                    manifest = {}
+                    if "manifest.json" in zf.namelist():
+                        try:
+                            manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+                        except Exception:
+                            manifest = {}
+                    names = sorted(
+                        n
+                        for n in zf.namelist()
+                        if n.startswith("candidate_")
+                        and not n.endswith("/")
+                    )
+                    for i, name in enumerate(names):
+                        data = zf.read(name)
+                        if len(data) < 5000:
+                            continue
+                        dest = out_dir / Path(name).name
+                        dest.write_bytes(data)
+                        label = Path(name).stem.replace("candidate_", "") or str(i)
+                        seed = None
+                        if isinstance(manifest.get("candidates"), list) and i < len(manifest["candidates"]):
+                            seed = manifest["candidates"][i].get("seed")
+                        seeds.append(seed)
+                        candidates.append(
+                            {
+                                "id": label,
+                                "index": i,
+                                "file": dest.name,
+                                "path": str(dest),
+                                "seed": seed,
+                                "audio_format": fmt,
+                            }
+                        )
+            else:
+                if "json" in ctype:
+                    last_err = f"unexpected json: {r.text[:240]}"
+                    continue
+                if len(r.content) < 5000:
+                    last_err = "remote audio too small"
+                    continue
+                if progress:
+                    progress(90, "輸出成品")
+                ext = _ext_for_format(fmt if fmt != "mp3" else "mp3")
+                # 遠端單檔可能已是 mp3（舊協定）
+                if "mpeg" in ctype or "mp3" in ctype:
+                    ext = ".mp3"
+                    fmt = "mp3"
+                dest = out_dir / f"candidate_a{ext}"
+                dest.write_bytes(r.content)
+                candidates.append(
+                    {
+                        "id": "a",
+                        "index": 0,
+                        "file": dest.name,
+                        "path": str(dest),
+                        "seed": None,
+                        "audio_format": fmt,
+                    }
+                )
+            if not candidates:
+                last_err = "remote returned no audio candidates"
                 continue
-            if len(r.content) < 5000:
-                last_err = "remote audio too small"
-                continue
-            if progress:
-                progress(90, "輸出成品")
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-            out_path.write_bytes(r.content)
             if stats is not None:
                 stats.update(
                     {
@@ -527,14 +660,76 @@ def _generate_via_remote(
                         "shift": ACESTEP_SHIFT,
                         "thinking": ACESTEP_THINKING,
                         "production_caption": ACESTEP_PRODUCTION_CAPTION,
+                        "batch_size": len(candidates),
+                        "audio_format": fmt,
+                        "seed": seeds[0] if len(seeds) == 1 else (seeds or None),
+                        "seeds": seeds,
                         "elapsed_ms": int((time.time() - t0) * 1000),
                     }
                 )
-            return out_path
+            return candidates
         except Exception as e:
             last_err = str(e)
             continue
     raise RuntimeError(f"遠端 ACE-Step 失敗: {last_err or 'unreachable'}")
+
+
+def generate_candidates(
+    *,
+    lyrics: dict,
+    bpm: float,
+    key: Optional[str],
+    singer_id: Optional[str] = None,
+    engine_style: Optional[str] = None,
+    duration_sec: float = ACESTEP_DURATION_SEC,
+    out_dir: Path,
+    batch_size: Optional[int] = None,
+    audio_format: Optional[str] = None,
+    progress: ProgressCb = None,
+    force_local: bool = False,
+    stats: Optional[Dict[str, Any]] = None,
+    material: Optional[dict] = None,
+) -> List[Dict[str, Any]]:
+    """
+    產生 1～N 首候選（預設 batch=ACESTEP_BATCH_SIZE），寫入 out_dir。
+    成功回傳 [{id,index,file,path,seed,audio_format}, ...]。
+    batch≥2 若 OOM／失敗會自動退回 batch=1 再試一次。
+    """
+    bs = int(batch_size if batch_size is not None else ACESTEP_BATCH_SIZE)
+    bs = max(1, min(8, bs))
+    fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
+
+    def _once(n: int) -> List[Dict[str, Any]]:
+        kwargs = dict(
+            lyrics=lyrics,
+            bpm=bpm,
+            key=key,
+            singer_id=singer_id,
+            engine_style=engine_style,
+            duration_sec=duration_sec,
+            out_dir=out_dir,
+            batch_size=n,
+            audio_format=fmt,
+            progress=progress,
+            stats=stats,
+            material=material,
+        )
+        if force_local or local_available():
+            return _generate_via_local_api(**kwargs)
+        if ACESTEP_REMOTE_URLS:
+            return _generate_via_remote(**kwargs)
+        raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
+
+    try:
+        return _once(bs)
+    except Exception as e:
+        msg = str(e).lower()
+        if bs > 1 and any(k in msg for k in ("oom", "out of memory", "cuda", "mlx", "memory")):
+            print(f"[acestep] batch={bs} failed ({e}); retry batch=1")
+            if stats is not None:
+                stats.clear()
+            return _once(1)
+        raise
 
 
 def generate_to_file(
@@ -550,52 +745,130 @@ def generate_to_file(
     force_local: bool = False,
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
+    batch_size: int = 1,
 ) -> Path:
     """
-    產生整曲並寫入 out_path。
-    force_local=True 時只打本機 :8001（給 /acestep/generate 代理用）。
-    若傳入 stats=dict，會寫入 duration_sec / inference_steps / elapsed_ms 等計量欄位。
+    產生整曲並寫入 out_path（相容舊介面；預設單首）。
+    旅程成品請改用 generate_candidates。
     """
-    if force_local or local_available():
-        return _generate_via_local_api(
-            lyrics=lyrics,
-            bpm=bpm,
-            key=key,
-            singer_id=singer_id,
-            engine_style=engine_style,
-            duration_sec=duration_sec,
-            out_path=out_path,
-            progress=progress,
-            stats=stats,
-            material=material,
-        )
-    if ACESTEP_REMOTE_URLS:
-        return _generate_via_remote(
-            lyrics=lyrics,
-            bpm=bpm,
-            key=key,
-            singer_id=singer_id,
-            engine_style=engine_style,
-            duration_sec=duration_sec,
-            out_path=out_path,
-            progress=progress,
-            stats=stats,
-            material=material,
-        )
-    raise RuntimeError("ACE-Step 未啟動（本機 :8001 無回應）")
-
-
-def generate_to_tempfile(**kwargs) -> str:
-    """給 HTTP 代理用：寫到暫存 mp3，回傳路徑。"""
-    fd, path = tempfile.mkstemp(prefix="acestep_", suffix=".mp3")
-    os.close(fd)
-    out = Path(path)
+    out_path = Path(out_path)
+    tmp = Path(tempfile.mkdtemp(prefix="acestep_one_"))
     try:
-        generate_to_file(out_path=out, force_local=True, **kwargs)
-        return str(out)
+        cands = generate_candidates(
+            lyrics=lyrics,
+            bpm=bpm,
+            key=key,
+            singer_id=singer_id,
+            engine_style=engine_style,
+            duration_sec=duration_sec,
+            out_dir=tmp,
+            batch_size=batch_size,
+            audio_format="mp3" if str(out_path).lower().endswith(".mp3") else ACESTEP_AUDIO_FORMAT,
+            progress=progress,
+            force_local=force_local,
+            stats=stats,
+            material=material,
+        )
+        if not cands:
+            raise RuntimeError("ACE-Step 未產出音檔")
+        src = Path(cands[0]["path"])
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(src.read_bytes())
+        return out_path
+    finally:
+        try:
+            for p in tmp.glob("*"):
+                p.unlink(missing_ok=True)
+            tmp.rmdir()
+        except OSError:
+            pass
+
+
+def generate_batch_package(
+    *,
+    lyrics: dict,
+    bpm: float,
+    key: Optional[str] = None,
+    singer_id: Optional[str] = None,
+    engine_style: Optional[str] = None,
+    duration_sec: float = ACESTEP_DURATION_SEC,
+    batch_size: Optional[int] = None,
+    audio_format: Optional[str] = None,
+    material: Optional[dict] = None,
+    stats: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    給 /acestep/generate 代理：batch=1 回單一 mp3；batch>1 回 zip（內含 wav/flac + manifest）。
+    回傳 {kind: 'mp3'|'zip', path: str, candidates: list}
+    """
+    import zipfile
+
+    from app.main import compress_to_mp3
+
+    bs = int(batch_size if batch_size is not None else ACESTEP_BATCH_SIZE)
+    bs = max(1, min(8, bs))
+    fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
+    tmp = Path(tempfile.mkdtemp(prefix="acestep_pkg_"))
+    try:
+        cands = generate_candidates(
+            lyrics=lyrics,
+            bpm=bpm,
+            key=key,
+            singer_id=singer_id,
+            engine_style=engine_style,
+            duration_sec=duration_sec,
+            out_dir=tmp,
+            batch_size=bs,
+            audio_format=fmt,
+            force_local=True,
+            stats=stats,
+            material=material,
+        )
+        if not cands:
+            raise RuntimeError("ACE-Step 未產出音檔")
+        if len(cands) == 1:
+            src = Path(cands[0]["path"])
+            if src.suffix.lower() == ".mp3":
+                return {"kind": "mp3", "path": str(src), "candidates": cands, "tmpdir": str(tmp)}
+            mp3 = compress_to_mp3(str(src))
+            if not mp3:
+                # 壓不出就直接給 lossless
+                return {
+                    "kind": "audio",
+                    "path": str(src),
+                    "media_type": "audio/wav" if src.suffix.lower() == ".wav" else "audio/flac",
+                    "candidates": cands,
+                    "tmpdir": str(tmp),
+                }
+            return {"kind": "mp3", "path": mp3, "candidates": cands, "tmpdir": str(tmp)}
+
+        zip_path = tmp / "candidates.zip"
+        manifest = {
+            "batch_size": len(cands),
+            "audio_format": fmt,
+            "candidates": [
+                {"id": c.get("id"), "file": c.get("file"), "seed": c.get("seed")}
+                for c in cands
+            ],
+        }
+        with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False))
+            for c in cands:
+                zf.write(c["path"], arcname=c["file"])
+        return {"kind": "zip", "path": str(zip_path), "candidates": cands, "tmpdir": str(tmp)}
     except Exception:
         try:
-            out.unlink(missing_ok=True)
+            for p in tmp.rglob("*"):
+                if p.is_file():
+                    p.unlink(missing_ok=True)
+            tmp.rmdir()
         except OSError:
             pass
         raise
+
+
+def generate_to_tempfile(**kwargs) -> str:
+    """給 HTTP 代理用：寫到暫存 mp3，回傳路徑（單首）。"""
+    batch = int(kwargs.pop("batch_size", 1) or 1)
+    pkg = generate_batch_package(batch_size=max(1, batch), **kwargs)
+    return str(pkg["path"])

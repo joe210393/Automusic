@@ -86,6 +86,10 @@ class TitleBody(BaseModel):
     title: str
 
 
+class PickFinalBody(BaseModel):
+    choice: str = Field(..., description="candidate id：a / b，或 0 / 1")
+
+
 def _meta_or_404(journey_id: str) -> dict:
     try:
         return store.load_meta(journey_id)
@@ -625,6 +629,17 @@ def finalize_journey(
         payload = _finalize_result_payload(meta)
         payload["accepted"] = True
         payload["quota"] = ops_accounts.check_finalize_quota(account_id)
+        payload["final_candidates"] = meta.get("final_candidates")
+        payload["final_choice"] = meta.get("final_choice")
+        return payload
+
+    if meta.get("status") == "choosing" and meta.get("final_candidates"):
+        payload = _finalize_result_payload(meta)
+        payload["accepted"] = True
+        payload["status"] = "choosing"
+        payload["final_candidates"] = meta.get("final_candidates")
+        payload["final_choice"] = meta.get("final_choice")
+        payload["quota"] = ops_accounts.check_finalize_quota(account_id)
         return payload
 
     quota = ops_accounts.check_finalize_quota(account_id)
@@ -675,11 +690,35 @@ def finalize_journey(
     }
 
 
+@router.post("/api/journey/{journey_id}/pick-final")
+def pick_final(
+    journey_id: str,
+    body: PickFinalBody,
+    x_account_token: Optional[str] = Header(None),
+):
+    """從兩版候選中選定一首寫入 final.mp3（一次 finalize＝1 TOKEN，含兩版）。"""
+    meta = _meta_or_404(journey_id)
+    if x_account_token:
+        _require_journey_owner(meta, x_account_token)
+    try:
+        meta = service.pick_final_candidate(journey_id, body.choice)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=_friendly(e)) from e
+    payload = _finalize_result_payload(meta)
+    payload["final_candidates"] = meta.get("final_candidates")
+    payload["final_choice"] = meta.get("final_choice")
+    return payload
+
+
 @router.post("/api/journey/{journey_id}/finalize-voice")
 def finalize_voice_journey(journey_id: str):
     """同旅程加值：非同步製作聲紋版（避免長連線 502）。"""
     meta = _meta_or_404(journey_id)
     account_id = meta.get("account_id")
+
+    if not meta.get("final_choice") and (meta.get("final_candidates") or []):
+        # 尚未選歌也可先用 provisional A 做聲紋；不強制
+        pass
 
     if meta.get("final_voice_file") and meta.get("status") in ("done", "finalized"):
         payload = _finalize_result_payload(meta)
@@ -736,6 +775,15 @@ def get_audio(journey_id: str, kind: str):
         name = meta.get("final_file")
     elif kind in ("final-voice", "final_voice"):
         name = meta.get("final_voice_file")
+    elif kind.startswith("candidate-") or kind.startswith("candidate_"):
+        cid = kind.split("-", 1)[-1] if "-" in kind else kind.split("_", 1)[-1]
+        name = None
+        for c in meta.get("final_candidates") or []:
+            if str(c.get("id")) == cid:
+                name = c.get("file")
+                break
+        if not name:
+            name = f"candidate_{cid}.mp3"
     else:
         raise HTTPException(status_code=404, detail="無此音檔")
     if not name:
