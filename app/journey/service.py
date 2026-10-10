@@ -502,7 +502,8 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
             "http://127.0.0.1:1234/v1/chat/completions",
             "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions",
         ]
-    model = os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
+    model = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
+    max_tokens = int(os.getenv("LM_STUDIO_MAX_TOKENS", "768"))
 
     for url in lm_urls:
         try:
@@ -519,7 +520,7 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.9,
-                    "max_tokens": 2048,
+                    "max_tokens": max_tokens,
                 },
                 timeout=(4, 300),
             )

@@ -23,7 +23,7 @@ def _lm_urls() -> List[str]:
 
 
 def _model() -> str:
-    return os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
+    return os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
 
 
 def _fallback_brand(place: str) -> Dict[str, str]:
@@ -106,7 +106,7 @@ def generate_brand_copy(place: str, hints: str = "") -> Tuple[Dict[str, str], st
                         {"role": "user", "content": user},
                     ],
                     "temperature": 0.8,
-                    "max_tokens": 1024,
+                    "max_tokens": int(os.getenv("LM_STUDIO_MAX_TOKENS", "768")),
                 },
                 timeout=(4, 120),
             )

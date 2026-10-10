@@ -62,7 +62,10 @@ elif os.getenv("LM_STUDIO_URLS"):
     LM_STUDIO_URLS = [u.strip() for u in os.getenv("LM_STUDIO_URLS").split(",") if u.strip()]
 else:
     LM_STUDIO_URLS = _default_lm_urls
-LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-4-31b-qat")
+# 作詞只要短 JSON。gemma-4-31b 是推理模型，會先長篇思考，一首詞常要 1–3 分鐘。
+# 預設改 MLX 的 gemma-3-12b；要回 31B 可設 LM_STUDIO_MODEL=google/gemma-4-31b-qat
+LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
+LM_STUDIO_MAX_TOKENS = int(os.getenv("LM_STUDIO_MAX_TOKENS", "768"))
 
 # 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
 # Zeabur 掛載持久化硬碟在 /voice：存在就用它，重新部署後錄音不會消失；
@@ -812,8 +815,7 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
                         {"role": "user", "content": user_prompt},
                     ],
                     "temperature": 0.9,  # 作詞要有創意，溫度開高一點
-                    # gemma-4 是推理模型，會先思考再寫詞，token 要留多一點
-                    "max_tokens": 2048,
+                    "max_tokens": LM_STUDIO_MAX_TOKENS,
                 },
                 timeout=(4, 300),
             )
@@ -1334,11 +1336,9 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
                     {"role": "user", "content": user_prompt},
                 ],
                 "temperature": 0.5,
-                # gemma-4 是推理模型，會先思考再作答（解析時也會從思考欄位撈 JSON）。
-                # 本機 31B 約 11 token/秒，上限 1024 約等 90 秒內。
-                "max_tokens": 1024,
+                "max_tokens": LM_STUDIO_MAX_TOKENS,
             },
-            timeout=(4, 300),  # 連線 4 秒逾時：連不上就快速換下一個網址；31B 推理模型作答需 1-3 分鐘
+            timeout=(4, 120),  # 連線 4 秒逾時：連不上就換下一個網址
         )
         if resp.status_code != 200:
             raise RuntimeError(f"LM Studio 回傳錯誤：{resp.status_code}")
