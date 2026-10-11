@@ -46,8 +46,8 @@ _default_steps = "8"
 if "sft" in ACESTEP_MODEL and "turbo" not in ACESTEP_MODEL:
     _default_steps = "50"
 ACESTEP_INFERENCE_STEPS = int(os.getenv("ACESTEP_INFERENCE_STEPS", _default_steps))
-# Sprint 2：一次產兩版；XL+4B 記憶體吃緊可設 1
-ACESTEP_BATCH_SIZE = max(1, min(8, int(os.getenv("ACESTEP_BATCH_SIZE", "2"))))
+# 旅程預設一次一首（可再重做）；實驗室 API 仍可用此值一次出多首
+ACESTEP_BATCH_SIZE = max(1, min(8, int(os.getenv("ACESTEP_BATCH_SIZE", "1"))))
 # 先 lossless 再母帶／轉 MP3
 ACESTEP_AUDIO_FORMAT = (os.getenv("ACESTEP_AUDIO_FORMAT", "wav") or "wav").strip().lower()
 if ACESTEP_AUDIO_FORMAT not in ("wav", "flac"):

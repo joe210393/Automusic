@@ -1153,11 +1153,11 @@ textarea { min-height: 96px; resize: vertical; }
 .pick-final-grid {
   display: grid;
   gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
-@media (min-width: 720px) {
-  .pick-final-grid {
-    grid-template-columns: 1fr 1fr;
-  }
+#btnRemakeFinal {
+  margin-top: 12px;
+  width: 100%;
 }
 .pick-card {
   border: 1px solid var(--line);

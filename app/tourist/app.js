@@ -484,16 +484,37 @@
   function renderPickFinal(meta) {
     const panel = $("pickFinalPanel");
     const grid = $("pickFinalGrid");
+    const remakeBtn = $("btnRemakeFinal");
+    const lead = $("pickFinalLead");
     if (!panel || !grid) return;
     const cands = (meta && meta.final_candidates) || (journey && journey.final_candidates) || [];
     const choice = (meta && meta.final_choice) || (journey && journey.final_choice);
-    const needPick = (meta && meta.status === "choosing") || (!choice && cands.length >= 2);
-    if (!needPick || cands.length < 2) {
+    const status = (meta && meta.status) || (journey && journey.status);
+    const needPick = status === "choosing" && !choice && cands.length >= 1;
+    if ($("finalAudio")) $("finalAudio").hidden = !!needPick;
+    if ($("finalActions")) $("finalActions").hidden = !!needPick;
+    if (!needPick) {
       panel.hidden = true;
       grid.innerHTML = "";
+      if (remakeBtn) remakeBtn.hidden = true;
       return;
     }
     panel.hidden = false;
+    const left = Math.max(0, 3 - cands.length);
+    if (lead) {
+      if (cands.length >= 3) {
+        lead.textContent = "三首都好了，請選你要帶走的那一首。";
+      } else if (cands.length === 2) {
+        lead.textContent = "已有兩首。可以選一首，或再做最後一次。";
+      } else {
+        lead.textContent = "先聽這一首。喜歡就選定；不喜歡可以再做，最多再兩次。";
+      }
+    }
+    if (remakeBtn) {
+      remakeBtn.hidden = left <= 0;
+      remakeBtn.disabled = document.body.classList.contains("finalize-busy");
+      remakeBtn.textContent = left === 1 ? "再做最後一首" : "不喜歡，再做一首";
+    }
     grid.innerHTML = "";
     cands.forEach((c) => {
       const id = c.id || c.index;
@@ -562,7 +583,13 @@
     fillSoundTrace("result", journey);
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
     if (journey.status === "choosing") {
-      setStatus($("resultStatus"), "請先聽兩個版本，選你喜歡的那一首。");
+      const n = (journey.final_candidates || []).length;
+      setStatus(
+        $("resultStatus"),
+        n >= 3
+          ? "三首都好了，選一首帶走。"
+          : "先聽看看。喜歡就選定；不喜歡可以再做。"
+      );
     } else {
       setStatus($("resultStatus"), "這是你的 AI 唱歌版。上方可看你收集的聲音如何寫進這首歌。");
     }
@@ -1394,7 +1421,7 @@
       }
       if (upgrade) upgrade.hidden = true;
     } else if (upgrade) {
-      upgrade.hidden = false;
+      upgrade.hidden = journey?.status === "choosing" && !journey?.final_choice;
     }
   }
 
@@ -1643,7 +1670,7 @@
         setStatus(
           $("resultStatus"),
           data.status === "choosing"
-            ? "兩個版本好了，先聽再選你喜歡的那一首。"
+            ? "這一首好了。先聽看看，喜歡就選定；不喜歡可以再做，最多再兩次。"
             : "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。"
         );
       },
@@ -1772,7 +1799,51 @@
     await renderSingers();
     show("voice");
   });
+  async function remakeFinal() {
+    const btn = $("btnRemakeFinal");
+    const before = (journey.final_candidates || []).length;
+    if (btn) btn.disabled = true;
+    setStatus($("resultStatus"), "正在再做一首，請稍候…這次只做一首，會比一次做兩首快。");
+    try {
+      const started = await api(`/api/journey/${journey.id}/remake-final`, {
+        method: "POST",
+        body: "{}",
+      });
+      let meta = started;
+      if (started && started.accepted && started.status === "finalizing") {
+        const deadline = Date.now() + 15 * 60 * 1000;
+        while (Date.now() < deadline) {
+          await new Promise((r) => setTimeout(r, 800));
+          meta = await api(`/api/journey/${journey.id}`);
+          if (meta.status === "finalizing") continue;
+          if (meta.status === "error") throw new Error(meta.error || "再做一首失敗");
+          if (meta.status === "choosing" || meta.status === "done") {
+            const n = (meta.final_candidates || []).length;
+            if (meta.error && n <= before) throw new Error(meta.error);
+            break;
+          }
+        }
+      }
+      if (!(meta && (meta.status === "choosing" || meta.status === "done"))) {
+        throw new Error("再做一首逾時，請稍後再試");
+      }
+      journey = {
+        ...(journey || {}),
+        ...meta,
+        status: meta.status,
+        final_candidates: meta.final_candidates || [],
+        final_choice: meta.final_choice || null,
+      };
+      persistJourney();
+      showResultFromMeta();
+    } catch (e) {
+      setStatus($("resultStatus"), e.message || "再做一首失敗", true);
+      if (btn) btn.disabled = false;
+    }
+  }
+
   $("btnFinalize").addEventListener("click", () => finalize());
+  $("btnRemakeFinal")?.addEventListener("click", () => remakeFinal());
   document.querySelectorAll(".gender-choice").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectedGender = btn.dataset.gender || "female";

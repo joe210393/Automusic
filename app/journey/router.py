@@ -707,7 +707,60 @@ def pick_final(
     payload = _finalize_result_payload(meta)
     payload["final_candidates"] = meta.get("final_candidates")
     payload["final_choice"] = meta.get("final_choice")
+    payload["final_takes_limit"] = meta.get("final_takes_limit") or service.FINAL_TAKE_LIMIT
     return payload
+
+
+@router.post("/api/journey/{journey_id}/remake-final")
+def remake_final_journey(
+    journey_id: str,
+    x_account_token: Optional[str] = Header(None),
+):
+    """同一趟再做一首（最多共三首）。不另扣 TOKEN。"""
+    meta = _meta_or_404(journey_id)
+    if x_account_token:
+        _require_journey_owner(meta, x_account_token)
+    cands = meta.get("final_candidates") or []
+    if meta.get("final_choice"):
+        raise HTTPException(status_code=400, detail="已經選定版本")
+    if not cands:
+        raise HTTPException(status_code=400, detail="請先完成第一次製作")
+    if len(cands) >= service.FINAL_TAKE_LIMIT:
+        raise HTTPException(status_code=400, detail="最多三首，請從裡面選一首")
+
+    if _finalize_key(journey_id, "ai") in _finalize_inflight:
+        return {
+            "ok": True,
+            "accepted": True,
+            "status": "finalizing",
+            "finalize_progress": meta.get("finalize_progress"),
+        }
+
+    meta["status"] = "finalizing"
+    meta["error"] = None
+    meta["finalize_progress"] = {"pct": 0, "label": "再做一首"}
+    store.save_meta(journey_id, meta)
+
+    def _worker() -> None:
+        try:
+            service.run_remake_final(journey_id)
+        except Exception as e:
+            print(f"[journey] async remake failed {journey_id}: {e}")
+            try:
+                m = store.load_meta(journey_id)
+                m["status"] = "choosing" if m.get("final_candidates") else "error"
+                m["error"] = _friendly(e)
+                store.save_meta(journey_id, m)
+            except Exception as save_err:
+                print(f"[journey] async remake error save failed: {save_err}")
+
+    _spawn_finalize(journey_id, "ai", meta.get("account_id"), _worker)
+    return {
+        "ok": True,
+        "accepted": True,
+        "status": "finalizing",
+        "finalize_progress": meta.get("finalize_progress"),
+    }
 
 
 @router.post("/api/journey/{journey_id}/finalize-voice")

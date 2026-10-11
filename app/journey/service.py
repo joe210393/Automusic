@@ -254,11 +254,137 @@ def run_finalize(journey_id: str) -> dict:
     return run_finalize_ai(journey_id)
 
 
-def run_finalize_ai(journey_id: str) -> dict:
-    """用選定的 AI 歌手風格合成最終成品（ACE batch 兩版 → WAV→MP3 → 遊客選歌）。"""
-    from app.voice.singer_templates import get_template, is_valid_singer_id
+FINAL_TAKE_LIMIT = 3
+
+
+def _candidate_id(index: int) -> str:
+    return chr(ord("a") + index)
+
+
+def _master_one_candidate(src: Path, out_dir: Path, cid: str) -> str:
+    """把 ACE 的 lossless／mp3 做成 candidate_{id}.mp3，不覆蓋其他版本。"""
     from app.main import compress_to_mp3
     from app.audio.mastering import master_to_mp3
+
+    mp3_name = f"candidate_{cid}.mp3"
+    mp3_path = out_dir / mp3_name
+    if src.suffix.lower() == ".mp3":
+        if src.resolve() != mp3_path.resolve():
+            shutil.copy2(src, mp3_path)
+    else:
+        mastered = master_to_mp3(str(src), out_mp3=str(mp3_path))
+        if not mastered or not Path(mastered).exists():
+            converted = compress_to_mp3(str(src))
+            if not converted or not Path(converted).exists():
+                raise RuntimeError("成品轉檔失敗，請稍後再試")
+            converted_p = Path(converted)
+            if converted_p.resolve() != mp3_path.resolve():
+                shutil.copy2(converted_p, mp3_path)
+                if converted_p.parent == out_dir and converted_p.name != mp3_name:
+                    try:
+                        converted_p.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        elif Path(mastered).resolve() != mp3_path.resolve():
+            shutil.copy2(mastered, mp3_path)
+    if src.suffix.lower() != ".mp3" and src.exists() and src.resolve() != mp3_path.resolve():
+        try:
+            src.unlink(missing_ok=True)
+        except OSError:
+            pass
+    if not mp3_path.exists() or mp3_path.stat().st_size < 1000:
+        raise RuntimeError("成品轉檔失敗，請稍後再試")
+    return mp3_name
+
+
+def _generate_one_take(meta: dict, out_dir: Path, cid: str, index: int) -> tuple[dict, dict]:
+    """ACE 只做一首，寫成指定 candidate id。回傳 (candidate, ace_stats)。"""
+    from app.voice import acestep as _ace
+
+    ace_stats: dict = {}
+
+    def _prog(pct: int, label: str) -> None:
+        _set_finalize_progress(meta, pct, label)
+
+    raw = _ace.generate_candidates(
+        lyrics=meta["lyrics"],
+        bpm=float(meta.get("bpm") or 100),
+        key=meta.get("key"),
+        singer_id=meta.get("ai_singer_id"),
+        engine_style=meta.get("engine_style"),
+        duration_sec=float(_ace.ACESTEP_DURATION_SEC or 45.0),
+        out_dir=out_dir,
+        batch_size=1,
+        audio_format=_ace.ACESTEP_AUDIO_FORMAT,
+        progress=_prog,
+        stats=ace_stats,
+        material=meta.get("material") if isinstance(meta.get("material"), dict) else None,
+        route_id=meta.get("route_id"),
+    )
+    if not raw:
+        raise RuntimeError("AI 唱歌製作失敗，請稍後再試")
+    src = Path(raw[0]["path"])
+    _set_finalize_progress(meta, 90, "轉檔輸出")
+    mp3_name = _master_one_candidate(src, out_dir, cid)
+    candidate = {
+        "id": cid,
+        "file": mp3_name,
+        "seed": raw[0].get("seed"),
+        "label": f"第 {index + 1} 首",
+        "mastered": True,
+    }
+    return candidate, ace_stats
+
+
+def _remember_ace(meta: dict, ace_stats: dict, take_count: int) -> None:
+    from app.voice import acestep as _ace
+
+    if not ace_stats:
+        return
+    meta["ace_params"] = {
+        "model": ace_stats.get("model"),
+        "shift": ace_stats.get("shift"),
+        "thinking": ace_stats.get("thinking"),
+        "thinking_effective": ace_stats.get("thinking_effective"),
+        "loaded_lm_model": ace_stats.get("loaded_lm_model"),
+        "inference_steps": ace_stats.get("inference_steps"),
+        "production_caption": ace_stats.get("production_caption"),
+        "caption_chars": ace_stats.get("caption_chars"),
+        "batch_size": 1,
+        "take_count": take_count,
+        "audio_format": ace_stats.get("audio_format"),
+        "seed": ace_stats.get("seed"),
+        "seeds": ace_stats.get("seeds"),
+        "elapsed_ms": ace_stats.get("elapsed_ms"),
+        "mastered": True,
+        "lm_model": getattr(_ace, "ACESTEP_LM_MODEL", None),
+    }
+    try:
+        from app.ops import metering as ops_metering
+
+        ops_metering.record_music_usage(
+            meta,
+            journey_id=meta.get("id"),
+            kind="ai_finalize",
+            duration_sec=float(ace_stats.get("duration_sec") or _ace.ACESTEP_DURATION_SEC or 45),
+            inference_steps=int(ace_stats.get("inference_steps") or 8),
+            elapsed_ms=int(ace_stats.get("elapsed_ms") or 0),
+            engine=str(ace_stats.get("engine") or "acestep"),
+            model=ace_stats.get("model"),
+            via=ace_stats.get("via"),
+            shift=ace_stats.get("shift"),
+            seed=ace_stats.get("seed"),
+            batch_size=1,
+            audio_format=ace_stats.get("audio_format"),
+            save=False,
+        )
+    except Exception as e:
+        print(f"[journey] music metering skip: {e}")
+
+
+def run_finalize_ai(journey_id: str) -> dict:
+    """先做一首 AI 成品。不喜歡可再重做，最多三首再選。"""
+    from app.voice.singer_templates import get_template, is_valid_singer_id
 
     meta = store.load_meta(journey_id)
     if not meta.get("notes") or not meta.get("lyrics"):
@@ -280,136 +406,71 @@ def run_finalize_ai(journey_id: str) -> dict:
         raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
 
     out_dir = store.output_dir(journey_id)
-
-    def _prog(pct: int, label: str) -> None:
-        _set_finalize_progress(meta, pct, label)
-
-    ace_stats: dict = {}
     try:
-        candidates_raw = _ace.generate_candidates(
-            lyrics=meta["lyrics"],
-            bpm=float(meta.get("bpm") or 100),
-            key=meta.get("key"),
-            singer_id=meta.get("ai_singer_id"),
-            engine_style=meta.get("engine_style"),
-            duration_sec=float(_ace.ACESTEP_DURATION_SEC or 45.0),
-            out_dir=out_dir,
-            batch_size=int(_ace.ACESTEP_BATCH_SIZE or 2),
-            audio_format=_ace.ACESTEP_AUDIO_FORMAT,
-            progress=_prog,
-            stats=ace_stats,
-            material=meta.get("material") if isinstance(meta.get("material"), dict) else None,
-            route_id=meta.get("route_id"),
-        )
+        candidate, ace_stats = _generate_one_take(meta, out_dir, _candidate_id(0), 0)
     except Exception as e:
         print(f"[journey] ACE-Step failed: {e}")
         raise RuntimeError("AI 唱歌製作失敗，請稍後再試") from e
 
-    if not candidates_raw:
-        raise RuntimeError("AI 唱歌製作失敗，請稍後再試")
-
-    _set_finalize_progress(meta, 90, "轉檔輸出")
-    final_candidates = []
-    for c in candidates_raw:
-        src = Path(c["path"])
-        cid = str(c.get("id") or c.get("index") or "a")
-        mp3_name = f"candidate_{cid}.mp3"
-        mp3_path = out_dir / mp3_name
-        if src.suffix.lower() == ".mp3":
-            if src.resolve() != mp3_path.resolve():
-                shutil.copy2(src, mp3_path)
-        else:
-            mastered = master_to_mp3(str(src), out_mp3=str(mp3_path))
-            if not mastered or not Path(mastered).exists():
-                converted = compress_to_mp3(str(src))
-                if not converted or not Path(converted).exists():
-                    raise RuntimeError("成品轉檔失敗，請稍後再試")
-                converted_p = Path(converted)
-                if converted_p.resolve() != mp3_path.resolve():
-                    shutil.copy2(converted_p, mp3_path)
-                    if converted_p.parent == out_dir and converted_p.name != mp3_name:
-                        try:
-                            converted_p.unlink(missing_ok=True)
-                        except OSError:
-                            pass
-            elif Path(mastered).resolve() != mp3_path.resolve():
-                shutil.copy2(mastered, mp3_path)
-        if not mp3_path.exists() or mp3_path.stat().st_size < 1000:
-            raise RuntimeError("成品轉檔失敗，請稍後再試")
-        final_candidates.append(
-            {
-                "id": cid,
-                "file": mp3_name,
-                "seed": c.get("seed"),
-                "label": f"版本 {cid.upper()}",
-                "mastered": True,
-            }
-        )
-
-    # 預設以 A 作為 provisional final（分享／下載暫用）
-    primary = final_candidates[0]
-    shutil.copy2(out_dir / primary["file"], out_dir / "final.mp3")
-
-    if ace_stats:
-        meta["ace_params"] = {
-            "model": ace_stats.get("model"),
-            "shift": ace_stats.get("shift"),
-            "thinking": ace_stats.get("thinking"),
-            "thinking_effective": ace_stats.get("thinking_effective"),
-            "loaded_lm_model": ace_stats.get("loaded_lm_model"),
-            "inference_steps": ace_stats.get("inference_steps"),
-            "production_caption": ace_stats.get("production_caption"),
-            "caption_chars": ace_stats.get("caption_chars"),
-            "batch_size": ace_stats.get("batch_size") or len(final_candidates),
-            "audio_format": ace_stats.get("audio_format"),
-            "seed": ace_stats.get("seed"),
-            "seeds": ace_stats.get("seeds"),
-            "elapsed_ms": ace_stats.get("elapsed_ms"),
-            "mastered": True,
-            "lm_model": getattr(_ace, "ACESTEP_LM_MODEL", None),
-        }
-        try:
-            from app.ops import metering as ops_metering
-
-            ops_metering.record_music_usage(
-                meta,
-                journey_id=journey_id,
-                kind="ai_finalize",
-                duration_sec=float(ace_stats.get("duration_sec") or _ace.ACESTEP_DURATION_SEC or 45),
-                inference_steps=int(ace_stats.get("inference_steps") or 8),
-                elapsed_ms=int(ace_stats.get("elapsed_ms") or 0),
-                engine=str(ace_stats.get("engine") or "acestep"),
-                model=ace_stats.get("model"),
-                via=ace_stats.get("via"),
-                shift=ace_stats.get("shift"),
-                seed=ace_stats.get("seed"),
-                batch_size=ace_stats.get("batch_size") or len(final_candidates),
-                audio_format=ace_stats.get("audio_format"),
-                save=False,
-            )
-        except Exception as e:
-            print(f"[journey] music metering skip: {e}")
-
-    meta["final_candidates"] = final_candidates
+    shutil.copy2(out_dir / candidate["file"], out_dir / "final.mp3")
+    _remember_ace(meta, ace_stats, 1)
+    meta["final_candidates"] = [candidate]
+    meta["final_takes_limit"] = FINAL_TAKE_LIMIT
     meta["final_file"] = "final.mp3"
     meta["final_engine"] = "acestep"
     meta["final_choice"] = None
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")
-    # 兩版以上 → 進入選歌；單版直接完成
-    if len(final_candidates) >= 2:
-        meta["status"] = "choosing"
-        _set_finalize_progress(meta, 100, "請選一首")
-    else:
-        meta["final_choice"] = primary["id"]
-        meta["status"] = "done"
-        _set_finalize_progress(meta, 100, "完成")
+    meta["status"] = "choosing"
+    _set_finalize_progress(meta, 100, "先聽這一首")
+    store.save_meta(journey_id, meta)
+    return meta
+
+
+def run_remake_final(journey_id: str) -> dict:
+    """同一趟再做一首，保留先前版本。最多 FINAL_TAKE_LIMIT 首，不另扣額度。"""
+    from app.voice import acestep as _ace
+
+    meta = store.load_meta(journey_id)
+    cands = list(meta.get("final_candidates") or [])
+    if not cands:
+        raise RuntimeError("請先完成第一次製作")
+    if meta.get("final_choice"):
+        raise RuntimeError("已經選定版本")
+    if len(cands) >= FINAL_TAKE_LIMIT:
+        raise RuntimeError("最多三首，請從裡面選一首")
+    if not _ace.is_available():
+        raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
+
+    index = len(cands)
+    meta["status"] = "finalizing"
+    meta["error"] = None
+    meta["finalize_progress"] = {"pct": 0, "label": "再做一首"}
+    store.save_meta(journey_id, meta)
+    _set_finalize_progress(meta, 8, "再做一首")
+
+    out_dir = store.output_dir(journey_id)
+    try:
+        candidate, ace_stats = _generate_one_take(meta, out_dir, _candidate_id(index), index)
+    except Exception as e:
+        print(f"[journey] ACE remake failed: {e}")
+        raise RuntimeError("再做一首失敗，請稍後再試") from e
+
+    cands.append(candidate)
+    shutil.copy2(out_dir / candidate["file"], out_dir / "final.mp3")
+    _remember_ace(meta, ace_stats, len(cands))
+    meta["final_candidates"] = cands
+    meta["final_takes_limit"] = FINAL_TAKE_LIMIT
+    meta["final_file"] = "final.mp3"
+    meta["final_choice"] = None
+    meta["status"] = "choosing"
+    _set_finalize_progress(meta, 100, "請聽新的一首")
     store.save_meta(journey_id, meta)
     return meta
 
 
 def pick_final_candidate(journey_id: str, choice: str) -> dict:
-    """遊客從 candidate_a / candidate_b 選定一首寫入 final.mp3。"""
+    """遊客從已做出的版本（最多三首）選定一首寫入 final.mp3。"""
     meta = store.load_meta(journey_id)
     cands = meta.get("final_candidates") or []
     if not cands:

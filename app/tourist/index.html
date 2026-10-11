@@ -370,11 +370,12 @@
               <h3 class="version-label">AI 唱歌版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
               <div id="pickFinalPanel" class="pick-final" hidden>
-                <p class="lead pick-final-lead">做了兩個版本，先聽再選你喜歡的那一首（算一次額度）。</p>
+                <p class="lead pick-final-lead" id="pickFinalLead">先聽這一首。喜歡就選定；不喜歡可以再做，最多再兩次。</p>
                 <div class="pick-final-grid" id="pickFinalGrid"></div>
+                <button type="button" class="secondary" id="btnRemakeFinal" hidden>不喜歡，再做一首</button>
               </div>
               <audio id="finalAudio" controls></audio>
-              <div class="actions">
+              <div class="actions" id="finalActions">
                 <a class="btn btn-primary" id="btnDownload" href="#" download>下載 AI 唱歌版</a>
                 <button class="secondary" id="btnCopyShare">分享給朋友</button>
                 <button class="secondary" id="btnNewTrip">再做一趟</button>
