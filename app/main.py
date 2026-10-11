@@ -56,6 +56,16 @@ _default_lm_urls = [
 ]
 # /lm 代理的轉發目標（本地 LM Studio）
 LM_PROXY_TARGET = os.getenv("LM_PROXY_TARGET", "http://127.0.0.1:1234")
+# 公開 ngrok 的 /lm 與 /v1 必須帶這個標頭，避免外人直接叫 LM Studio
+LM_PROXY_TOKEN = os.getenv("LM_PROXY_TOKEN", "automusic-lm-proxy")
+
+
+def lm_call_headers() -> dict:
+    return {
+        "Content-Type": "application/json",
+        "ngrok-skip-browser-warning": "1",
+        "X-Automusic-Lm-Token": LM_PROXY_TOKEN,
+    }
 if os.getenv("LM_STUDIO_URL"):
     LM_STUDIO_URLS = [os.getenv("LM_STUDIO_URL")]
 elif os.getenv("LM_STUDIO_URLS"):
@@ -523,6 +533,11 @@ async def lm_proxy(path: str, request: Request):
     把 /lm/* 轉發到本地 LM Studio（例如 /lm/v1/chat/completions → 127.0.0.1:1234/v1/chat/completions）。
     ngrok 免費版只有一個固定網域，讓它指向 FastAPI，雲端就能經這裡使用 LM Studio。
     """
+    import hmac
+
+    got = request.headers.get("x-automusic-lm-token") or ""
+    if not hmac.compare_digest(got, LM_PROXY_TOKEN):
+        raise HTTPException(status_code=401, detail="LM 代理未授權")
     target = f"{LM_PROXY_TARGET.rstrip('/')}/{path}"
     body = await request.body()
 
@@ -804,10 +819,7 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
         try:
             resp = requests.post(
                 url,
-                headers={
-                    "Content-Type": "application/json",
-                    "ngrok-skip-browser-warning": "1",
-                },
+                headers=lm_call_headers(),
                 json={
                     "model": LM_STUDIO_MODEL,
                     "messages": [
@@ -1325,10 +1337,7 @@ def ai_compose(request: AIComposeRequest):  # 同步函式：跑在 threadpool�
     def _ask_lm_studio(url: str) -> List[str]:
         resp = requests.post(
             url,
-            headers={
-                "Content-Type": "application/json",
-                "ngrok-skip-browser-warning": "1",  # 避免 ngrok 免費版的瀏覽器警告頁
-            },
+            headers=lm_call_headers(),
             json={
                 "model": LM_STUDIO_MODEL,
                 "messages": [

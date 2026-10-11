@@ -573,6 +573,7 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
                 headers={
                     "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "1",
+                    "X-Automusic-Lm-Token": os.getenv("LM_PROXY_TOKEN", "automusic-lm-proxy"),
                 },
                 json={
                     "model": model,

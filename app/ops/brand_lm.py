@@ -98,6 +98,7 @@ def generate_brand_copy(place: str, hints: str = "") -> Tuple[Dict[str, str], st
                 headers={
                     "Content-Type": "application/json",
                     "ngrok-skip-browser-warning": "1",
+                    "X-Automusic-Lm-Token": os.getenv("LM_PROXY_TOKEN", "automusic-lm-proxy"),
                 },
                 json={
                     "model": _model(),
