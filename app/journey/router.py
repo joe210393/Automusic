@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import threading
+import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -11,6 +12,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.content.loader import list_destinations, load_destination, resolve_engine_style, split_keywords
+from app.journey import music_queue
 from app.journey import store
 from app.journey import service
 from app.ops import accounts as ops_accounts
@@ -192,7 +194,19 @@ def create_journey(
 
 @router.get("/api/journey/{journey_id}")
 def get_journey(journey_id: str):
-    return _meta_or_404(journey_id)
+    meta = _meta_or_404(journey_id)
+    if meta.get("status") != "finalizing":
+        return meta
+    if music_queue.contains(journey_id):
+        return {**meta, "queue": music_queue.status(journey_id)}
+    busy_voice = _finalize_key(journey_id, "voice") in _finalize_inflight
+    queued_at = float(meta.get("finalize_queued_at") or 0)
+    if not busy_voice and time.time() - queued_at > 15:
+        # 伺服器重啟會清掉記憶體裡的排隊，這趟不會再被做，改成可重按
+        meta["status"] = "error"
+        meta["error"] = "製作中斷了，請再按一次「製作 AI 唱歌版」"
+        store.save_meta(journey_id, meta)
+    return meta
 
 
 @router.get("/api/journey/{journey_id}/library")
@@ -651,17 +665,19 @@ def finalize_journey(
             detail="本月免費次數已用完，升級後可繼續完成歌曲",
         )
 
-    if _finalize_key(journey_id, "ai") in _finalize_inflight:
+    if music_queue.contains(journey_id):
         return {
             "ok": True,
             "accepted": True,
             "status": "finalizing",
             "finalize_progress": meta.get("finalize_progress"),
+            "queue": music_queue.status(journey_id),
         }
 
     meta["status"] = "finalizing"
     meta["error"] = None
-    meta["finalize_progress"] = {"pct": 0, "label": "準備製作"}
+    meta["finalize_progress"] = {"pct": 4, "label": "排隊中"}
+    meta["finalize_queued_at"] = time.time()
     store.save_meta(journey_id, meta)
 
     def _worker() -> None:
@@ -683,12 +699,13 @@ def finalize_journey(
             except Exception as save_err:
                 print(f"[journey] async finalize error save failed: {save_err}")
 
-    _spawn_finalize(journey_id, "ai", account_id, _worker)
+    music_queue.enqueue(journey_id, _worker)
     return {
         "ok": True,
         "accepted": True,
         "status": "finalizing",
         "finalize_progress": meta.get("finalize_progress"),
+        "queue": music_queue.status(journey_id),
     }
 
 
@@ -709,60 +726,28 @@ def pick_final(
     payload = _finalize_result_payload(meta)
     payload["final_candidates"] = meta.get("final_candidates")
     payload["final_choice"] = meta.get("final_choice")
-    payload["final_takes_limit"] = meta.get("final_takes_limit") or service.FINAL_TAKE_LIMIT
     return payload
 
 
-@router.post("/api/journey/{journey_id}/remake-final")
-def remake_final_journey(
-    journey_id: str,
-    x_account_token: Optional[str] = Header(None),
-):
-    """同一趟再做一首（最多共三首）。不另扣 TOKEN。"""
+@router.post("/api/journey/{journey_id}/finalize/cancel")
+def cancel_finalize(journey_id: str):
+    """取消排隊（只限還沒開始做的）；不扣額度。"""
     meta = _meta_or_404(journey_id)
-    if x_account_token:
-        _require_journey_owner(meta, x_account_token)
-    cands = meta.get("final_candidates") or []
-    if meta.get("final_choice"):
-        raise HTTPException(status_code=400, detail="已經選定版本")
-    if not cands:
-        raise HTTPException(status_code=400, detail="請先完成第一次製作")
-    if len(cands) >= service.FINAL_TAKE_LIMIT:
-        raise HTTPException(status_code=400, detail="最多三首，請從裡面選一首")
-
-    if _finalize_key(journey_id, "ai") in _finalize_inflight:
-        return {
-            "ok": True,
-            "accepted": True,
-            "status": "finalizing",
-            "finalize_progress": meta.get("finalize_progress"),
-        }
-
-    meta["status"] = "finalizing"
+    if not music_queue.cancel(journey_id):
+        if music_queue.contains(journey_id):
+            raise HTTPException(status_code=409, detail="已經開始製作，無法取消，再等一下就好")
+        raise HTTPException(status_code=400, detail="目前沒有在排隊")
+    meta["status"] = "style"
     meta["error"] = None
-    meta["finalize_progress"] = {"pct": 0, "label": "再做一首"}
+    meta["finalize_progress"] = None
     store.save_meta(journey_id, meta)
+    return {"ok": True, "status": meta["status"]}
 
-    def _worker() -> None:
-        try:
-            service.run_remake_final(journey_id)
-        except Exception as e:
-            print(f"[journey] async remake failed {journey_id}: {e}")
-            try:
-                m = store.load_meta(journey_id)
-                m["status"] = "choosing" if m.get("final_candidates") else "error"
-                m["error"] = _friendly(e)
-                store.save_meta(journey_id, m)
-            except Exception as save_err:
-                print(f"[journey] async remake error save failed: {save_err}")
 
-    _spawn_finalize(journey_id, "ai", meta.get("account_id"), _worker)
-    return {
-        "ok": True,
-        "accepted": True,
-        "status": "finalizing",
-        "finalize_progress": meta.get("finalize_progress"),
-    }
+@router.get("/api/music-queue")
+def music_queue_status():
+    """遊客按製作前可看：前面有幾首、現在按下大約多久完成。"""
+    return music_queue.status()
 
 
 @router.post("/api/journey/{journey_id}/finalize-voice")

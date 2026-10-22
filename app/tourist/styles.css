@@ -1155,7 +1155,17 @@ textarea { min-height: 96px; resize: vertical; }
   gap: 12px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
-#btnRemakeFinal {
+.queue-line {
+  margin: 4px 0 10px;
+  font-weight: 600;
+  color: var(--navy);
+}
+.queue-hint {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+#btnCancelQueue {
   margin-top: 12px;
   width: 100%;
 }

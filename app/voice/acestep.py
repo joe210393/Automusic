@@ -44,7 +44,8 @@ ACESTEP_CAPTION_MODE = (
 # clamped＝BPM 限在 88–118（預設）；fixed＝沿用現場分析；lm＝不指定，交給 ACE 5Hz LM（曾給到 200 BPM）
 ACESTEP_METAS_MODE = (os.getenv("ACESTEP_METAS_MODE") or "clamped").strip().lower()
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
-ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
+# ACE 單一工作佇列：前面排了幾首就要多等幾首的時間，活動尖峰需留足
+ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "1800"))
 # 只有主歌＋副歌的舊歌詞用短長度；有主歌二／橋段的完整歌詞用 FULL
 ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
 ACESTEP_FULL_DURATION_SEC = float(os.getenv("ACESTEP_FULL_DURATION_SEC", "180"))

@@ -499,37 +499,19 @@
   function renderPickFinal(meta) {
     const panel = $("pickFinalPanel");
     const grid = $("pickFinalGrid");
-    const remakeBtn = $("btnRemakeFinal");
-    const lead = $("pickFinalLead");
     if (!panel || !grid) return;
     const cands = (meta && meta.final_candidates) || (journey && journey.final_candidates) || [];
     const choice = (meta && meta.final_choice) || (journey && journey.final_choice);
     const status = (meta && meta.status) || (journey && journey.status);
-    const needPick = status === "choosing" && !choice && cands.length >= 1;
+    const needPick = status === "choosing" && !choice && cands.length >= 2;
     if ($("finalAudio")) $("finalAudio").hidden = !!needPick;
     if ($("finalActions")) $("finalActions").hidden = !!needPick;
     if (!needPick) {
       panel.hidden = true;
       grid.innerHTML = "";
-      if (remakeBtn) remakeBtn.hidden = true;
       return;
     }
     panel.hidden = false;
-    const left = Math.max(0, 3 - cands.length);
-    if (lead) {
-      if (cands.length >= 3) {
-        lead.textContent = "三首都好了，請選你要帶走的那一首。";
-      } else if (cands.length === 2) {
-        lead.textContent = "已有兩首。可以選一首，或再做最後一次。";
-      } else {
-        lead.textContent = "先聽這一首。喜歡就選定；不喜歡可以再做，最多再兩次。";
-      }
-    }
-    if (remakeBtn) {
-      remakeBtn.hidden = left <= 0;
-      remakeBtn.disabled = document.body.classList.contains("finalize-busy");
-      remakeBtn.textContent = left === 1 ? "再做最後一首" : "不喜歡，再做一首";
-    }
     grid.innerHTML = "";
     cands.forEach((c) => {
       const id = c.id || c.index;
@@ -598,15 +580,9 @@
     fillSoundTrace("result", journey);
     journey.share_path = journey.share_public ? `/s/${journey.slug}` : journey.share_path;
     if (journey.status === "choosing") {
-      const n = (journey.final_candidates || []).length;
-      setStatus(
-        $("resultStatus"),
-        n >= 3
-          ? "三首都好了，選一首帶走。"
-          : "先聽看看。喜歡就選定；不喜歡可以再做。"
-      );
+      setStatus($("resultStatus"), "先聽看看，選你喜歡的那一首。");
     } else {
-      setStatus($("resultStatus"), "這是你的 AI 唱歌版。上方可看你收集的聲音如何寫進這首歌。");
+      setStatus($("resultStatus"), RESULT_READY_TEXT);
     }
   }
 
@@ -637,8 +613,12 @@
       showComposeFromMeta();
     } else if (screen === "voice") {
       if (selectedRoute) setupSoundBox();
-      renderSingers();
-      show("voice");
+      if (journey.status === "finalizing" && !journey.final_file) {
+        resumeFinalizeWait();
+      } else {
+        renderSingers();
+        show("voice");
+      }
     } else if (screen === "result") {
       showResultFromMeta();
     } else {
@@ -1315,7 +1295,11 @@
     return URL.createObjectURL(blob);
   }
 
+  const RESULT_READY_TEXT =
+    "這是你的 AI 唱歌版，可以下載或分享。不喜歡的話，按「再做一趟」重新收音、重新寫一首。";
+
   const AI_FINALIZE_STEPS = [
+    "排隊中",
     "準備製作",
     "連線 AI 唱歌引擎",
     "AI 正在作曲唱歌",
@@ -1334,6 +1318,7 @@
   ];
 
   const STEP_PCT = {
+    "排隊中": 4,
     "準備製作": 8,
     "連線 AI 唱歌引擎": 20,
     "AI 正在作曲唱歌": 55,
@@ -1414,7 +1399,33 @@
     });
     $("btnFinalize").disabled = !selectedSinger || document.body.classList.contains("finalize-busy");
     if (!selectedSinger) setStatus($("voiceStatus"), "先選明亮系或沉穩系，再挑一位 AI 歌手。");
+    refreshQueueHint();
   }
+
+  async function refreshQueueHint() {
+    const hint = $("queueHint");
+    if (!hint) return;
+    if (document.body.classList.contains("finalize-busy")) {
+      hint.hidden = true;
+      return;
+    }
+    try {
+      const q = await api("/api/music-queue");
+      const ahead = (q.running || 0) + (q.waiting || 0);
+      const mins = Math.max(1, Math.round((q.eta_new_sec || 0) / 60));
+      hint.textContent = ahead > 0
+        ? `目前有 ${ahead} 首歌在製作或排隊，現在按下大約 ${mins} 分鐘後完成。`
+        : `現在不用排隊，按下大約 ${mins} 分鐘後完成。`;
+      hint.hidden = false;
+    } catch (_) {
+      hint.hidden = true;
+    }
+  }
+
+  setInterval(() => {
+    const voice = $("screen-voice");
+    if (voice && voice.classList.contains("active")) refreshQueueHint();
+  }, 20000);
 
   function syncVoiceVersionUi() {
     const block = $("voiceVersionBlock");
@@ -1450,8 +1461,28 @@
     }
   }
 
+  let wakeLock = null;
+  async function holdScreenAwake(on) {
+    try {
+      if (on && !wakeLock && navigator.wakeLock) {
+        wakeLock = await navigator.wakeLock.request("screen");
+        wakeLock.addEventListener("release", () => { wakeLock = null; });
+      } else if (!on && wakeLock) {
+        await wakeLock.release();
+        wakeLock = null;
+      }
+    } catch (_) { /* 不支援或被拒絕時照常製作 */ }
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && document.body.classList.contains("finalize-busy")) {
+      holdScreenAwake(true);
+    }
+  });
+
   function setFinalizeBusy(busy, { panelId = "finalizeProgress", enableBtn = null } = {}) {
     document.body.classList.toggle("finalize-busy", !!busy);
+    holdScreenAwake(!!busy);
+    if ($("queueHint")) $("queueHint").hidden = true;
     const panel = $(panelId);
     if (panel) {
       panel.hidden = !busy;
@@ -1492,12 +1523,17 @@
     }).join("");
   }
 
-  function updateFinalizeClock(panelPrefix, startedAt, pct, kind) {
+  function updateFinalizeClock(panelPrefix, startedAt, pct, kind, serverEta = null) {
     const elapsedEl = $(panelPrefix === "voice" ? "voiceFinalizeElapsed" : "finalizeElapsed");
     const etaEl = $(panelPrefix === "voice" ? "voiceFinalizeEta" : "finalizeEta");
     const elapsed = Math.max(0, (Date.now() - startedAt) / 1000);
     if (elapsedEl) elapsedEl.textContent = `已過 ${formatClock(elapsed)}`;
     if (!etaEl) return;
+    if (serverEta && serverEta.sec != null) {
+      const left = serverEta.sec - (Date.now() - serverEta.at) / 1000;
+      etaEl.textContent = formatRemainHint(Math.max(10, left));
+      return;
+    }
     const safePct = Math.max(0, Math.min(99, Number(pct) || 0));
     const baseline = FINALIZE_BASELINE_SEC[kind] || FINALIZE_BASELINE_SEC.ai;
     let remain;
@@ -1530,15 +1566,33 @@
     let lastLabel = steps[0];
     let serverPct = lastPct;
     let lastServerAt = startedAt;
+    let serverEta = null;
 
     renderProgress(panelPrefix, steps, lastPct, lastLabel);
     updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
     setStatus(
       statusEl,
       kind === "ai"
-        ? "正在製作約三分鐘的 AI 唱歌版，大約要等 3–5 分鐘…"
+        ? "已送出！約三分鐘的 AI 唱歌版會依序製作，可以先把手機放著。"
         : "正在製作你的聲音版，請稍候…"
     );
+
+    function applyQueue(q) {
+      if (kind !== "ai") return;
+      const line = $("finalizeQueue");
+      const cancelBtn = $("btnCancelQueue");
+      const waiting = !!(q && q.state === "waiting");
+      if (line) {
+        line.hidden = !waiting;
+        if (waiting) {
+          line.textContent = q.ahead > 0
+            ? `排隊中：你是第 ${q.position} 位，前面還有 ${q.ahead} 首在製作或排隊`
+            : "排隊中：馬上輪到你";
+        }
+      }
+      if (cancelBtn) cancelBtn.hidden = !waiting;
+      if (q && q.eta_done_sec != null) serverEta = { sec: q.eta_done_sec, at: Date.now() };
+    }
 
     function applyServerProgress(fp) {
       if (!fp || fp.pct == null) return;
@@ -1551,7 +1605,7 @@
       lastLabel = label;
       lastServerAt = Date.now();
       renderProgress(panelPrefix, steps, lastPct, label);
-      updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
+      updateFinalizeClock(panelPrefix, startedAt, lastPct, kind, serverEta);
     }
 
     const poll = (async () => {
@@ -1559,6 +1613,7 @@
         try {
           const meta = await api(`/api/journey/${journey.id}`);
           if (meta.status === "finalizing") {
+            applyQueue(meta.queue);
             applyServerProgress(meta.finalize_progress || {});
           }
         } catch (_) { /* ignore */ }
@@ -1572,26 +1627,33 @@
             renderProgress(panelPrefix, steps, lastPct, lastLabel);
           }
         }
-        updateFinalizeClock(panelPrefix, startedAt, lastPct, kind);
+        updateFinalizeClock(panelPrefix, startedAt, lastPct, kind, serverEta);
         await new Promise((r) => setTimeout(r, 450));
       }
     })();
 
+    let cancelled = false;
     try {
       const started = await request();
+      applyQueue(started && started.queue);
       // 非同步 finalize：accepted 後改輪詢旅程狀態，避免長連線 Bad Gateway
       let data = started;
       if (started && started.accepted && started.status === "finalizing") {
-        const deadline = Date.now() + 15 * 60 * 1000;
+        const deadline = Date.now() + 30 * 60 * 1000;
         while (Date.now() < deadline) {
           await new Promise((r) => setTimeout(r, 800));
           const meta = await api(`/api/journey/${journey.id}`);
           if (meta.status === "finalizing") {
+            applyQueue(meta.queue);
             applyServerProgress(meta.finalize_progress || {});
             continue;
           }
           if (meta.status === "error") {
             throw new Error(meta.error || "製作失敗，請稍後再試");
+          }
+          if (!["done", "finalized", "choosing"].includes(meta.status)) {
+            cancelled = true;
+            break;
           }
           if (meta.status === "done" || meta.status === "finalized" || meta.status === "choosing") {
             data = {
@@ -1611,6 +1673,11 @@
             };
             break;
           }
+        }
+        if (cancelled) {
+          stopPoll = true;
+          setStatus(statusEl, "已取消排隊。想做的時候再按一次「製作 AI 唱歌版」。");
+          return;
         }
         if (!(data && (data.status === "done" || data.status === "finalized" || data.status === "choosing"))) {
           throw new Error("製作逾時，請稍後再試");
@@ -1634,7 +1701,20 @@
     } finally {
       stopPoll = true;
       try { await poll; } catch (_) { /* ignore */ }
+      applyQueue(null);
       setFinalizeBusy(false, { panelId, enableBtn });
+    }
+  }
+
+  async function cancelQueue() {
+    const btn = $("btnCancelQueue");
+    if (btn) btn.disabled = true;
+    try {
+      await api(`/api/journey/${journey.id}/finalize/cancel`, { method: "POST", body: "{}" });
+    } catch (e) {
+      setStatus($("voiceStatus"), e.message || "取消失敗", true);
+    } finally {
+      if (btn) btn.disabled = false;
     }
   }
 
@@ -1643,20 +1723,31 @@
       setStatus($("voiceStatus"), "請先選擇 AI 歌手", true);
       return;
     }
-    await runProgressJob({
+    await runAiFinalizeJob(async () => {
+      await api(`/api/journey/${journey.id}/singer`, {
+        method: "POST",
+        body: JSON.stringify({ singer_id: selectedSinger.id }),
+      });
+      return api(`/api/journey/${journey.id}/finalize`, { method: "POST", body: "{}" });
+    });
+  }
+
+  /** 重新打開網頁時，伺服器還在做：只接回進度，不重送製作。 */
+  async function resumeFinalizeWait() {
+    await renderSingers();
+    show("voice");
+    await runAiFinalizeJob(async () => ({ accepted: true, status: "finalizing" }));
+  }
+
+  function runAiFinalizeJob(request) {
+    return runProgressJob({
       steps: AI_FINALIZE_STEPS,
       panelPrefix: "ai",
       panelId: "finalizeProgress",
       enableBtn: "ai",
       kind: "ai",
       statusEl: $("voiceStatus"),
-      request: async () => {
-        await api(`/api/journey/${journey.id}/singer`, {
-          method: "POST",
-          body: JSON.stringify({ singer_id: selectedSinger.id }),
-        });
-        return api(`/api/journey/${journey.id}/finalize`, { method: "POST", body: "{}" });
-      },
+      request,
       onDone: async (data) => {
         journey = {
           ...(journey || {}),
@@ -1664,8 +1755,8 @@
           final_file: "final.mp3",
           slug: data.slug,
           share_path: data.share_path,
-          ai_singer_id: data.ai_singer_id || selectedSinger.id,
-          ai_singer_label: data.ai_singer_label || selectedSinger.label,
+          ai_singer_id: data.ai_singer_id || selectedSinger?.id,
+          ai_singer_label: data.ai_singer_label || selectedSinger?.label,
           lyrics: data.lyrics || journey.lyrics,
           title: (data.lyrics && data.lyrics.title) || journey.title,
           final_candidates: data.final_candidates || [],
@@ -1677,12 +1768,6 @@
           $("finalAudio").src = data.final_url + "?t=" + Date.now();
           $("btnDownload").href = data.final_url;
         }
-        setStatus(
-          $("resultStatus"),
-          data.status === "choosing"
-            ? "這一首好了。先聽看看，喜歡就選定；不喜歡可以再做，最多再兩次。"
-            : "AI 唱歌版完成！可以下載，或在下方用自己的聲音再做一版。"
-        );
       },
     });
   }
@@ -1809,51 +1894,9 @@
     await renderSingers();
     show("voice");
   });
-  async function remakeFinal() {
-    const btn = $("btnRemakeFinal");
-    const before = (journey.final_candidates || []).length;
-    if (btn) btn.disabled = true;
-    setStatus($("resultStatus"), "正在再做一首，大約要等 3–5 分鐘…");
-    try {
-      const started = await api(`/api/journey/${journey.id}/remake-final`, {
-        method: "POST",
-        body: "{}",
-      });
-      let meta = started;
-      if (started && started.accepted && started.status === "finalizing") {
-        const deadline = Date.now() + 15 * 60 * 1000;
-        while (Date.now() < deadline) {
-          await new Promise((r) => setTimeout(r, 800));
-          meta = await api(`/api/journey/${journey.id}`);
-          if (meta.status === "finalizing") continue;
-          if (meta.status === "error") throw new Error(meta.error || "再做一首失敗");
-          if (meta.status === "choosing" || meta.status === "done") {
-            const n = (meta.final_candidates || []).length;
-            if (meta.error && n <= before) throw new Error(meta.error);
-            break;
-          }
-        }
-      }
-      if (!(meta && (meta.status === "choosing" || meta.status === "done"))) {
-        throw new Error("再做一首逾時，請稍後再試");
-      }
-      journey = {
-        ...(journey || {}),
-        ...meta,
-        status: meta.status,
-        final_candidates: meta.final_candidates || [],
-        final_choice: meta.final_choice || null,
-      };
-      persistJourney();
-      showResultFromMeta();
-    } catch (e) {
-      setStatus($("resultStatus"), e.message || "再做一首失敗", true);
-      if (btn) btn.disabled = false;
-    }
-  }
 
   $("btnFinalize").addEventListener("click", () => finalize());
-  $("btnRemakeFinal")?.addEventListener("click", () => remakeFinal());
+  $("btnCancelQueue")?.addEventListener("click", () => cancelQueue());
   document.querySelectorAll(".gender-choice").forEach((btn) => {
     btn.addEventListener("click", () => {
       selectedGender = btn.dataset.gender || "female";
@@ -1969,6 +2012,24 @@
 
   refreshAuthState();
 
+  /** 手機關掉網頁再打開：正在做或剛做好的歌要自動接回來。 */
+  async function resumeRecentSong() {
+    const id = localStorage.getItem(JOURNEY_KEY);
+    if (!id) return false;
+    try {
+      const meta = await api(`/api/journey/${id}`);
+      const updated = Date.parse(meta.updated || "") || 0;
+      const fresh = Date.now() - updated < 6 * 60 * 60 * 1000;
+      const waiting = meta.status === "finalizing";
+      const justDone = ["done", "finalized", "choosing"].includes(meta.status) && fresh;
+      if (!waiting && !justDone) return false;
+      await resumeJourney(id);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   async function boot() {
     const resumeId = new URLSearchParams(location.search).get("journey");
     if (resumeId) {
@@ -1981,6 +2042,7 @@
         alert(e.message || "無法開啟這趟旅程");
       }
     }
+    if (await resumeRecentSong()) return;
     await initHub();
   }
 

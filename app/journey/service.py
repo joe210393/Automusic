@@ -260,9 +260,6 @@ def run_finalize(journey_id: str) -> dict:
     return run_finalize_ai(journey_id)
 
 
-FINAL_TAKE_LIMIT = 3
-
-
 def _candidate_id(index: int) -> str:
     return chr(ord("a") + index)
 
@@ -394,7 +391,7 @@ def _remember_ace(meta: dict, ace_stats: dict, take_count: int) -> None:
 
 
 def run_finalize_ai(journey_id: str) -> dict:
-    """先做一首 AI 成品。不喜歡可再重做，最多三首再選。"""
+    """一趟旅程只做一首 AI 成品；不喜歡請遊客重新走一趟（重新收音、寫詞）。"""
     from app.voice.singer_templates import get_template, is_valid_singer_id
 
     meta = store.load_meta(journey_id)
@@ -426,62 +423,19 @@ def run_finalize_ai(journey_id: str) -> dict:
     shutil.copy2(out_dir / candidate["file"], out_dir / "final.mp3")
     _remember_ace(meta, ace_stats, 1)
     meta["final_candidates"] = [candidate]
-    meta["final_takes_limit"] = FINAL_TAKE_LIMIT
     meta["final_file"] = "final.mp3"
     meta["final_engine"] = "acestep"
-    meta["final_choice"] = None
+    meta["final_choice"] = candidate["id"]
     meta["share_public"] = True
     meta["ai_singer_label"] = tpl.get("label")
-    meta["status"] = "choosing"
-    _set_finalize_progress(meta, 100, "先聽這一首")
-    store.save_meta(journey_id, meta)
-    return meta
-
-
-def run_remake_final(journey_id: str) -> dict:
-    """同一趟再做一首，保留先前版本。最多 FINAL_TAKE_LIMIT 首，不另扣額度。"""
-    from app.voice import acestep as _ace
-
-    meta = store.load_meta(journey_id)
-    cands = list(meta.get("final_candidates") or [])
-    if not cands:
-        raise RuntimeError("請先完成第一次製作")
-    if meta.get("final_choice"):
-        raise RuntimeError("已經選定版本")
-    if len(cands) >= FINAL_TAKE_LIMIT:
-        raise RuntimeError("最多三首，請從裡面選一首")
-    if not _ace.is_available():
-        raise RuntimeError("AI 唱歌引擎未連線，請確認本機 ACE-Step 已啟動後再試")
-
-    index = len(cands)
-    meta["status"] = "finalizing"
-    meta["error"] = None
-    meta["finalize_progress"] = {"pct": 0, "label": "再做一首"}
-    store.save_meta(journey_id, meta)
-    _set_finalize_progress(meta, 8, "再做一首")
-
-    out_dir = store.output_dir(journey_id)
-    try:
-        candidate, ace_stats = _generate_one_take(meta, out_dir, _candidate_id(index), index)
-    except Exception as e:
-        print(f"[journey] ACE remake failed: {e}")
-        raise RuntimeError("再做一首失敗，請稍後再試") from e
-
-    cands.append(candidate)
-    shutil.copy2(out_dir / candidate["file"], out_dir / "final.mp3")
-    _remember_ace(meta, ace_stats, len(cands))
-    meta["final_candidates"] = cands
-    meta["final_takes_limit"] = FINAL_TAKE_LIMIT
-    meta["final_file"] = "final.mp3"
-    meta["final_choice"] = None
-    meta["status"] = "choosing"
-    _set_finalize_progress(meta, 100, "請聽新的一首")
+    meta["status"] = "done"
+    _set_finalize_progress(meta, 100, "完成")
     store.save_meta(journey_id, meta)
     return meta
 
 
 def pick_final_candidate(journey_id: str, choice: str) -> dict:
-    """遊客從已做出的版本（最多三首）選定一首寫入 final.mp3。"""
+    """舊旅程（曾一次做多版）從候選中選定一首寫入 final.mp3。"""
     meta = store.load_meta(journey_id)
     cands = meta.get("final_candidates") or []
     if not cands:

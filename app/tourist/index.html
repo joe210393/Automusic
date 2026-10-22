@@ -322,6 +322,7 @@
                 <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
               </div>
               <p class="finalize-headline" id="finalizeHeadline">正在把你的旅行唱成歌</p>
+              <p class="queue-line" id="finalizeQueue" hidden></p>
               <div class="pct-row">
                 <span id="finalizePctLabel">製作中</span>
                 <strong id="finalizePct">0%</strong>
@@ -331,9 +332,11 @@
                 <span id="finalizeElapsed">已過 0:00</span>
                 <strong id="finalizeEta">預估還需約 3–5 分鐘</strong>
               </div>
-              <p class="finalize-hint" id="finalizeHint">AI 作曲唱歌需要一點時間，請先別離開此頁。</p>
+              <p class="finalize-hint" id="finalizeHint">關掉螢幕或切到別的 App 也會繼續做；做好後再打開這個網頁，就會看到你的歌。</p>
               <ul class="progress-list" id="finalizeSteps"></ul>
+              <button class="secondary" id="btnCancelQueue" type="button" hidden>取消排隊</button>
             </div>
+            <p class="queue-hint" id="queueHint" hidden></p>
             <div class="nav-row">
               <button class="secondary" data-back="compose" id="btnVoiceBack">返回</button>
               <button class="primary" id="btnFinalize" disabled>製作 AI 唱歌版</button>
@@ -372,9 +375,8 @@
               <h3 class="version-label">AI 唱歌版</h3>
               <p class="meta-line" id="aiSingerMeta"></p>
               <div id="pickFinalPanel" class="pick-final" hidden>
-                <p class="lead pick-final-lead" id="pickFinalLead">先聽這一首。喜歡就選定；不喜歡可以再做，最多再兩次。</p>
+                <p class="lead pick-final-lead">這趟做了幾個版本，先聽再選你喜歡的那一首。</p>
                 <div class="pick-final-grid" id="pickFinalGrid"></div>
-                <button type="button" class="secondary" id="btnRemakeFinal" hidden>不喜歡，再做一首</button>
               </div>
               <audio id="finalAudio" controls></audio>
               <div class="actions" id="finalActions">
