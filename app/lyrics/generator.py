@@ -25,6 +25,16 @@ TEMPLATES = {
             "把溫柔都留下",
             "帶回家慢慢想",
         ],
+        "verse2": [
+            "夕陽落在船上",
+            "浪花輕聲回響",
+            "你說這一刻",
+            "要記得很久很長",
+        ],
+        "bridge": [
+            "如果有一天走遠",
+            "風會帶我回到這邊",
+        ],
     },
     "快樂": {
         "verse": [
@@ -42,6 +52,16 @@ TEMPLATES = {
             "跳過南方澳岸",
             "把今天的精彩",
             "唱成永遠紀念",
+        ],
+        "verse2": [
+            "冰涼的泉水邊",
+            "大家笑成一片",
+            "照片裡的我們",
+            "比天空還要藍",
+        ],
+        "bridge": [
+            "就算明天要說再見",
+            "這首歌會陪在身邊",
         ],
     },
     "平靜": {
@@ -61,24 +81,40 @@ TEMPLATES = {
             "把平靜都帶走",
             "回家還能回望",
         ],
+        "verse2": [
+            "雲慢慢地走",
+            "海也輕輕地唱",
+            "時間在這裡",
+            "好像不會變長",
+        ],
+        "bridge": [
+            "閉上眼睛",
+            "還聽得見那片海浪",
+        ],
     },
 }
 
 
 def generate_lyrics(keywords: list, emotion: str = "溫暖") -> dict:
-    """回傳 {verse, chorus, prechorus} 換行短句。"""
+    """回傳 {verse, prechorus, chorus, verse2, bridge} 換行短句。"""
     template = TEMPLATES.get(emotion) or TEMPLATES["溫暖"]
     kw = [k for k in (keywords or []) if str(k).strip()]
     verse = list(template["verse"])
     chorus = list(template["chorus"])
     pre = list(template["prechorus"])
+    verse2 = list(template["verse2"])
+    bridge = list(template["bridge"])
     if kw:
         # 把第一個關鍵字自然嵌進主歌末句
         verse[-1] = f"想起{kw[0]}"
         if len(kw) > 1:
             chorus[-1] = f"留下{kw[1]}"
+        if len(kw) > 2:
+            verse2[-1] = f"還有{kw[2]}"
     return {
         "verse": "\n".join(verse),
         "prechorus": "\n".join(pre),
         "chorus": "\n".join(chorus),
+        "verse2": "\n".join(verse2),
+        "bridge": "\n".join(bridge),
     }

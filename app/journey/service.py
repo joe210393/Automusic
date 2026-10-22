@@ -124,6 +124,9 @@ def build_sound_trace(meta: dict, destination: Optional[dict] = None) -> dict:
     }
 
 
+PREVIEW_ENABLED = os.getenv("JOURNEY_PREVIEW", "0").strip().lower() in ("1", "true", "yes")
+
+
 def run_compose(journey_id: str) -> dict:
     """素材→旋律→歌詞→伴奏預覽。"""
     meta = store.load_meta(journey_id)
@@ -203,15 +206,18 @@ def run_compose(journey_id: str) -> dict:
             print(f"[journey] llm metering skip: {e}")
     store.save_meta(journey_id, meta)
 
-    # 3) 伴奏預覽（無人聲／真實樂器 SoundFont）
-    _step(meta, "編排真實樂器伴奏")
-    store.save_meta(journey_id, meta)
-    meta["arrange_seed"] = secrets.randbelow(10**9)
-    preview_path = _render_arrangement(meta, use_voiceprint=False)
-    out_name = Path(preview_path).name
-    dest_file = store.output_dir(journey_id) / out_name
-    shutil.copyfile(preview_path, dest_file)
-    meta["preview_file"] = out_name
+    # 3) 伴奏預覽（無人聲／真實樂器 SoundFont）；預設跳過，寫完詞直接選歌手
+    if PREVIEW_ENABLED:
+        _step(meta, "編排真實樂器伴奏")
+        store.save_meta(journey_id, meta)
+        meta["arrange_seed"] = secrets.randbelow(10**9)
+        preview_path = _render_arrangement(meta, use_voiceprint=False)
+        out_name = Path(preview_path).name
+        dest_file = store.output_dir(journey_id) / out_name
+        shutil.copyfile(preview_path, dest_file)
+        meta["preview_file"] = out_name
+    else:
+        meta["preview_file"] = None
     meta["status"] = "preview"
     _step(meta, "旅行歌曲誕生了")
     store.save_meta(journey_id, meta)
@@ -312,7 +318,7 @@ def _generate_one_take(meta: dict, out_dir: Path, cid: str, index: int) -> tuple
         key=meta.get("key"),
         singer_id=meta.get("ai_singer_id"),
         engine_style=meta.get("engine_style"),
-        duration_sec=float(_ace.ACESTEP_DURATION_SEC or 45.0),
+        duration_sec=_ace.duration_for_lyrics(meta["lyrics"]),
         out_dir=out_dir,
         batch_size=1,
         audio_format=_ace.ACESTEP_AUDIO_FORMAT,
@@ -349,7 +355,12 @@ def _remember_ace(meta: dict, ace_stats: dict, take_count: int) -> None:
         "loaded_lm_model": ace_stats.get("loaded_lm_model"),
         "inference_steps": ace_stats.get("inference_steps"),
         "production_caption": ace_stats.get("production_caption"),
+        "caption_mode": ace_stats.get("caption_mode"),
+        "metas_mode": ace_stats.get("metas_mode"),
         "caption_chars": ace_stats.get("caption_chars"),
+        "result_bpm": ace_stats.get("result_bpm"),
+        "result_key": ace_stats.get("result_key"),
+        "duration_sec": ace_stats.get("duration_sec"),
         "batch_size": 1,
         "take_count": take_count,
         "audio_format": ace_stats.get("audio_format"),
@@ -366,7 +377,7 @@ def _remember_ace(meta: dict, ace_stats: dict, take_count: int) -> None:
             meta,
             journey_id=meta.get("id"),
             kind="ai_finalize",
-            duration_sec=float(ace_stats.get("duration_sec") or _ace.ACESTEP_DURATION_SEC or 45),
+            duration_sec=float(ace_stats.get("duration_sec") or _ace.duration_for_lyrics(meta.get("lyrics"))),
             inference_steps=int(ace_stats.get("inference_steps") or 8),
             elapsed_ms=int(ace_stats.get("elapsed_ms") or 0),
             engine=str(ace_stats.get("engine") or "acestep"),
@@ -564,72 +575,67 @@ def _generate_lyrics(keywords: List[str], style: str) -> dict:
             "https://tactually-venerable-inez.ngrok-free.dev/lm/v1/chat/completions",
         ]
     model = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
-    max_tokens = int(os.getenv("LM_STUDIO_MAX_TOKENS", "768"))
-
-    for url in lm_urls:
-        try:
-            resp = requests.post(
-                url,
-                headers={
-                    "Content-Type": "application/json",
-                    "ngrok-skip-browser-warning": "1",
-                    "X-Automusic-Lm-Token": os.getenv("LM_PROXY_TOKEN", "automusic-lm-proxy"),
-                },
-                json={
-                    "model": model,
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    "temperature": 0.9,
-                    "max_tokens": max_tokens,
-                },
-                timeout=(4, 300),
-            )
-            if resp.status_code != 200:
-                continue
-            payload = resp.json()
-            message = payload["choices"][0]["message"]
-            parsed = parse_lyrics_from_message(message)
-            if parsed:
-                from app.ops.metering import extract_openai_usage
-                from app.lyrics.prosody import optimize_lyrics
-
-                usage = extract_openai_usage(payload) or {}
-                polished = optimize_lyrics(parsed)
-                out = {
-                    "title": polished["title"],
-                    "verse": polished["verse"],
-                    "prechorus": polished.get("prechorus") or "",
-                    "chorus": polished["chorus"],
-                    "source": "lm_studio",
-                }
-                if usage:
-                    out["llm_usage"] = {**usage, "model": model}
-                return out
-        except Exception as e:
-            print(f"[journey] lyrics LM fail ({url}): {e}")
-            continue
+    max_tokens = int(os.getenv("LM_STUDIO_MAX_TOKENS", "1024"))
 
     from app.lyrics.generator import generate_lyrics as gen_lyrics
     from app.lyrics.prosody import optimize_lyrics
+    from app.ops.metering import extract_openai_usage
+
+    partial = None
+    for url in lm_urls:
+        # 少了主歌二／橋段就會退回 45 秒短歌，同一網址多問一次
+        for _attempt in range(2):
+            try:
+                resp = requests.post(
+                    url,
+                    headers={
+                        "Content-Type": "application/json",
+                        "ngrok-skip-browser-warning": "1",
+                        "X-Automusic-Lm-Token": os.getenv("LM_PROXY_TOKEN", "automusic-lm-proxy"),
+                    },
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        "temperature": 0.9,
+                        "max_tokens": max_tokens,
+                    },
+                    timeout=(4, 300),
+                )
+                if resp.status_code != 200:
+                    break
+                payload = resp.json()
+                parsed = parse_lyrics_from_message(payload["choices"][0]["message"])
+                if not parsed:
+                    continue
+                usage = extract_openai_usage(payload) or {}
+                out = {**optimize_lyrics(parsed), "source": "lm_studio"}
+                if usage:
+                    out["llm_usage"] = {**usage, "model": model}
+                if out.get("verse2") and out.get("bridge"):
+                    return out
+                if partial is None:
+                    partial = out
+            except Exception as e:
+                print(f"[journey] lyrics LM fail ({url}): {e}")
+                break
+        if partial is not None:
+            break
+
+    if partial is not None:
+        filler = gen_lyrics(keywords, "溫暖")
+        for section in ("verse2", "bridge"):
+            if not partial.get(section):
+                partial[section] = filler[section]
+        return partial
 
     result = gen_lyrics(keywords, "溫暖")
     polished = optimize_lyrics(
-        {
-            "title": (keywords[0] if keywords else "旅行") + "之歌",
-            "verse": result["verse"],
-            "chorus": result["chorus"],
-            "prechorus": result.get("prechorus") or "",
-        }
+        {"title": (keywords[0] if keywords else "旅行") + "之歌", **result}
     )
-    return {
-        "title": polished["title"],
-        "verse": polished["verse"],
-        "prechorus": polished.get("prechorus") or "",
-        "chorus": polished["chorus"],
-        "source": "template",
-    }
+    return {**polished, "source": "template"}
 
 
 def _mix_vocal_into_acc(acc, vocal, apply_reverb):

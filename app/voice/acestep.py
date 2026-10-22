@@ -37,10 +37,19 @@ ACESTEP_PRODUCTION_CAPTION = os.getenv("ACESTEP_PRODUCTION_CAPTION", "1").strip(
     "false",
     "no",
 )
+# v2＝短 caption、旋律講對比（預設）；production＝舊長 caption；legacy＝最舊短 prompt
+ACESTEP_CAPTION_MODE = (
+    os.getenv("ACESTEP_CAPTION_MODE") or ("v2" if ACESTEP_PRODUCTION_CAPTION else "legacy")
+).strip().lower()
+# clamped＝BPM 限在 88–118（預設）；fixed＝沿用現場分析；lm＝不指定，交給 ACE 5Hz LM（曾給到 200 BPM）
+ACESTEP_METAS_MODE = (os.getenv("ACESTEP_METAS_MODE") or "clamped").strip().lower()
 ACESTEP_POLL_INTERVAL = float(os.getenv("ACESTEP_POLL_INTERVAL", "2.0"))
 ACESTEP_TIMEOUT_SEC = float(os.getenv("ACESTEP_TIMEOUT_SEC", "900"))
-# 旅程成品預設長度（秒）；本機 API 上限 clamp 在 90
+# 只有主歌＋副歌的舊歌詞用短長度；有主歌二／橋段的完整歌詞用 FULL
 ACESTEP_DURATION_SEC = float(os.getenv("ACESTEP_DURATION_SEC", "45"))
+ACESTEP_FULL_DURATION_SEC = float(os.getenv("ACESTEP_FULL_DURATION_SEC", "180"))
+_MAX_DURATION_SEC = 240.0
+_CLAMP_BPM = (88, 118)
 # XL turbo 仍建議 8；若改 xl-sft 可設 ACESTEP_INFERENCE_STEPS=50
 _default_steps = "8"
 if "sft" in ACESTEP_MODEL and "turbo" not in ACESTEP_MODEL:
@@ -210,29 +219,70 @@ def is_available(timeout: float = 1.5) -> bool:
     return local_available(timeout=timeout) or remote_available(timeout=max(timeout, 2.5))
 
 
+def is_full_song(lyrics: Optional[dict]) -> bool:
+    ly = lyrics if isinstance(lyrics, dict) else {}
+    return bool(str(ly.get("verse2") or "").strip() or str(ly.get("bridge") or "").strip())
+
+
+def duration_for_lyrics(lyrics: Optional[dict]) -> float:
+    return ACESTEP_FULL_DURATION_SEC if is_full_song(lyrics) else ACESTEP_DURATION_SEC
+
+
 def format_lyrics(lyrics: dict) -> str:
-    """ACE-Step 結構：Intro → Verse → Pre-Chorus → Chorus → Outro（45 秒好唱）。"""
-    title = (lyrics.get("title") or "").strip()
+    """
+    完整歌：Intro → Verse 1 → Pre → Chorus → Verse 2 → Pre → Chorus → Bridge → Chorus → Outro。
+    舊歌詞（無主歌二／橋段）：Intro → Verse → Pre → Chorus → Outro。
+    Intro 不放字，讓前奏是純樂器。
+    """
     verse = (lyrics.get("verse") or "").strip()
     pre = (lyrics.get("prechorus") or lyrics.get("pre_chorus") or "").strip()
     chorus = (lyrics.get("chorus") or "").strip()
-    parts = []
-    if title:
-        parts.append(f"[Intro]\n{title}")
-    if verse:
-        parts.append(f"[Verse]\n{verse}")
-    if pre:
-        parts.append(f"[Pre-Chorus]\n{pre}")
-    if chorus:
-        parts.append(f"[Chorus]\n{chorus}")
-        # 短 outro：副歌末句或歌名，避免再整段副歌佔滿 45 秒
-        outro_line = chorus.strip().split("\n")[-1].strip() if chorus.strip() else title
-        if outro_line:
-            parts.append(f"[Outro]\n{outro_line}")
-    text = "\n\n".join(parts).strip()
-    if not text:
+    verse2 = (lyrics.get("verse2") or "").strip()
+    bridge = (lyrics.get("bridge") or "").strip()
+    if not (verse or chorus):
         return ""
-    return text
+    outro_line = chorus.split("\n")[-1].strip() if chorus else ""
+
+    parts = ["[Intro]"]
+    if is_full_song(lyrics):
+        if verse:
+            parts.append(f"[Verse 1]\n{verse}")
+        if pre:
+            parts.append(f"[Pre-Chorus]\n{pre}")
+        if chorus:
+            parts.append(f"[Chorus]\n{chorus}")
+        if verse2:
+            parts.append(f"[Verse 2]\n{verse2}")
+        if pre:
+            parts.append(f"[Pre-Chorus]\n{pre}")
+        if chorus:
+            parts.append(f"[Chorus]\n{chorus}")
+        if bridge:
+            parts.append(f"[Bridge]\n{bridge}")
+        if chorus:
+            parts.append(f"[Final Chorus]\n{chorus}")
+    else:
+        if verse:
+            parts.append(f"[Verse]\n{verse}")
+        if pre:
+            parts.append(f"[Pre-Chorus]\n{pre}")
+        if chorus:
+            parts.append(f"[Chorus]\n{chorus}")
+    if outro_line:
+        parts.append(f"[Outro]\n{outro_line}")
+    return "\n\n".join(parts).strip()
+
+
+def _resolve_metas(
+    bpm: Optional[float], key: Optional[str], metas_mode: str
+) -> tuple[Optional[int], str]:
+    """依模式決定送給 ACE 的 BPM 與調性；lm 模式兩者都不送，由 5Hz LM 決定。"""
+    if metas_mode == "lm":
+        return None, ""
+    bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
+    if metas_mode == "clamped" and bpm_i:
+        bpm_i = max(_CLAMP_BPM[0], min(_CLAMP_BPM[1], bpm_i))
+    return bpm_i, format_key_scale(key)
 
 
 def format_key_scale(key: Optional[str]) -> str:
@@ -255,11 +305,22 @@ def build_prompt(
     bpm: Optional[float] = None,
     key: Optional[str] = None,
     route_id: Optional[str] = None,
+    caption_mode: Optional[str] = None,
+    full_song: bool = False,
 ) -> str:
-    """預設走 music_director 完整編曲 caption；ACESTEP_PRODUCTION_CAPTION=0 可回舊短 prompt。"""
+    """依 ACESTEP_CAPTION_MODE（production／v2／legacy）組 ACE caption。"""
     from app.voice import music_director as _dir
 
-    if not ACESTEP_PRODUCTION_CAPTION:
+    mode = (caption_mode or ACESTEP_CAPTION_MODE).strip().lower()
+    if mode == "v2":
+        return _dir.build_song_caption_v2(
+            singer_id=singer_id,
+            engine_style=engine_style,
+            material=material,
+            route_id=route_id,
+            full_song=full_song,
+        )
+    if mode == "legacy":
         return _dir.build_legacy_prompt(
             singer_id=singer_id,
             engine_style=engine_style,
@@ -345,6 +406,8 @@ def _generate_via_local_api(
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
     route_id: Optional[str] = None,
+    caption_mode: Optional[str] = None,
+    metas_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """呼叫本機 ACE release_task；下載 batch 結果為 lossless 檔，回傳 candidates。"""
     t0 = time.time()
@@ -355,6 +418,8 @@ def _generate_via_local_api(
     if not lyric_text:
         raise RuntimeError("歌詞為空，無法產生 AI 人聲版")
 
+    caption_mode = (caption_mode or ACESTEP_CAPTION_MODE).strip().lower()
+    metas_mode = (metas_mode or ACESTEP_METAS_MODE).strip().lower()
     prompt = build_prompt(
         singer_id=singer_id,
         engine_style=engine_style,
@@ -363,9 +428,11 @@ def _generate_via_local_api(
         bpm=bpm,
         key=key,
         route_id=route_id,
+        caption_mode=caption_mode,
+        full_song=is_full_song(lyrics),
     )
-    duration_sec = max(20.0, min(90.0, float(duration_sec)))
-    bpm_i = int(max(30, min(300, round(float(bpm))))) if bpm else None
+    duration_sec = max(20.0, min(_MAX_DURATION_SEC, float(duration_sec)))
+    bpm_i, key_scale = _resolve_metas(bpm, key, metas_mode)
     inference_steps = int(ACESTEP_INFERENCE_STEPS)
     batch_size = max(1, min(8, int(batch_size or 1)))
     fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
@@ -396,7 +463,6 @@ def _generate_via_local_api(
         body["shift"] = float(ACESTEP_SHIFT)
     if bpm_i:
         body["bpm"] = bpm_i
-    key_scale = format_key_scale(key)
     if key_scale:
         body["key_scale"] = key_scale
     if ACESTEP_API_KEY:
@@ -409,7 +475,8 @@ def _generate_via_local_api(
         f"batch={batch_size} format={fmt} "
         f"thinking={ACESTEP_THINKING} thinking_effective={lm_status.get('thinking_effective')} "
         f"lm={lm_status.get('loaded_lm_model')} caption_chars={len(prompt)} "
-        f"production_caption={ACESTEP_PRODUCTION_CAPTION}"
+        f"caption_mode={caption_mode} metas_mode={metas_mode} "
+        f"duration={duration_sec} bpm={bpm_i} key={key_scale or '-'}"
     )
     if ACESTEP_THINKING and not lm_status.get("thinking_effective"):
         print(
@@ -481,6 +548,7 @@ def _generate_via_local_api(
             out_dir.mkdir(parents=True, exist_ok=True)
             candidates: List[Dict[str, Any]] = []
             seeds: List[Any] = []
+            first_metas = items[0].get("metas") if isinstance(items[0].get("metas"), dict) else {}
             for i, item in enumerate(items[:batch_size]):
                 audio_url = _audio_url_from_result(item, ACESTEP_URL)
                 if not audio_url:
@@ -521,7 +589,14 @@ def _generate_via_local_api(
                         "thinking_effective": bool(lm_status.get("thinking_effective")),
                         "loaded_lm_model": lm_status.get("loaded_lm_model"),
                         "production_caption": ACESTEP_PRODUCTION_CAPTION,
+                        "caption_mode": caption_mode,
+                        "metas_mode": metas_mode,
                         "caption_chars": len(prompt),
+                        "caption": prompt,
+                        "sent_bpm": bpm_i,
+                        "sent_key": key_scale or None,
+                        "result_bpm": first_metas.get("bpm") or items[0].get("bpm"),
+                        "result_key": first_metas.get("keyscale") or items[0].get("keyscale"),
                         "batch_size": len(candidates),
                         "audio_format": fmt,
                         "seed": seeds[0] if len(seeds) == 1 else seeds,
@@ -556,13 +631,15 @@ def _generate_via_remote(
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
     route_id: Optional[str] = None,
+    caption_mode: Optional[str] = None,
+    metas_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """經 ngrok 打本機 /acestep/generate；batch>1 時回 ZIP。"""
+    """經 ngrok 打本機 /acestep/generate；batch>1 時回 ZIP。caption／metas 模式由本機環境決定。"""
     import io
     import zipfile
 
     t0 = time.time()
-    duration_sec = max(20.0, min(90.0, float(duration_sec)))
+    duration_sec = max(20.0, min(_MAX_DURATION_SEC, float(duration_sec)))
     inference_steps = int(ACESTEP_INFERENCE_STEPS)
     batch_size = max(1, min(8, int(batch_size or 1)))
     fmt = (audio_format or ACESTEP_AUDIO_FORMAT).lower()
@@ -706,6 +783,8 @@ def generate_candidates(
     stats: Optional[Dict[str, Any]] = None,
     material: Optional[dict] = None,
     route_id: Optional[str] = None,
+    caption_mode: Optional[str] = None,
+    metas_mode: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     產生 1～N 首候選（預設 batch=ACESTEP_BATCH_SIZE），寫入 out_dir。
@@ -731,6 +810,8 @@ def generate_candidates(
             stats=stats,
             material=material,
             route_id=route_id,
+            caption_mode=caption_mode,
+            metas_mode=metas_mode,
         )
         if force_local or local_available():
             return _generate_via_local_api(**kwargs)

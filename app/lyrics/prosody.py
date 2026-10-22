@@ -2,7 +2,7 @@
 歌詞韻律優化：短句化、句數對齊、補 Pre-Chorus。
 
 目標：給 ACE 好唱的結構，避免長句硬塞。
-45 秒建議：Intro → Verse 4 → Pre-Chorus 2 → Chorus 4 → Outro
+完整歌（約三分鐘）：Verse 4 → Pre 2 → Chorus 4 → Verse2 4 → Pre → Chorus → Bridge 2-4 → Chorus
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ _MAX_CHARS = 12
 _VERSE_LINES = 4
 _PRE_LINES = 2
 _CHORUS_LINES = 4
+_BRIDGE_MAX_LINES = 4
 
 
 def _strip_punct(s: str) -> str:
@@ -67,7 +68,7 @@ def _break_long(line: str) -> List[str]:
     return out or [line]
 
 
-def _normalize_section(text: str, target: int) -> List[str]:
+def _normalize_section(text: str, target: int, *, pad: bool = True) -> List[str]:
     lines: List[str] = []
     for ln in _split_lines(text):
         lines.extend(_break_long(ln))
@@ -96,6 +97,8 @@ def _normalize_section(text: str, target: int) -> List[str]:
 
     if len(lines) > target:
         lines = lines[:target]
+    if not pad:
+        return lines
     while len(lines) < target and lines:
         # 不夠就重複最後一句變體（略改結尾感）
         lines.append(lines[-1])
@@ -133,15 +136,24 @@ def optimize_lyrics(lyrics: Optional[dict]) -> dict:
     verse_lines = _normalize_section(str(src.get("verse") or ""), _VERSE_LINES)
     chorus_lines = _normalize_section(str(src.get("chorus") or ""), _CHORUS_LINES)
 
-    pre_raw = src.get("prechorus") or src.get("pre_chorus") or src.get("bridge")
+    pre_raw = src.get("prechorus") or src.get("pre_chorus")
     if pre_raw and str(pre_raw).strip():
         pre_lines = _normalize_section(str(pre_raw), _PRE_LINES)
     else:
         pre_lines = _synthesize_prechorus(verse_lines, chorus_lines)
 
-    return {
+    out = {
         "title": title,
         "verse": "\n".join(verse_lines),
         "prechorus": "\n".join(pre_lines),
         "chorus": "\n".join(chorus_lines),
     }
+    verse2_raw = str(src.get("verse2") or "").strip()
+    if verse2_raw:
+        out["verse2"] = "\n".join(_normalize_section(verse2_raw, _VERSE_LINES))
+    bridge_raw = str(src.get("bridge") or "").strip()
+    if bridge_raw:
+        bridge_lines = _normalize_section(bridge_raw, _BRIDGE_MAX_LINES, pad=False)
+        if bridge_lines:
+            out["bridge"] = "\n".join(bridge_lines)
+    return out

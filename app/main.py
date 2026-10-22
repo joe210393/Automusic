@@ -75,7 +75,7 @@ else:
 # 作詞只要短 JSON。gemma-4-31b 是推理模型，會先長篇思考，一首詞常要 1–3 分鐘。
 # 預設改 MLX 的 gemma-3-12b；要回 31B 可設 LM_STUDIO_MODEL=google/gemma-4-31b-qat
 LM_STUDIO_MODEL = os.getenv("LM_STUDIO_MODEL", "google/gemma-3-12b")
-LM_STUDIO_MAX_TOKENS = int(os.getenv("LM_STUDIO_MAX_TOKENS", "768"))
+LM_STUDIO_MAX_TOKENS = int(os.getenv("LM_STUDIO_MAX_TOKENS", "1024"))
 
 # 手機錄音儲存目錄（雲端與本地都用同一份程式碼）
 # Zeabur 掛載持久化硬碟在 /voice：存在就用它，重新部署後錄音不會消失；
@@ -199,6 +199,8 @@ class AILyricsResponse(BaseModel):
     verse: str    # 主歌，多行以換行分隔
     chorus: str   # 副歌，多行以換行分隔
     prechorus: str = ""  # 預副歌 2 句
+    verse2: str = ""     # 主歌二
+    bridge: str = ""     # 橋段
     source: str = "lm_studio"  # lm_studio（本地 AI）或 template（模板備援）
     detail: Optional[str] = None  # 備援時說明原因（逾時／解析失敗等）
 
@@ -719,7 +721,7 @@ class AceStepGenerateRequest(BaseModel):
     key: Optional[str] = None
     singer_id: Optional[str] = None
     engine_style: Optional[str] = None
-    duration_sec: float = 45.0
+    duration_sec: Optional[float] = None
     material: Optional[dict] = None
     batch_size: Optional[int] = None
     audio_format: Optional[str] = None
@@ -742,6 +744,9 @@ def acestep_health():
         "thinking_effective": status.get("thinking_effective"),
         "shift": status.get("shift"),
         "production_caption": status.get("production_caption"),
+        "caption_mode": _ace.ACESTEP_CAPTION_MODE,
+        "metas_mode": _ace.ACESTEP_METAS_MODE,
+        "full_duration_sec": _ace.ACESTEP_FULL_DURATION_SEC,
         "batch_size": _ace.ACESTEP_BATCH_SIZE,
         "audio_format": _ace.ACESTEP_AUDIO_FORMAT,
         "error": status.get("error"),
@@ -765,7 +770,7 @@ def acestep_generate(req: AceStepGenerateRequest):
             key=req.key,
             singer_id=req.singer_id,
             engine_style=req.engine_style,
-            duration_sec=float(req.duration_sec or _ace.ACESTEP_DURATION_SEC or 45.0),
+            duration_sec=float(req.duration_sec or _ace.duration_for_lyrics(req.lyrics)),
             batch_size=req.batch_size,
             audio_format=req.audio_format,
             material=req.material,
@@ -863,22 +868,8 @@ def generate_lyrics_ai(request: AILyricsRequest):  # 同步函式：跑在 threa
     result = gen_lyrics(keywords, style_emotion.get(request.style or "", "溫暖"))
     from app.lyrics.prosody import optimize_lyrics
 
-    polished = optimize_lyrics(
-        {
-            "title": keywords[0] + "之歌",
-            "verse": result["verse"],
-            "chorus": result["chorus"],
-            "prechorus": result.get("prechorus") or "",
-        }
-    )
-    return AILyricsResponse(
-        title=polished["title"],
-        verse=polished["verse"],
-        prechorus=polished.get("prechorus") or "",
-        chorus=polished["chorus"],
-        source="template",
-        detail=detail,
-    )
+    polished = optimize_lyrics({"title": keywords[0] + "之歌", **result})
+    return AILyricsResponse(**polished, source="template", detail=detail)
 
 
 @app.post("/generate-melody", response_model=MelodyResponse)

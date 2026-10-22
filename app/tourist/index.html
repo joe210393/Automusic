@@ -281,15 +281,17 @@
               <div class="lyrics-block"><h3>主歌</h3><div id="verseText"></div></div>
               <div class="lyrics-block" id="prechorusBlock" hidden><h3>預副歌</h3><div id="prechorusText"></div></div>
               <div class="lyrics-block"><h3>副歌</h3><div id="chorusText"></div></div>
-              <div class="preview-bed">
+              <div class="lyrics-block" id="verse2Block" hidden><h3>主歌二</h3><div id="verse2Text"></div></div>
+              <div class="lyrics-block" id="bridgeBlock" hidden><h3>橋段</h3><div id="bridgeText"></div></div>
+              <div class="preview-bed" id="previewBed" hidden>
                 <p class="preview-label">真實樂器伴奏試聽</p>
                 <p class="hint preview-hint">這段是 SoundFont 真樂器編曲預覽；下一步的 AI 唱歌會是完整演唱版，聽感會不同。</p>
                 <audio id="previewAudio" controls></audio>
               </div>
               <div class="actions">
-                <button class="secondary" id="btnRemakePreview" type="button">換伴奏</button>
-                <button class="secondary" id="btnRegenLyrics" type="button">換一個版本</button>
-                <button class="primary" id="btnToVoice" type="button">這就是我的故事</button>
+                <button class="secondary" id="btnRemakePreview" type="button" hidden>換伴奏</button>
+                <button class="secondary" id="btnRegenLyrics" type="button">換一份歌詞</button>
+                <button class="primary" id="btnToVoice" type="button">用這份歌詞做成歌</button>
               </div>
             </div>
             <p class="status" id="composeStatus"></p>
@@ -327,7 +329,7 @@
               <div class="pct-bar" aria-hidden="true"><i id="finalizePctBar"></i></div>
               <div class="finalize-meta">
                 <span id="finalizeElapsed">已過 0:00</span>
-                <strong id="finalizeEta">預估還需約 1–2 分鐘</strong>
+                <strong id="finalizeEta">預估還需約 3–5 分鐘</strong>
               </div>
               <p class="finalize-hint" id="finalizeHint">AI 作曲唱歌需要一點時間，請先別離開此頁。</p>
               <ul class="progress-list" id="finalizeSteps"></ul>

@@ -426,7 +426,9 @@ def compose_journey(journey_id: str):
             "status": meta["status"],
             "steps": meta.get("compose_steps"),
             "lyrics": meta.get("lyrics"),
-            "preview_url": f"/api/journey/{journey_id}/audio/preview",
+            "preview_url": (
+                f"/api/journey/{journey_id}/audio/preview" if meta.get("preview_file") else None
+            ),
             "meta": meta,
         }
     except Exception as e:

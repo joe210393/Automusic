@@ -353,6 +353,106 @@ def build_production_caption(
     return text
 
 
+# ---------- v2：短描述，旋律講「對比與鉤子」，不再限制音程 ----------
+
+VOCAL_V2: Dict[str, str] = {
+    "female_bright": "bright clear female Mandarin lead vocal",
+    "female_warm": "warm expressive female Mandarin lead vocal",
+    "female_soft": "soft intimate female Mandarin lead vocal",
+    "male_deep": "deep rich male Mandarin lead vocal",
+    "male_warm": "warm heartfelt male Mandarin lead vocal",
+    "male_clear": "clear powerful male Mandarin lead vocal",
+}
+
+# 太慢、太平的風格不適合旅行紀念歌，改由路線決定曲風
+_FLAT_STYLES = {"ambient", "lullaby", "symphony", "auto", ""}
+
+STYLE_GENRE_V2: Dict[str, str] = {
+    "pop": "Mandopop",
+    "folk": "Taiwanese folk-pop",
+    "ballad": "Mandopop power ballad",
+    "latin": "Latin-pop Mandopop",
+    "rnb": "R&B Mandopop",
+    "jazz": "jazz-pop",
+    "bossa": "bossa nova pop",
+    "country": "country-pop",
+    "funk": "funk-pop",
+    "cinematic": "cinematic pop",
+    "rock": "pop-rock",
+    "edm": "dance-pop",
+    "hiphop": "hip-hop pop",
+    "reggae": "reggae-pop",
+    "disco": "disco-pop",
+    "blues": "blues-pop",
+    "gospel": "gospel-pop",
+}
+
+STYLE_INSTRUMENTS_V2: Dict[str, str] = {
+    "pop": "acoustic guitar, electric bass, live drums, piano",
+    "folk": "finger-picked acoustic guitar, warm bass, light drums, harmonica color",
+    "ballad": "piano, strings, bass, live drums",
+    "latin": "nylon guitar, bass, congas, live drums, light brass",
+    "rnb": "electric piano, smooth bass, groovy drums",
+    "jazz": "piano, upright bass, brushed drums, saxophone",
+    "bossa": "nylon guitar, bass, soft drums, shaker",
+    "country": "strummed acoustic guitar, bass, live drums, electric guitar fills",
+    "funk": "slap bass, funky guitar, punchy drums, keys",
+    "cinematic": "piano, strings, big drums, guitar",
+    "rock": "electric guitars, bass, punchy drums",
+}
+
+ROUTE_V2: Dict[str, Dict[str, str]] = {
+    "nanfangao": {"genre": "Taiwanese folk-pop", "mood": "nostalgic harbor warmth, hopeful"},
+    "coldspring": {"genre": "fresh Mandopop", "mood": "sparkling, youthful, refreshing"},
+    "coast": {"genre": "uplifting Mandopop anthem", "mood": "open-sky, free, uplifting"},
+    "market": {"genre": "funky Mandopop", "mood": "lively, playful, warm crowd energy"},
+    "oldstreet": {"genre": "nostalgic Mandopop with folk color", "mood": "nostalgic, intimate, tender"},
+    "family": {"genre": "bright family Mandopop", "mood": "sunny, warm, sing-along"},
+}
+_DEFAULT_ROUTE_V2 = {"genre": "Mandopop", "mood": "uplifting travel memory, warm"}
+
+MELODY_V2 = (
+    "conversational verse melody in a lower register with syncopated phrasing, "
+    "pre-chorus builds tension and climbs, "
+    "soaring chorus with a big catchy hook that leaps up to a held high note, "
+    "strong contrast between verse and chorus, memorable rhythmic motif"
+)
+
+FULL_SONG_V2 = (
+    "full-length song with two verses, a bridge with a fresh chord change, "
+    "and a bigger final chorus with backing vocal harmonies"
+)
+
+MIX_V2 = "polished modern mix, lead vocal upfront"
+
+
+def build_song_caption_v2(
+    *,
+    singer_id: Optional[str] = None,
+    engine_style: Optional[str] = None,
+    material: Optional[dict] = None,
+    route_id: Optional[str] = None,
+    full_song: bool = True,
+) -> str:
+    """短 caption（約 400–600 字）：曲風、人聲、樂器、情緒、旋律對比。"""
+    mat = material if isinstance(material, dict) else {}
+    style = str(mat.get("style_id") or engine_style or "").strip().lower()
+    route = ROUTE_V2.get(str(route_id or "").strip().lower(), _DEFAULT_ROUTE_V2)
+
+    if style in _FLAT_STYLES or style not in STYLE_GENRE_V2:
+        genre = route["genre"]
+    else:
+        genre = STYLE_GENRE_V2[style]
+    instruments = STYLE_INSTRUMENTS_V2.get(style) or STYLE_INSTRUMENTS_V2["pop"]
+    vocal = VOCAL_V2.get(singer_id or "", "clear Mandarin lead vocal")
+
+    parts = [genre, route["mood"], vocal, instruments, MELODY_V2]
+    if full_song:
+        parts.append(FULL_SONG_V2)
+    parts.append(MIX_V2)
+    return ", ".join(parts)
+
+
 _LEGACY_SINGER: Dict[str, str] = {
     "female_bright": (
         "A bright Mandarin pop travel song. The lead female vocal is clear, present, and sings "

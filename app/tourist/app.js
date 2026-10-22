@@ -455,24 +455,39 @@
     }
   }
 
+  function fillLyrics(ly) {
+    $("verseText").textContent = ly.verse || "";
+    $("chorusText").textContent = ly.chorus || "";
+    const optional = [
+      ["prechorus", ly.prechorus || ly.pre_chorus || ""],
+      ["verse2", ly.verse2 || ""],
+      ["bridge", ly.bridge || ""],
+    ];
+    optional.forEach(([id, text]) => {
+      if ($(`${id}Text`)) $(`${id}Text`).textContent = text;
+      if ($(`${id}Block`)) $(`${id}Block`).hidden = !text;
+    });
+  }
+
+  function setPreviewAudio(url) {
+    const has = !!url;
+    if ($("previewBed")) $("previewBed").hidden = !has;
+    if ($("btnRemakePreview")) $("btnRemakePreview").hidden = !has;
+    if (has) $("previewAudio").src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
+  }
+
   function showComposeFromMeta() {
     const ly = journey.lyrics || {};
     show("compose");
     if (journey.preview_file || ly.title || ly.verse) {
       $("composeResult").style.display = "block";
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
-      $("verseText").textContent = ly.verse || "";
-      $("chorusText").textContent = ly.chorus || "";
-      const pre = ly.prechorus || ly.pre_chorus || "";
-      if ($("prechorusText")) $("prechorusText").textContent = pre;
-      if ($("prechorusBlock")) $("prechorusBlock").hidden = !pre;
+      fillLyrics(ly);
       fillEduPanel(journey);
-      if (journey.preview_file) {
-        $("previewAudio").src = `/api/journey/${journey.id}/audio/preview?t=${Date.now()}`;
-      }
+      setPreviewAudio(journey.preview_file ? `/api/journey/${journey.id}/audio/preview` : null);
       setStatus($("composeStatus"), journey.status === "error"
         ? (journey.error || "上次創作失敗，可再試一次")
-        : "這是你上次的創作。可聽真實樂器伴奏；「換伴奏」只換編曲，「換一個版本」會重做旋律與歌詞。");
+        : "這是你上次的歌詞。喜歡就選歌手做成歌；「換一份歌詞」會重寫一次。");
     } else {
       $("composeResult").style.display = "none";
       setStatus($("composeStatus"), "尚未完成創作。請選心情後再生成。");
@@ -1042,11 +1057,11 @@
     setComposeBusy(true);
     const ul = $("composeProgress");
     ul.style.display = "";
-    ul.innerHTML = ["整理旅行聲音", "創作旋律", "完成歌詞", "編排真實樂器伴奏", "旅行歌曲誕生了"]
+    ul.innerHTML = ["整理旅行聲音", "分析旅行聲音", "寫成歌詞", "旅行歌曲誕生了"]
       .map((t) => `<li>${t}</li>`).join("");
     const first = ul.querySelector("li");
     if (first) first.classList.add("active");
-    setStatus($("composeStatus"), "創作中，請稍候…（大約一兩分鐘，畫面會逐步打勾）");
+    setStatus($("composeStatus"), "正在寫歌詞，請稍候…（大約半分鐘）");
 
     let stepIdx = 0;
     const tick = setInterval(() => {
@@ -1072,16 +1087,11 @@
       persistJourney();
       const ly = journey.lyrics || data.lyrics || {};
       $("songTitle").textContent = `《${journey.title || ly.title || "旅行之歌"}》`;
-      $("verseText").textContent = ly.verse || "";
-      $("chorusText").textContent = ly.chorus || "";
-      const pre = ly.prechorus || ly.pre_chorus || "";
-      if ($("prechorusText")) $("prechorusText").textContent = pre;
-      if ($("prechorusBlock")) $("prechorusBlock").hidden = !pre;
+      fillLyrics(ly);
       fillEduPanel(journey);
-      const previewUrl = data.preview_url || `/api/journey/${journey.id}/audio/preview`;
-      $("previewAudio").src = previewUrl + (previewUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+      setPreviewAudio(data.preview_url || null);
       $("composeResult").style.display = "block";
-      setStatus($("composeStatus"), "完成！先聽真實樂器伴奏試聽；確認歌詞後再選 AI 歌手唱完整版。「換伴奏」只換樂器編排，「換一個版本」會重做旋律與歌詞。");
+      setStatus($("composeStatus"), "歌詞好了！喜歡就選 AI 歌手，唱成約三分鐘的完整歌；「換一份歌詞」會重寫一次。");
       setupVoiceLines(ly);
     } catch (e) {
       clearInterval(tick);
@@ -1337,9 +1347,9 @@
     "完成": 100,
   };
 
-  /** AI 約 45 秒成品；本機生成仍可能需一兩分鐘。 */
+  /** AI 約三分鐘完整歌；本機 XL turbo 實測約 3–5 分鐘。 */
   const FINALIZE_BASELINE_SEC = {
-    ai: 120,
+    ai: 240,
     voice: 90,
   };
 
@@ -1526,7 +1536,7 @@
     setStatus(
       statusEl,
       kind === "ai"
-        ? "正在製作約 45 秒的 AI 唱歌版，請稍候…"
+        ? "正在製作約三分鐘的 AI 唱歌版，大約要等 3–5 分鐘…"
         : "正在製作你的聲音版，請稍候…"
     );
 
@@ -1803,7 +1813,7 @@
     const btn = $("btnRemakeFinal");
     const before = (journey.final_candidates || []).length;
     if (btn) btn.disabled = true;
-    setStatus($("resultStatus"), "正在再做一首，請稍候…這次只做一首，會比一次做兩首快。");
+    setStatus($("resultStatus"), "正在再做一首，大約要等 3–5 分鐘…");
     try {
       const started = await api(`/api/journey/${journey.id}/remake-final`, {
         method: "POST",

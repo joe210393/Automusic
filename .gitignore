@@ -50,3 +50,4 @@ ops_data/
 # SoundFont 音色庫（檔案太大，不進版控）
 soundfonts/
 .playwright-cli/
+ab_runs/
