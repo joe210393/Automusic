@@ -536,6 +536,14 @@ button.lab-link {
   top: 42%;
   transform: translateY(-8%);
 }
+.hub-login-note {
+  margin-top: 14px;
+}
+.hub-login-note a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
 .scene-dock--station {
   bottom: max(36px, env(safe-area-inset-bottom, 0px));
   top: auto;

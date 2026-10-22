@@ -166,6 +166,10 @@
   }
 
   async function enterStation(id) {
+    if (!token()) {
+      location.href = `/login?next=${encodeURIComponent(`/?station=${id}`)}`;
+      return;
+    }
     destId = id;
     localStorage.setItem(DEST_KEY, id);
     journey = null;
@@ -1940,7 +1944,7 @@
         method: "POST",
         body: JSON.stringify({ paid: true }),
       });
-      setStatus($("resultStatus"), `已標記付費（開發用）。額度 ${data.account.quota.limit}/月`);
+      setStatus($("resultStatus"), "已標記付費（開發用）。");
     } catch (e) {
       setStatus($("resultStatus"), e.message, true);
     }
@@ -1988,7 +1992,7 @@
       setAuthVisibility(true);
       fillUserChips(me.account || {});
       if ($("resultStatus") && me.account) {
-        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${me.account.email}｜本月剩餘 ${me.account.quota?.remaining ?? "∞"} 次）`);
+        setStatus($("resultStatus"), `已登入：${me.account.display_name || me.account.email}（${me.account.email}）`);
       }
       return me;
     } catch (_) {
@@ -2044,6 +2048,11 @@
     }
     if (await resumeRecentSong()) return;
     await initHub();
+    const stationId = new URLSearchParams(location.search).get("station");
+    if (stationId && token()) {
+      history.replaceState(null, "", "/");
+      await enterStation(stationId);
+    }
   }
 
   boot().catch((e) => {

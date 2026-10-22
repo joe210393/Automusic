@@ -418,9 +418,13 @@
     $("meName").textContent = acc.display_name || "旅人";
     $("meEmail").textContent = acc.email || "";
     const q = acc.quota || {};
-    $("meQuota").textContent = q.anonymous
-      ? ""
-      : `本月剩餘 ${q.remaining ?? "—"} / ${q.limit ?? "—"} 次成品`;
+    if (q.anonymous) {
+      $("meQuota").textContent = "";
+    } else if (q.limit == null) {
+      $("meQuota").textContent = `本月已完成 ${q.used ?? 0} 首`;
+    } else {
+      $("meQuota").textContent = `本月剩餘 ${q.remaining ?? "—"} / ${q.limit} 次成品`;
+    }
     allJourneys = me.journeys || [];
     if (resetView) page = 1;
     renderList();

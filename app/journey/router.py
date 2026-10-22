@@ -99,6 +99,9 @@ def _meta_or_404(journey_id: str) -> dict:
         raise HTTPException(status_code=404, detail="找不到這趟旅程")
 
 
+LOGIN_REQUIRED = "請先註冊或登入，才能使用旅行作曲"
+
+
 def _account_from_token(token: Optional[str]):
     if not token:
         return None
@@ -108,7 +111,7 @@ def _account_from_token(token: Optional[str]):
 def _require_journey_owner(meta: dict, token: Optional[str]):
     acc = _account_from_token(token)
     if not acc:
-        raise HTTPException(status_code=401, detail="尚未登入")
+        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED)
     if meta.get("account_id") and meta.get("account_id") != acc["id"]:
         raise HTTPException(status_code=403, detail="這不是你的旅程")
     if not meta.get("account_id"):
@@ -183,12 +186,10 @@ def create_journey(
     dest = load_destination(payload.destination)
     if not dest or not dest.get("enabled", True):
         raise HTTPException(status_code=400, detail="目的地尚未開放")
-    account_id = None
-    if x_account_token:
-        acc = ops_accounts.get_by_token(x_account_token)
-        if acc:
-            account_id = acc["id"]
-    meta = store.create_journey(destination=payload.destination, account_id=account_id)
+    acc = _account_from_token(x_account_token)
+    if not acc:
+        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED)
+    meta = store.create_journey(destination=payload.destination, account_id=acc["id"])
     return meta
 
 
@@ -633,13 +634,10 @@ def finalize_journey(
     前端輪詢 GET /api/journey/{id}，直到 status=done 或 error。
     """
     meta = _meta_or_404(journey_id)
-    account_id = meta.get("account_id")
-    if x_account_token:
-        acc = ops_accounts.get_by_token(x_account_token)
-        if acc:
-            account_id = acc["id"]
-            meta["account_id"] = account_id
-            store.save_meta(journey_id, meta)
+    if not _account_from_token(x_account_token):
+        raise HTTPException(status_code=401, detail=LOGIN_REQUIRED)
+    account_id = _require_journey_owner(meta, x_account_token)["id"]
+    meta = store.load_meta(journey_id)
 
     if meta.get("status") == "done" and meta.get("final_file"):
         payload = _finalize_result_payload(meta)
@@ -662,7 +660,7 @@ def finalize_journey(
     if not quota.get("allowed"):
         raise HTTPException(
             status_code=402,
-            detail="本月免費次數已用完，升級後可繼續完成歌曲",
+            detail="本月成品次數已用完，升級後可繼續完成歌曲",
         )
 
     if music_queue.contains(journey_id):

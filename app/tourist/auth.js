@@ -51,6 +51,15 @@
     });
   }
 
+  function carryNextParam() {
+    const next = new URLSearchParams(location.search).get("next");
+    if (!next) return;
+    document.querySelectorAll('a[href="/login"], a[href="/register"]').forEach((a) => {
+      a.href = `${a.getAttribute("href")}?next=${encodeURIComponent(next)}`;
+    });
+  }
+
+  carryNextParam();
   bind("loginForm");
   bind("registerForm");
 })();

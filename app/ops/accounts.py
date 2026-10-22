@@ -1,8 +1,8 @@
 """
 簡易帳號與額度（檔案型，無外部 DB）。
 
-- 匿名遊客：每趟 journey 可完成一次成品
-- 登入帳號（email + 魔術連結 token）：可看作品庫、較高額度
+- 必須註冊／登入才能開始旅程與製作成品
+- 每月成品上限預設不限（FREE_FINALIZE_LIMIT／PAID_FINALIZE_LIMIT 設正數可再開啟）
 - 付費旗標 paid：解鎖下載／分享強化（金流 webhook 可之後接）
 """
 from __future__ import annotations
@@ -24,9 +24,9 @@ _default = (
 ACCOUNTS_ROOT = Path(os.getenv("ACCOUNTS_DIR", str(_default)))
 ACCOUNTS_ROOT.mkdir(parents=True, exist_ok=True)
 
-# 免費／付費額度（每月）
-FREE_FINALIZE_LIMIT = int(os.getenv("FREE_FINALIZE_LIMIT", "3"))
-PAID_FINALIZE_LIMIT = int(os.getenv("PAID_FINALIZE_LIMIT", "30"))
+# 免費／付費每月成品上限；0＝不限
+FREE_FINALIZE_LIMIT = int(os.getenv("FREE_FINALIZE_LIMIT", "0"))
+PAID_FINALIZE_LIMIT = int(os.getenv("PAID_FINALIZE_LIMIT", "0"))
 
 
 def _path(account_id: str) -> Path:
@@ -134,22 +134,32 @@ def save_account(data: Dict[str, Any]) -> None:
 
 
 def check_finalize_quota(account_id: Optional[str]) -> Dict[str, Any]:
-    """回傳 {allowed, remaining, limit, paid}。匿名一律允許（靠 journey 隔離）。"""
+    """回傳 {allowed, remaining, limit, used, paid}。上限為 0 時不限次數（remaining／limit 為 None）。"""
     if not account_id:
-        return {"allowed": True, "remaining": None, "limit": None, "paid": False, "anonymous": True}
+        return {"allowed": False, "remaining": None, "limit": None, "used": 0, "paid": False, "anonymous": True}
     acc = get_account(account_id)
     if not acc:
-        return {"allowed": True, "remaining": None, "limit": None, "paid": False, "anonymous": True}
+        return {"allowed": False, "remaining": None, "limit": None, "used": 0, "paid": False, "anonymous": True}
     month = _month_key()
     usage = acc.setdefault("usage", {})
     bucket = usage.setdefault(month, {"finalize": 0})
     limit = PAID_FINALIZE_LIMIT if acc.get("paid") else FREE_FINALIZE_LIMIT
     used = int(bucket.get("finalize", 0))
+    if limit <= 0:
+        return {
+            "allowed": True,
+            "remaining": None,
+            "limit": None,
+            "used": used,
+            "paid": bool(acc.get("paid")),
+            "anonymous": False,
+        }
     remaining = max(0, limit - used)
     return {
         "allowed": remaining > 0,
         "remaining": remaining,
         "limit": limit,
+        "used": used,
         "paid": bool(acc.get("paid")),
         "anonymous": False,
     }
