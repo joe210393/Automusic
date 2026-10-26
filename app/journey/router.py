@@ -396,8 +396,6 @@ def save_story(journey_id: str, body: StoryBody):
     # 也接受把關鍵字打成一個字串欄位的舊客戶端
     if not keywords and body.place:
         keywords = split_keywords(body.place)[:6]
-    if not keywords:
-        raise HTTPException(status_code=400, detail="請至少填一個歌詞關鍵字")
     meta["nickname"] = (body.nickname or "")[:40]
     meta["keywords"] = keywords[:6]
     meta["companions"] = (body.companions or "")[:40]
@@ -406,10 +404,10 @@ def save_story(journey_id: str, body: StoryBody):
     meta["place"] = (body.place or "")[:40]
     if body.route_id:
         meta["route_id"] = body.route_id
-    if not str(meta.get("title") or "").strip():
+    # 沒填關鍵字時先不取歌名，等 AI 寫完詞再用歌詞的歌名
+    if keywords and not str(meta.get("title") or "").strip():
         nick = meta["nickname"] or "旅人"
-        seed = keywords[0]
-        meta["title"] = f"{nick}的{seed}"[:40]
+        meta["title"] = f"{nick}的{keywords[0]}"[:40]
     meta["status"] = "story"
     store.save_meta(journey_id, meta)
     return {"ok": True, "meta": meta}
@@ -476,7 +474,7 @@ def regenerate_lyrics(journey_id: str):
     dest = load_destination(meta.get("destination") or "suao")
     if not dest:
         raise HTTPException(status_code=400, detail="目的地無效")
-    from app.content.loader import story_to_keywords
+    from app.content.loader import auto_keywords, story_to_keywords
     from app.journey.service import _generate_lyrics
 
     story = {
@@ -486,9 +484,7 @@ def regenerate_lyrics(journey_id: str):
         "feeling": meta.get("feeling") or "",
         "memory": meta.get("memory") or "",
     }
-    keywords = story_to_keywords(story, dest)
-    if not keywords:
-        raise HTTPException(status_code=400, detail="請先填寫歌詞關鍵字")
+    keywords = story_to_keywords(story, dest) or auto_keywords(meta, dest)
     lyrics = _generate_lyrics(keywords, meta.get("engine_style") or "pop")
     llm_usage = lyrics.pop("llm_usage", None)
     meta["lyrics"] = lyrics

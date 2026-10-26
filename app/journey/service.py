@@ -10,7 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from app.content.loader import load_destination, resolve_engine_style, story_to_keywords
+from app.content.loader import auto_keywords, load_destination, resolve_engine_style, story_to_keywords
 from app.journey import store
 
 
@@ -181,9 +181,7 @@ def run_compose(journey_id: str) -> dict:
         "feeling": meta.get("feeling") or "",
         "memory": meta.get("memory") or "",
     }
-    keywords = story_to_keywords(story, dest)
-    if not keywords:
-        raise RuntimeError("請先填寫歌詞關鍵字")
+    keywords = story_to_keywords(story, dest) or auto_keywords(meta, dest)
 
     lyrics = _generate_lyrics(keywords, engine_style)
     llm_usage = lyrics.pop("llm_usage", None)

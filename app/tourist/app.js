@@ -963,32 +963,34 @@
   }
 
   function setupStory() {
-    $("btnStoryNext").onclick = async () => {
-      const keywords = parseUserKeywords($("keywordsInput").value);
-      if (!keywords.length) {
-        setStatus($("storyStatus"), "請至少填一個歌詞關鍵字", true);
-        $("keywordsInput").focus();
-        return;
-      }
-      try {
-        const body = {
-          nickname: $("nickname").value.trim(),
-          keywords,
-          memory: $("memory").value.trim(),
-          route_id: selectedRoute && selectedRoute.id,
-        };
-        const data = await api(`/api/journey/${journey.id}/story`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-        journey = data.meta;
-        persistJourney();
-        renderMoods();
-        show("mood");
-      } catch (e) {
-        setStatus($("storyStatus"), e.message, true);
-      }
-    };
+    $("btnStoryNext").onclick = () => saveStoryAndNext(parseUserKeywords($("keywordsInput").value));
+    if ($("btnStoryAuto")) {
+      $("btnStoryAuto").onclick = () => {
+        $("keywordsInput").value = "";
+        saveStoryAndNext([]);
+      };
+    }
+  }
+
+  async function saveStoryAndNext(keywords) {
+    try {
+      const body = {
+        nickname: $("nickname").value.trim(),
+        keywords,
+        memory: $("memory").value.trim(),
+        route_id: selectedRoute && selectedRoute.id,
+      };
+      const data = await api(`/api/journey/${journey.id}/story`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      journey = data.meta;
+      persistJourney();
+      renderMoods();
+      show("mood");
+    } catch (e) {
+      setStatus($("storyStatus"), e.message, true);
+    }
   }
 
   function renderMoods(opts = {}) {
@@ -1913,13 +1915,38 @@
   });
   $("btnConsentStart")?.addEventListener("click", () => acceptVoiceConsent());
   $("btnFinalizeVoice")?.addEventListener("click", () => finalizeVoice());
+  ["btnDownload", "btnDownloadVoice"].forEach((id) => {
+    $(id)?.addEventListener("click", async (e) => {
+      e.preventDefault();
+      const link = e.currentTarget;
+      if (!link.href || link.getAttribute("href") === "#") return;
+      const statusEl = id === "btnDownload" ? $("resultStatus") : $("resultVoiceStatus");
+      setStatus(statusEl, "準備下載…");
+      const out = await window.saveAudio(link.href, link.download || "旅行之歌.mp3");
+      setStatus(statusEl, out.message, !out.ok);
+    });
+  });
+
   $("btnCopyShare").addEventListener("click", async () => {
+    if (!journey?.slug) {
+      setStatus($("resultStatus"), "歌還沒做好，做好後就能分享。", true);
+      return;
+    }
     const url = location.origin + (journey.share_path || `/s/${journey.slug}`);
+    const title = journey.title || (journey.lyrics || {}).title || "旅行之歌";
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `《${title}》`, text: "聽聽我的旅行歌", url });
+        return;
+      } catch (err) {
+        if (err && err.name === "AbortError") return;
+      }
+    }
     try {
       await navigator.clipboard.writeText(url);
-      setStatus($("resultStatus"), "分享連結已複製：" + url);
+      setStatus($("resultStatus"), "分享連結已複製，可以貼給朋友：" + url);
     } catch {
-      setStatus($("resultStatus"), url);
+      window.prompt("複製這個連結分享給朋友：", url);
     }
   });
   $("btnNewTrip").addEventListener("click", async () => {

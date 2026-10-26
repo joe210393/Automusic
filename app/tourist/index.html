@@ -201,12 +201,12 @@
         <div class="flow-body">
           <div class="panel">
             <h2>寫下這首歌的關鍵字</h2>
-            <p class="lead">關鍵字會直接進歌詞，請用你自己的話。可打 2–6 個，用空白或逗號分開。</p>
+            <p class="lead">關鍵字會直接進歌詞，可打 2–6 個，用空白或逗號分開。不想打也沒關係，AI 會依你走的路線和收集的聲音自動寫。</p>
             <label class="field" for="nickname">你的暱稱（可選）</label>
             <input type="text" id="nickname" maxlength="40" placeholder="例如：小美" autocomplete="nickname" />
-            <label class="field" for="keywordsInput">歌詞關鍵字</label>
+            <label class="field" for="keywordsInput">歌詞關鍵字（可選）</label>
             <input type="text" id="keywordsInput" maxlength="80" placeholder="例如：冷泉、媽媽、第一次、夏天" autocomplete="off" />
-            <p class="hint-line">至少填一個關鍵字。</p>
+            <button class="secondary" id="btnStoryAuto" type="button">不填了，讓 AI 自動寫歌詞</button>
             <label class="field" for="memory">還想補一句嗎？（可選）</label>
             <textarea id="memory" maxlength="120" placeholder="例如：第一次帶媽媽來南方澳。"></textarea>
             <div class="nav-row">
@@ -464,6 +464,7 @@
       </nav>
     </footer>
   </div>
+  <script src="/trip/save-audio.js"></script>
   <script src="/trip/app.js"></script>
 </body>
 </html>

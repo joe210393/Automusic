@@ -53,3 +53,30 @@ def story_to_keywords(story: dict, destination: Optional[dict] = None) -> List[s
         if v and v not in keys:
             keys.append(v[:24])
     return keys[:6]
+
+
+def auto_keywords(meta: dict, destination: Optional[dict] = None) -> List[str]:
+    """遊客沒填關鍵字時，改用他走的路線、收的聲音、選的感覺與地點當作詞素材。"""
+    dest = destination or {}
+    keys: List[str] = []
+
+    def add(value: Optional[str]) -> None:
+        s = str(value or "").strip()
+        if s and s.isascii():
+            return
+        if s and s not in keys:
+            keys.append(s[:24])
+
+    route = next((r for r in dest.get("routes", []) if r.get("id") == meta.get("route_id")), None)
+    if route:
+        add(re.sub(r"篇$", "", route.get("label") or ""))
+        tasks = {t.get("id"): t.get("label") for t in route.get("soundTasks", [])}
+        for sound in meta.get("sounds") or []:
+            label = tasks.get(sound.get("slot")) or sound.get("label") or ""
+            add(re.split(r"[／/]", label)[0])
+    mood = next((m for m in dest.get("moodStyles", []) if m.get("id") == meta.get("mood_id")), None)
+    if mood:
+        add(mood.get("label"))
+    add((dest.get("brand") or {}).get("place"))
+    add("旅行回憶")
+    return keys[:6]

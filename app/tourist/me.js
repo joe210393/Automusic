@@ -312,16 +312,23 @@
       if (ly && (ly.verse || ly.chorus || ly.title)) {
         $("meLyrics").innerHTML = `
           <p class="me-lyric-title">《${esc(ly.title || j.title || "旅行之歌")}》</p>
-          <p class="me-lyric-label">主歌</p>
-          <pre>${esc(ly.verse || "（無）")}</pre>
-          <p class="me-lyric-label">副歌</p>
-          <pre>${esc(ly.chorus || "（無）")}</pre>
+          ${[
+            ["主歌", ly.verse],
+            ["預副歌", ly.prechorus || ly.pre_chorus],
+            ["副歌", ly.chorus],
+            ["主歌二", ly.verse2],
+            ["橋段", ly.bridge],
+          ]
+            .filter(([, text]) => text)
+            .map(([label, text]) => `<p class="me-lyric-label">${label}</p><pre>${esc(text)}</pre>`)
+            .join("")}
           ${(j.keywords || []).length ? `<p class="meta">關鍵字：${esc((j.keywords || []).join("、"))}</p>` : ""}
         `;
       } else {
         $("meLyrics").innerHTML = `<p class="me-empty">尚未產出歌詞${(j.keywords || []).length ? `（已有關鍵字：${esc(j.keywords.join("、"))}）` : ""}</p>`;
       }
 
+      const songTitle = (ly && ly.title) || j.title || "旅行之歌";
       const outs = [];
       if (j.preview_url)
         outs.push(
@@ -329,15 +336,23 @@
         );
       if (j.final_url) {
         outs.push(`<div class="me-audio-row"><span>AI 唱歌版</span><audio controls preload="none" src="${esc(j.final_url)}"></audio>
-          <a class="me-btn" href="${esc(j.final_url)}" download>下載</a></div>`);
+          <a class="me-btn" href="${esc(j.final_url)}" data-save="${esc(`${songTitle}-AI.mp3`)}">下載</a></div>`);
       }
       if (j.final_voice_url) {
         outs.push(`<div class="me-audio-row"><span>我的聲音版</span><audio controls preload="none" src="${esc(j.final_voice_url)}"></audio>
-          <a class="me-btn" href="${esc(j.final_voice_url)}" download>下載</a></div>`);
+          <a class="me-btn" href="${esc(j.final_voice_url)}" data-save="${esc(`${songTitle}-我的聲音.mp3`)}">下載</a></div>`);
       }
       $("meOutputs").innerHTML = outs.length
         ? outs.join("")
         : `<p class="me-empty">尚未產出音樂檔</p>`;
+      $("meOutputs").querySelectorAll("a[data-save]").forEach((a) => {
+        a.addEventListener("click", async (e) => {
+          e.preventDefault();
+          setStatus($("meStatus"), "準備下載…");
+          const out = await window.saveAudio(a.href, a.dataset.save);
+          setStatus($("meStatus"), out.message, !out.ok);
+        });
+      });
 
       $("meSounds")
         .querySelectorAll("audio[data-src]")

@@ -823,6 +823,10 @@ body.is-flow .panel {
   font-size: 0.88rem;
   color: var(--muted);
 }
+#btnStoryAuto {
+  width: 100%;
+  margin: 2px 0 16px;
+}
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 16px; }
 .chip {
   background: var(--foam);
